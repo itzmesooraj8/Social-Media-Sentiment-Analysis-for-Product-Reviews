@@ -287,20 +287,107 @@ async def get_dashboard():
                 "credibilityReasons": sentiment_entry.get("credibility_reasons") or [],
                 "sourceUrl": r.get("source_url"),
                 "timestamp": r.get("created_at"),
-                "likes": 0, # Not currently tracked
+                "likes": 0,
                 "aspects": sentiment_entry.get("aspects") or [],
-                "isBot": False # Placeholder logic
+                "isBot": False 
             })
+
+        # --- Aggregate Real Data for Widgets ---
+        
+        # 1. Sentiment Trend (Daily)
+        # In a real app, use Supabase .rpc() or date_trunc. Here we aggregate in python for simplicity.
+        # Group by Date
+        from collections import defaultdict
+        trend_map = defaultdict(lambda: {"positive": 0, "neutral": 0, "negative": 0, "total": 0})
+        
+        # 2. Aspect Scores
+        aspect_map = defaultdict(list)
+        
+        # 3. Emotions
+        emotion_counts = defaultdict(int)
+        
+        # 4. Platform Breakdown
+        platform_counts = defaultdict(lambda: {"positive": 0, "neutral": 0, "negative": 0, "total": 0})
+        
+        # Iterate over all recent reviews (or fetch more if needed) to build aggregates
+        # ideally fetch a larger set for stats, but we'll use the 50 fetched + maybe a separate query for global stats
+        # For Demo: using the recent 50 reviews to populate charts is often enough to show "live" movement
+        
+        for r, fr in zip(raw_reviews, formatted_reviews):
+            # Trends
+            date_key = r.get("created_at", "")[:10] # YYYY-MM-DD
+            sent = fr["sentiment"]
+            trend_map[date_key][sent] += 1
+            trend_map[date_key]["total"] += 1
+            
+            # Platforms
+            plat = fr["platform"]
+            platform_counts[plat][sent] += 1
+            platform_counts[plat]["total"] += 1
+            
+            # Aspects
+            for asp in fr["aspects"]:
+                score = 3 # neutral default
+                if asp["sentiment"] == "positive": score = 5
+                elif asp["sentiment"] == "negative": score = 1
+                aspect_map[asp["name"]].append(score)
+                
+            # Emotions (Parsing from analysis)
+            sentiment_entry = {}
+            if r.get("sentiment_analysis") and isinstance(r["sentiment_analysis"], list) and len(r["sentiment_analysis"]) > 0:
+                sentiment_entry = r["sentiment_analysis"][0]
+            emotions = sentiment_entry.get("emotions", [])
+            for agg in emotions:
+                if agg.get("score", 0) > 0.3: # Threshold
+                    emotion_counts[agg["name"]] += 1
+
+        # Format Trends
+        sentiment_trends = []
+        for date, counts in sorted(trend_map.items()):
+            sentiment_trends.append({
+                "date": date,
+                **counts
+            })
+            
+        # Format Aspects
+        aspect_scores = []
+        for name, scores in aspect_map.items():
+            avg = sum(scores) / len(scores)
+            label = "neutral"
+            if avg > 3.5: label = "positive"
+            if avg < 2.5: label = "negative"
+            aspect_scores.append({
+                "aspect": name,
+                "score": avg,
+                "sentiment": label,
+                "reviewCount": len(scores)
+            })
+            
+        # Format Platforms
+        platform_breakdown = []
+        for plat, counts in platform_counts.items():
+            platform_breakdown.append({
+                "platform": plat,
+                **counts
+            })
+            
+        # Format Keywords (Simple frequency from text)
+        # Real impl needs NLP keyword extraction
+        from collections import Counter
+        all_text = " ".join([r.get("text", "") for r in raw_reviews])
+        words = [w.lower() for w in all_text.split() if len(w) > 4]
+        common = Counter(words).most_common(10)
+        top_keywords = [{"word": w, "count": c, "sentiment": "neutral", "trend": "stable"} for w, c in common]
 
         return {
             "success": True,
             "data": {
                 "metrics": metrics,
-                "sentimentTrends": [], 
-                "aspectScores": [],
-                "alerts": [],
-                "platformBreakdown": [],
-                "topKeywords": [],
+                "sentimentTrends": sentiment_trends, 
+                "aspectScores": aspect_scores,
+                "alerts": [], # Alerts still mock till we implement alert logic tab
+                "platformBreakdown": platform_breakdown,
+                "topKeywords": top_keywords,
                 "credibilityReport": {
                     "overallScore": metrics.get("averageCredibility", 0),
                     "botsDetected": metrics.get("botsDetected", 0),

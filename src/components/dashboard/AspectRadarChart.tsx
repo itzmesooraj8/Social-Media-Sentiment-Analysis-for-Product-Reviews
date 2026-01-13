@@ -49,6 +49,8 @@ export function AspectRadarChart({ data, isLoading }: AspectRadarChartProps) {
     value: (item.score / 5) * 100,
   }));
 
+  const isEmpty = !data || data.length === 0;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -57,36 +59,41 @@ export function AspectRadarChart({ data, isLoading }: AspectRadarChartProps) {
       className="glass-card p-6 h-[350px]"
     >
       <h3 className="text-lg font-semibold mb-4">Aspect Analysis</h3>
-      
-      <div className="h-[280px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={chartData} margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
-            <PolarGrid 
-              stroke="hsl(var(--border))" 
-              opacity={0.5}
-            />
-            <PolarAngleAxis
-              dataKey="aspect"
-              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-            />
-            <PolarRadiusAxis
-              angle={30}
-              domain={[0, 100]}
-              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
-              tickFormatter={(value) => `${(value / 20).toFixed(0)}`}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Radar
-              name="Score"
-              dataKey="value"
-              stroke="hsl(157, 100%, 50%)"
-              fill="hsl(157, 100%, 50%)"
-              fillOpacity={0.3}
-              strokeWidth={2}
-            />
-          </RadarChart>
-        </ResponsiveContainer>
-      </div>
-    </motion.div>
-  );
+
+      {isEmpty ? (
+        <div className="h-[280px] w-full flex items-center justify-center text-muted-foreground text-sm">
+          No aspect data available yet
+        </div>
+      ) : (
+        <div className="h-[280px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <RadarChart data={chartData} margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
+              <PolarGrid
+                stroke="hsl(var(--border))"
+                opacity={0.5}
+              />
+              <PolarAngleAxis
+                dataKey="aspect"
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+              />
+              <PolarRadiusAxis
+                angle={30}
+                domain={[0, 100]}
+                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
+                tickFormatter={(value) => `${(value / 20).toFixed(0)}`}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Radar
+                name="Score"
+                dataKey="value"
+                stroke="hsl(157, 100%, 50%)"
+                fill="hsl(157, 100%, 50%)"
+                fillOpacity={0.3}
+                strokeWidth={2}
+              />
+            </RadarChart>
+          </ResponsiveContainer>
+      )}
+        </motion.div>
+      );
 }
