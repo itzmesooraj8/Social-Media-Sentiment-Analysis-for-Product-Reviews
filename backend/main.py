@@ -23,6 +23,7 @@ from database import (
     get_products,
     add_product,
     get_reviews,
+    get_recent_reviews_with_sentiment,
     save_sentiment_analysis,
     get_dashboard_metrics,
     supabase
@@ -205,11 +206,15 @@ async def create_review(review: ReviewCreate):
         sentiment_result = await ai_service.analyze_sentiment(review.text)
         
         # Save review
+        import hashlib
+        text_hash = hashlib.md5(review.text.encode('utf-8')).hexdigest()
+        
         review_data = {
             "product_id": review.product_id,
             "text": review.text,
             "platform": review.platform,
             "source_url": review.source_url,
+            "text_hash": text_hash
         }
         review_response = supabase.table("reviews").insert(review_data).execute()
         review_id = review_response.data[0]["id"] if review_response.data else None
@@ -223,6 +228,7 @@ async def create_review(review: ReviewCreate):
                 "score": sentiment_result.get("score"),
                 "emotions": sentiment_result.get("emotions", []),
                 "credibility": sentiment_result.get("credibility", 0),
+                "credibility_reasons": sentiment_result.get("credibility_reasons", []),
                 "aspects": sentiment_result.get("aspects", [])
             }
             await save_sentiment_analysis(analysis_data)
@@ -254,17 +260,38 @@ async def get_dashboard():
             }
         
         # Get recent reviews with sentiment
-        reviews = await get_reviews(limit=50)
+        raw_reviews = await get_recent_reviews_with_sentiment(limit=50)
+        formatted_reviews = []
         
-        # Get sentiment trends
-        sentiment_response = supabase.table("sentiment_analysis").select("*").limit(100).execute()
-        # sentiment_data = sentiment_response.data # Not used in dashboard currently, handled by frontend sorting if needed
-        
+        for r in raw_reviews:
+            # Extract sentiment data if available
+            # Supabase returns list for 1:Many, but here it's 1:1, usually data[0] if array
+            sentiment_entry = {}
+            if r.get("sentiment_analysis") and isinstance(r["sentiment_analysis"], list) and len(r["sentiment_analysis"]) > 0:
+                sentiment_entry = r["sentiment_analysis"][0]
+            elif r.get("sentiment_analysis") and isinstance(r["sentiment_analysis"], dict):
+                sentiment_entry = r["sentiment_analysis"]
+                
+            formatted_reviews.append({
+                "id": r.get("id"),
+                "platform": r.get("platform", "forums"), # Default to forums if missing
+                "username": r.get("author") or r.get("username") or "Anonymous",
+                "text": r.get("text", ""),
+                "sentiment": (sentiment_entry.get("label") or "NEUTRAL").lower(),
+                "credibility": float(sentiment_entry.get("credibility") or 0),
+                "credibilityReasons": sentiment_entry.get("credibility_reasons") or [],
+                "sourceUrl": r.get("source_url"),
+                "timestamp": r.get("created_at"),
+                "likes": 0, # Not currently tracked
+                "aspects": sentiment_entry.get("aspects") or [],
+                "isBot": False # Placeholder logic
+            })
+
         return {
             "success": True,
             "data": {
                 "metrics": metrics,
-                "sentimentTrends": [], # Should be implemented with timeseries query
+                "sentimentTrends": [], 
                 "aspectScores": [],
                 "alerts": [],
                 "platformBreakdown": [],
@@ -277,7 +304,10 @@ async def get_dashboard():
                     "verifiedReviews": metrics.get("totalReviews", 0),
                     "totalAnalyzed": metrics.get("totalReviews", 0)
                 },
+                "recentReviews": formatted_reviews,
                 "lastUpdated": datetime.now().isoformat()
+            }
+        }
             }
         }
     except Exception as e:

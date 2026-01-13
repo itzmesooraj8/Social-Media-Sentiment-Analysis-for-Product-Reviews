@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Loader2, Sparkles, Brain, Target, Shield, TrendingUp, TrendingDown } from 'lucide-react';
+import { Send, Loader2, Sparkles, Brain, Target, Shield, TrendingUp, TrendingDown, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn } from '@/lib/utils';
 
 interface AnalysisResult {
@@ -13,6 +19,7 @@ interface AnalysisResult {
   emotions: { name: string; score: number }[];
   keyPhrases: string[];
   credibilityScore: number;
+  credibilityReasons: string[];
   aspects: { name: string; sentiment: 'positive' | 'neutral' | 'negative' }[];
 }
 
@@ -23,23 +30,23 @@ export function LiveReviewAnalyzer() {
 
   const analyzeReview = async () => {
     if (!reviewText.trim()) return;
-    
+
     setIsAnalyzing(true);
-    
+
     // Simulate API call with realistic delay
     await new Promise(resolve => setTimeout(resolve, 1500));
-    
+
     // Generate mock analysis based on text content
     const positiveWords = ['great', 'excellent', 'amazing', 'love', 'fantastic', 'best', 'perfect', 'wonderful'];
     const negativeWords = ['bad', 'terrible', 'awful', 'hate', 'worst', 'poor', 'disappointing', 'broken'];
-    
+
     const lowerText = reviewText.toLowerCase();
     const positiveCount = positiveWords.filter(w => lowerText.includes(w)).length;
     const negativeCount = negativeWords.filter(w => lowerText.includes(w)).length;
-    
+
     let sentiment: 'positive' | 'neutral' | 'negative' = 'neutral';
     let confidence = 65 + Math.random() * 20;
-    
+
     if (positiveCount > negativeCount) {
       sentiment = 'positive';
       confidence = 75 + Math.random() * 20;
@@ -47,7 +54,7 @@ export function LiveReviewAnalyzer() {
       sentiment = 'negative';
       confidence = 70 + Math.random() * 25;
     }
-    
+
     const emotions = [
       { name: 'Joy', score: sentiment === 'positive' ? 60 + Math.random() * 30 : 10 + Math.random() * 20 },
       { name: 'Trust', score: 40 + Math.random() * 40 },
@@ -56,29 +63,30 @@ export function LiveReviewAnalyzer() {
       { name: 'Fear', score: 5 + Math.random() * 20 },
       { name: 'Surprise', score: 20 + Math.random() * 30 },
     ].sort((a, b) => b.score - a.score);
-    
+
     const keyPhrases = reviewText
       .split(/[.,!?]/)
       .filter(p => p.trim().length > 10)
       .slice(0, 4)
       .map(p => p.trim().substring(0, 40));
-    
+
     const aspects = [
       { name: 'Quality', sentiment: sentiment },
       { name: 'Value', sentiment: Math.random() > 0.5 ? sentiment : 'neutral' as const },
       { name: 'Service', sentiment: Math.random() > 0.6 ? sentiment : 'neutral' as const },
       { name: 'Shipping', sentiment: Math.random() > 0.7 ? 'positive' as const : 'neutral' as const },
     ];
-    
+
     setResult({
       sentiment,
       confidence,
       emotions,
       keyPhrases: keyPhrases.length ? keyPhrases : ['No distinct phrases detected'],
       credibilityScore: 70 + Math.random() * 25,
+      credibilityReasons: ['Consistent sentiment', 'Contextual depth', 'Verified language patterns'],
       aspects,
     });
-    
+
     setIsAnalyzing(false);
   };
 
@@ -173,6 +181,21 @@ export function LiveReviewAnalyzer() {
                   <div className="flex items-center gap-2">
                     <Shield className="h-4 w-4 text-sentinel-credibility" />
                     <span className="text-sm font-medium">Credibility Score</span>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Info className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                        </TooltipTrigger>
+                        <TooltipContent className="glass-card border-border p-3 max-w-[200px]">
+                          <p className="font-semibold text-xs mb-1">Analysis Factors:</p>
+                          <ul className="list-disc pl-3 space-y-1">
+                            {result.credibilityReasons.map((r, i) => (
+                              <li key={i} className="text-xs text-muted-foreground">{r}</li>
+                            ))}
+                          </ul>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                   <span className="text-sentinel-credibility font-bold">{result.credibilityScore.toFixed(0)}%</span>
                 </div>
@@ -188,7 +211,7 @@ export function LiveReviewAnalyzer() {
                       <span className="text-sm">{emotion.name}</span>
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div 
+                          <div
                             className="h-full bg-sentinel-credibility rounded-full transition-all"
                             style={{ width: `${emotion.score}%` }}
                           />
@@ -205,7 +228,7 @@ export function LiveReviewAnalyzer() {
                 <h4 className="text-sm font-medium mb-3">Aspect Analysis</h4>
                 <div className="flex flex-wrap gap-2">
                   {result.aspects.map((aspect) => (
-                    <Badge 
+                    <Badge
                       key={aspect.name}
                       variant="outline"
                       className={cn(

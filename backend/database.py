@@ -63,6 +63,48 @@ async def get_reviews(product_id: str = None, limit: int = 100):
         return []
 
 
+async def get_recent_reviews_with_sentiment(limit: int = 50):
+    """Fetch recent reviews with their sentiment analysis included."""
+    try:
+        # Supabase join syntax: table(*), tied via foreign key
+        # Assuming review_id in sentiment_analysis references reviews.id
+        # Note: In standard Supabase, we select from parent and include child? 
+        # Or select from Child and include parent? 
+        # Reviews is parent. Sentiment is child (review_id). 
+        # To get Review + Sentiment, we usually need: select *, sentiment_analysis(*)
+        response = supabase.table("reviews")\
+            .select("*, sentiment_analysis(*)")\
+            .order("created_at", desc=True)\
+            .limit(limit)\
+            .execute()
+        return response.data
+    except Exception as e:
+        print(f"Error fetching recent reviews: {e}")
+        return []
+
+
+
+async def get_analysis_by_hash(text_hash: str):
+    """Check if analysis exists for a given text hash."""
+    try:
+        # 1. Find a review with this hash
+        review_response = supabase.table("reviews").select("id").eq("text_hash", text_hash).limit(1).execute()
+        if not review_response.data:
+            return None
+            
+        review_id = review_response.data[0]["id"]
+        
+        # 2. Get the analysis for this review
+        analysis_response = supabase.table("sentiment_analysis").select("*").eq("review_id", review_id).execute()
+        if analysis_response.data:
+            return analysis_response.data[0]
+            
+        return None
+    except Exception as e:
+        print(f"Error checking cache: {e}")
+        return None
+
+
 async def save_sentiment_analysis(analysis_data: dict):
     """Save sentiment analysis results to the database."""
     try:

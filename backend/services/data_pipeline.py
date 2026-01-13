@@ -29,12 +29,16 @@ async def process_scraped_reviews(product_id: str, reviews: List[Dict[str, Any]]
                     continue  # Skip duplicate
 
             # Save review
+            import hashlib
+            text_hash = hashlib.md5(review_data['text'].encode('utf-8')).hexdigest()
+
             review_insert = {
                 "product_id": product_id,
                 "text": review_data['text'],
                 "platform": review_data.get('platform', 'unknown'),
                 "source_url": review_data.get('source_url'),
-                "author": review_data.get('author')
+                "author": review_data.get('author'),
+                "text_hash": text_hash
             }
             review_response = supabase.table("reviews").insert(review_insert).execute()
             
@@ -52,6 +56,7 @@ async def process_scraped_reviews(product_id: str, reviews: List[Dict[str, Any]]
                     "score": sentiment_result.get("score"),
                     "emotions": sentiment_result.get("emotions", []),
                     "credibility": sentiment_result.get("credibility", 0),
+                    "credibility_reasons": sentiment_result.get("credibility_reasons", []),
                     "aspects": sentiment_result.get("aspects", [])
                 }
                 await save_sentiment_analysis(analysis_data)

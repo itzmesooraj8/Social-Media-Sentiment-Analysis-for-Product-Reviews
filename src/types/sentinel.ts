@@ -77,6 +77,21 @@ export interface DashboardFilters {
   credibilityThreshold: number;
 }
 
+export interface Review {
+  id: string;
+  platform: Platform;
+  username: string;
+  text: string;
+  sentiment: SentimentType;
+  credibility: number;
+  credibilityReasons?: string[];
+  sourceUrl?: string;
+  timestamp: Date | string;
+  likes: number;
+  aspects: { name: string; sentiment: SentimentType }[];
+  isBot: boolean;
+}
+
 export interface DashboardData {
   metrics: {
     totalReviews: number;
@@ -90,6 +105,7 @@ export interface DashboardData {
   platformBreakdown: PlatformBreakdown[];
   topKeywords: TopKeyword[];
   credibilityReport: CredibilityReport;
+  recentReviews: Review[];
   lastUpdated: Date;
 }
 

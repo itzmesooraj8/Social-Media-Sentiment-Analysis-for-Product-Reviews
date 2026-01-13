@@ -83,7 +83,7 @@ const Index = () => {
 
         {/* Review Feed & Emotions */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ReviewFeed />
+          <ReviewFeed reviews={data?.recentReviews} />
           <EmotionWheel isLoading={isLoading} />
         </div>
 
