@@ -20,8 +20,12 @@ import { ExportButton } from '@/components/dashboard/ExportButton';
 const Index = () => {
   const { data, isLoading } = useDashboardData();
 
+  // Pulse Logic: If last 5 reviews are ALL negative, trigger crisis mode
+  const recentReviews = data?.recentReviews || [];
+  const isCrisis = recentReviews.length >= 5 && recentReviews.slice(0, 5).every(r => r.sentiment === 'negative');
+
   return (
-    <DashboardLayout lastUpdated={data?.lastUpdated}>
+    <DashboardLayout lastUpdated={data?.lastUpdated} isCrisis={isCrisis}>
       <div className="space-y-6">
         {/* Controls Row */}
         <div className="flex flex-wrap items-center justify-between gap-4">

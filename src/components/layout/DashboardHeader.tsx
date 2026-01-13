@@ -5,15 +5,16 @@ import { format } from 'date-fns';
 
 interface DashboardHeaderProps {
   lastUpdated?: Date;
+  isCrisis?: boolean;
 }
 
-export function DashboardHeader({ lastUpdated }: DashboardHeaderProps) {
+export function DashboardHeader({ lastUpdated, isCrisis = false }: DashboardHeaderProps) {
   return (
     <header className="sticky top-0 z-30 glass-card rounded-none border-b border-border/50 px-6 py-4">
       <div className="flex items-center justify-between">
         {/* Title Section */}
         <div className="flex items-center gap-4">
-          <motion.h1 
+          <motion.h1
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
@@ -21,7 +22,7 @@ export function DashboardHeader({ lastUpdated }: DashboardHeaderProps) {
           >
             <span className="gradient-text">Sentinel Engine</span>
           </motion.h1>
-          
+
           {/* Live Indicator */}
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
@@ -30,11 +31,11 @@ export function DashboardHeader({ lastUpdated }: DashboardHeaderProps) {
             className="flex items-center gap-2 glass-card px-3 py-1.5 rounded-full"
           >
             <div className="relative flex items-center justify-center">
-              <span className="absolute h-2.5 w-2.5 rounded-full bg-sentinel-negative animate-ping opacity-75" />
-              <span className="relative h-2 w-2 rounded-full bg-sentinel-negative" />
+              <span className={`absolute h-2.5 w-2.5 rounded-full ${isCrisis ? 'bg-sentinel-negative animate-ping duration-300' : 'bg-sentinel-positive animate-ping'} opacity-75`} />
+              <span className={`relative h-2 w-2 rounded-full ${isCrisis ? 'bg-sentinel-negative' : 'bg-sentinel-positive'}`} />
             </div>
-            <span className="text-xs font-semibold text-sentinel-negative uppercase tracking-wider">
-              Live
+            <span className={`text-xs font-semibold uppercase tracking-wider ${isCrisis ? 'text-sentinel-negative' : 'text-sentinel-positive'}`}>
+              {isCrisis ? 'CRISIS DETECTED' : 'Live'}
             </span>
           </motion.div>
         </div>
@@ -53,7 +54,7 @@ export function DashboardHeader({ lastUpdated }: DashboardHeaderProps) {
               <span>Updated {format(lastUpdated, 'HH:mm:ss')}</span>
             </motion.div>
           )}
-          
+
           {/* Activity Indicator */}
           <motion.div
             initial={{ opacity: 0 }}
