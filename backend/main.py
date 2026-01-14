@@ -29,7 +29,7 @@ from database import (
     get_reviews,
     get_recent_reviews_with_sentiment,
     save_sentiment_analysis,
-    get_dashboard_metrics,
+    get_dashboard_stats,
     supabase
 )
 
@@ -258,7 +258,6 @@ async def get_dashboard():
     """Get dashboard metrics and data"""
     try:
         # Use optimized SQL/RPC stats
-        from database import get_dashboard_stats
         metrics_raw = await get_dashboard_stats()
         
         metrics = {

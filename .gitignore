@@ -40,3 +40,4 @@ venv/
 
 # Generated Reports
 backend/generated_reports/
+generated_reports/
