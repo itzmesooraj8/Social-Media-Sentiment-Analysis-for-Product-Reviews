@@ -50,48 +50,7 @@ interface Integration {
   isEnabled: boolean;
 }
 
-const mockIntegrations: Integration[] = [
-  {
-    id: '1',
-    name: 'Twitter/X API',
-    platform: 'twitter',
-    status: 'connected',
-    lastSync: new Date(Date.now() - 1000 * 60 * 5),
-    reviewsCollected: 45230,
-    syncFrequency: '15 minutes',
-    isEnabled: true,
-  },
-  {
-    id: '2',
-    name: 'Reddit API',
-    platform: 'reddit',
-    status: 'connected',
-    lastSync: new Date(Date.now() - 1000 * 60 * 12),
-    reviewsCollected: 28900,
-    syncFrequency: '30 minutes',
-    isEnabled: true,
-  },
-  {
-    id: '3',
-    name: 'YouTube Data API',
-    platform: 'youtube',
-    status: 'error',
-    lastSync: new Date(Date.now() - 1000 * 60 * 60 * 2),
-    reviewsCollected: 12450,
-    syncFrequency: '1 hour',
-    isEnabled: true,
-  },
-  {
-    id: '4',
-    name: 'Custom Forums',
-    platform: 'forums',
-    status: 'disconnected',
-    lastSync: null,
-    reviewsCollected: 0,
-    syncFrequency: '6 hours',
-    isEnabled: false,
-  },
-];
+// Mock data removed. Usage strictly from API.
 
 const platformIcons = {
   twitter: Twitter,

@@ -16,9 +16,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from services.ai_service import ai_service
 from services.reddit_scraper import reddit_scraper
+from services.youtube_scraper import youtube_scraper
+from services.report_service import report_service
 from services.scheduler import start_scheduler
 from services.data_pipeline import process_scraped_reviews
 from auth.dependencies import verify_user
+from fastapi.responses import FileResponse, Response
 from database import (
     get_products,
     add_product,
@@ -55,7 +58,6 @@ app.add_middleware(
     allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],  # Frontend URLs
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
     allow_headers=["*"],
 )
 
@@ -137,7 +139,6 @@ async def list_products():
             "data": products,
             "count": len(products)
         }
-    except Exception as e:
     except Exception as e:
         print(f"Error fetching products: {e}")
         return {
@@ -400,9 +401,6 @@ async def get_dashboard():
                 "lastUpdated": datetime.now().isoformat()
             }
         }
-            }
-        }
-    except Exception as e:
     except Exception as e:
         print(f"Error fetching dashboard data: {e}")
         # Return empty data instead of crashing
@@ -459,7 +457,6 @@ async def get_analytics():
                 "totalAnalyzed": len(sentiment_data)
             }
         }
-    except Exception as e:
     except Exception as e:
         print(f"Error fetching analytics: {e}")
         # Return empty structure instead of crashing
@@ -518,6 +515,62 @@ async def scrape_reddit(product_id: str, product_name: str, subreddits: Optional
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
+
+
+# YouTube Scraping Endpoint
+@app.post("/api/scrape/youtube")
+async def scrape_youtube_endpoint(product_id: str, query: str, user: dict = Depends(verify_user)):
+    """Scrape YouTube comments"""
+    try:
+        # Scrape
+        reviews = youtube_scraper.search_video_comments(query, max_results=50)
+        
+        if not reviews:
+            return {"success": True, "message": "No comments found", "count": 0}
+            
+        saved_count = await process_scraped_reviews(product_id, reviews)
+        return {"success": True, "message": f"Scraped {saved_count} YouTube comments", "count": saved_count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"YouTube Scrape Failed: {str(e)}")
+
+
+# Report Endpoints
+class ReportRequest(BaseModel):
+    type: str # 'sentiment', 'credibility'
+    format: str # 'pdf', 'excel'
+    date_range: Optional[Dict[str, str]] = None
+
+@app.post("/api/reports/generate")
+async def generate_report_endpoint(req: ReportRequest):
+    try:
+         result = await report_service.generate_report(req.type, req.format)
+         # Return metadata, clean way is to return URL or ID. For simplicity, we return filename and content in a downloadable way?
+         # No, REST API usually returns URL or binary. 
+         # Let's save to disk temporarily and return link, OR return base64. 
+         # A simpler approach for this demo: Return params to trigger a GET download
+         # Actually, we can just return the content directly if it's a small file, or save to 'generated_reports'
+         
+         out_dir = "generated_reports"
+         os.makedirs(out_dir, exist_ok=True)
+         filepath = os.path.join(out_dir, result["filename"])
+         
+         with open(filepath, "wb") as f:
+             f.write(result["content"])
+             
+         return {
+             "success": True, 
+             "filename": result["filename"], 
+             "downloadUrl": f"/api/reports/download/{result['filename']}"
+         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report Generation Failed: {str(e)}")
+
+@app.get("/api/reports/download/{filename}")
+async def download_report(filename: str):
+    file_path = os.path.join("generated_reports", filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path, filename=filename)
+    raise HTTPException(status_code=404, detail="Report not found")
 
 
 if __name__ == "__main__":

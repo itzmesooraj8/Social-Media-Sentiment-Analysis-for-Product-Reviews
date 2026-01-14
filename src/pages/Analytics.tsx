@@ -48,48 +48,6 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 }
 };
 
-// Generate comparison data
-const generateComparisonData = () => {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-  return months.map(month => ({
-    month,
-    thisYear: Math.floor(Math.random() * 3000) + 2000,
-    lastYear: Math.floor(Math.random() * 2500) + 1500,
-    growth: Math.floor(Math.random() * 30) - 10,
-  }));
-};
-
-// Generate engagement data
-const generateEngagementData = () => {
-  return [
-    { hour: '00:00', engagement: 120 },
-    { hour: '03:00', engagement: 80 },
-    { hour: '06:00', engagement: 200 },
-    { hour: '09:00', engagement: 450 },
-    { hour: '12:00', engagement: 680 },
-    { hour: '15:00', engagement: 520 },
-    { hour: '18:00', engagement: 750 },
-    { hour: '21:00', engagement: 420 },
-  ];
-};
-
-// Generate scatter data for correlation
-const generateCorrelationData = () => {
-  return Array.from({ length: 50 }, () => ({
-    sentiment: Math.random() * 100,
-    engagement: Math.random() * 1000,
-    volume: Math.floor(Math.random() * 500) + 100,
-  }));
-};
-
-// Platform performance data
-const platformPerformance = [
-  { platform: 'Twitter', positive: 65, negative: 15, neutral: 20, total: 4520 },
-  { platform: 'Reddit', positive: 45, negative: 30, neutral: 25, total: 2840 },
-  { platform: 'YouTube', positive: 70, negative: 10, neutral: 20, total: 3200 },
-  { platform: 'Forums', positive: 55, negative: 25, neutral: 20, total: 1890 },
-];
-
 const Analytics = () => {
   const { data: dashboardData, isLoading: isDashboardLoading } = useDashboardData();
   const [analyticsData, setAnalyticsData] = useState<any>(null);
@@ -113,26 +71,29 @@ const Analytics = () => {
     fetchAnalytics();
   }, []);
 
-  // Compute derived data or use defaults if loading
+  // Use real data from backend, defaulting to empty arrays if missing to avoid crashes
   const platformBreakdown = analyticsData?.platformBreakdown || {};
   const totalReviews = analyticsData?.totalAnalyzed || 0;
 
-  // Transform platform data for charts
-  const platformPerformance = Object.entries(platformBreakdown).map(([platform, count]: [string, any]) => ({
+  // Transform platform data for charts (Real)
+  const platformPerformanceChart = Object.entries(platformBreakdown).map(([platform, count]: [string, any]) => ({
     platform,
     total: count,
-    positive: 60, // Placeholder as backend aggregation isn't granular yet
-    neutral: 20,
-    negative: 20
+    // Since our simple backend metrics don't break down sentiment per platform yet, 
+    // we calculate global ratios or default to 0. 
+    // Ideally the backend /api/analytics should provide platform-specific sentiment counts.
+    // For now, we will just show the volume.
+    positive: 0,
+    neutral: 0,
+    negative: 0
   }));
 
-  // Use dashboard data for trends if available, else mock
   const sentimentTrends = dashboardData?.sentimentTrends || [];
 
-  // Mock data for unimplemented endpoints
-  const comparisonData = generateComparisonData();
-  const engagementData = generateEngagementData();
-  const correlationData = generateCorrelationData();
+  // No fake data. If endpoints don't provide these yet, show empty/loading state.
+  const comparisonData: any[] = [];
+  const engagementData: any[] = [];
+  const correlationData: any[] = [];
 
   const stats = [
     {
@@ -410,7 +371,7 @@ const Analytics = () => {
 
             <TabsContent value="platforms">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {platformPerformance.map((platform) => (
+                {platformPerformanceChart.map((platform) => (
                   <Card key={platform.platform} className="glass-card border-border/50">
                     <CardHeader>
                       <CardTitle className="flex items-center justify-between">

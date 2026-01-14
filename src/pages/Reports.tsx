@@ -214,7 +214,23 @@ const Reports = () => {
                             </div>
                             <DialogFooter>
                                 <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                                <Button className="bg-sentinel-positive hover:bg-sentinel-positive/90 text-black" onClick={() => setIsCreateOpen(false)}>
+                                <Button className="bg-sentinel-positive hover:bg-sentinel-positive/90 text-black"
+                                    onClick={async () => {
+                                        setIsCreateOpen(false);
+                                        try {
+                                            const res = await fetch("http://localhost:8000/api/reports/generate", {
+                                                method: "POST",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ type: "sentiment", format: "pdf" })
+                                            });
+                                            const data = await res.json();
+                                            if (data.success && data.downloadUrl) {
+                                                window.location.href = "http://localhost:8000" + data.downloadUrl;
+                                            }
+                                        } catch (e) {
+                                            alert("Failed to generate report");
+                                        }
+                                    }}>
                                     Generate Report
                                 </Button>
                             </DialogFooter>
@@ -278,51 +294,9 @@ const Reports = () => {
                 <motion.div variants={itemVariants}>
                     <h2 className="text-lg font-semibold mb-4">Recent Reports</h2>
                     <Card className="glass-card border-border/50">
-                        <CardContent className="p-0">
-                            <div className="divide-y divide-border/50">
-                                {filteredReports.map((report, index) => {
-                                    const typeConfig = reportTypes[report.type];
-                                    const statusConf = statusConfig[report.status];
-
-                                    return (
-                                        <motion.div
-                                            key={report.id}
-                                            initial={{ opacity: 0, x: -20 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            transition={{ delay: index * 0.05 }}
-                                            className="flex flex-col sm:flex-row sm:items-center justify-between p-4 hover:bg-accent/30 transition-colors gap-4"
-                                        >
-                                            <div className="flex items-start gap-3">
-                                                <div className={`p-2 rounded-lg ${typeConfig.color}`}>
-                                                    <typeConfig.icon className="h-5 w-5" />
-                                                </div>
-                                                <div>
-                                                    <p className="font-medium">{report.name}</p>
-                                                    <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                                                        <Calendar className="h-3 w-3" />
-                                                        <span>{report.period}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-3 sm:gap-4">
-                                                <Badge variant="outline" className={statusConf.color}>
-                                                    <statusConf.icon className={`h-3 w-3 mr-1 ${report.status === 'generating' ? 'animate-spin' : ''}`} />
-                                                    {statusConf.label}
-                                                </Badge>
-                                                {report.status === 'completed' && (
-                                                    <>
-                                                        <span className="text-sm text-muted-foreground hidden sm:block">{report.size}</span>
-                                                        <Button size="sm" variant="outline" className="gap-2">
-                                                            <Download className="h-4 w-4" />
-                                                            <span className="hidden sm:inline">Download</span>
-                                                        </Button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </motion.div>
-                                    );
-                                })}
-                            </div>
+                        <CardContent className="p-6 text-center text-muted-foreground">
+                            <p>Generated reports will appear here or download automatically.</p>
+                            {/* In a persistent system, we would list database records here. */}
                         </CardContent>
                     </Card>
                 </motion.div>
@@ -334,28 +308,11 @@ const Reports = () => {
                             <CardTitle className="text-sm font-medium text-muted-foreground">Reports Generated</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">47</div>
-                            <p className="text-xs text-muted-foreground">This month</p>
+                            <div className="text-2xl font-bold">-</div>
+                            <p className="text-xs text-muted-foreground">Real-time stats</p>
                         </CardContent>
                     </Card>
-                    <Card className="glass-card border-border/50">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">Storage Used</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">2.8 GB</div>
-                            <p className="text-xs text-muted-foreground">of 10 GB</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="glass-card border-border/50">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">Scheduled Reports</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">3</div>
-                            <p className="text-xs text-muted-foreground">Upcoming</p>
-                        </CardContent>
-                    </Card>
+                    {/* ... other stats removed or placeholder ... */}
                 </motion.div>
             </motion.div>
         </DashboardLayout>

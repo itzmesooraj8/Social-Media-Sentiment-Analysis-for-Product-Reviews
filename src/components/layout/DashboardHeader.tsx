@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { Activity, Clock } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { format } from 'date-fns';
+import { UserNav } from '@/components/common/UserNav';
 
 interface DashboardHeaderProps {
   lastUpdated?: Date;
@@ -68,6 +69,9 @@ export function DashboardHeader({ lastUpdated, isCrisis = false }: DashboardHead
 
           {/* Theme Toggle */}
           <ThemeToggle />
+
+          {/* User Nav */}
+          <UserNav />
         </div>
       </div>
     </header>

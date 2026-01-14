@@ -10,8 +10,19 @@ except ImportError:
     nlp = None
     print("Warning: Spacy not installed.")
 
+    print("Warning: Spacy not installed.")
+
 import hashlib
 import json
+import httpx
+import asyncio
+import os
+from typing import Dict, Any, List, Optional
+from dotenv import load_dotenv
+
+load_dotenv()
+
+HF_API_URL = "https://api-inference.huggingface.co/models/distilbert-base-uncased-finetuned-sst-2-english"
 
 class AIService:
     def __init__(self):
@@ -84,19 +95,14 @@ class AIService:
         headers = {"Authorization": f"Bearer {token}"} if token else {}
 
         if not token:
-             # Fallback to simple logic if no key provided
-             print("Warning: No HF Token found. Using mock fallback.")
-             # Simple heuristic for fallback
-             sentiment = "POSITIVE" if "good" in text.lower() or "love" in text.lower() else "NEGATIVE" if "bad" in text.lower() else "NEUTRAL"
-             return {
-                "label": sentiment, 
-                "score": 0.6, 
-                "emotions": [{"name": "Neutral", "score": 70}], 
-                "credibility": 50,
-                "credibility_reasons": ["Fallback Mode"],
-                "aspects": self._extract_aspects(text, sentiment)
-             }
-
+             # STRICT MODE: No mocks allowed.
+             # Try the key provided by user in chat if not in env
+             # STRICT MODE: No mocks allowed.
+             # Token must be in .env
+             pass 
+             
+        if not token:
+             raise Exception("Real-Time Mode Error: HF_TOKEN is missing. Cannot perform sentiment analysis.")
 
         async with httpx.AsyncClient() as client:
             try:
@@ -109,8 +115,11 @@ class AIService:
                 
                 results = await asyncio.gather(sentiment_task, emotion_task, return_exceptions=True)
                 
-                sentiment_data = results[0] if not isinstance(results[0], Exception) else []
-                emotion_data = results[1] if not isinstance(results[1], Exception) else []
+                sentiment_data = results[0]
+                emotion_data = results[1]
+
+                if isinstance(sentiment_data, Exception): raise sentiment_data
+                if isinstance(emotion_data, Exception): raise emotion_data
                 
                 # Process Sentiment
                 sentiment_res = self._process_sentiment(sentiment_data)
@@ -118,7 +127,7 @@ class AIService:
                 # Process Emotions
                 emotions = self._process_emotions(emotion_data)
                 
-                # Calculate Credibility (Heuristic)
+                # Calculate Credibility (Heuristic is still code-based but acceptable as feature)
                 cred_result = self._calculate_credibility(text)
                 credibility = cred_result["score"]
                 cred_reasons = cred_result["reasons"]

@@ -52,73 +52,7 @@ interface Product {
   platforms: string[];
 }
 
-const mockProducts: Product[] = [
-  {
-    id: '1',
-    name: 'Ultra Pro Wireless Headphones',
-    sku: 'UPHW-001',
-    category: 'Electronics',
-    totalReviews: 12450,
-    sentimentScore: 78,
-    sentimentTrend: 'up',
-    credibilityScore: 92,
-    lastAnalyzed: new Date(Date.now() - 1000 * 60 * 15),
-    status: 'active',
-    platforms: ['twitter', 'reddit', 'youtube'],
-  },
-  {
-    id: '2',
-    name: 'Smart Home Hub 2.0',
-    sku: 'SHH-200',
-    category: 'Smart Home',
-    totalReviews: 8920,
-    sentimentScore: 65,
-    sentimentTrend: 'stable',
-    credibilityScore: 88,
-    lastAnalyzed: new Date(Date.now() - 1000 * 60 * 45),
-    status: 'active',
-    platforms: ['twitter', 'forums'],
-  },
-  {
-    id: '3',
-    name: 'Premium Fitness Tracker',
-    sku: 'PFT-350',
-    category: 'Wearables',
-    totalReviews: 5670,
-    sentimentScore: 45,
-    sentimentTrend: 'down',
-    credibilityScore: 76,
-    lastAnalyzed: new Date(Date.now() - 1000 * 60 * 60 * 2),
-    status: 'active',
-    platforms: ['reddit', 'youtube'],
-  },
-  {
-    id: '4',
-    name: 'Eco-Friendly Water Bottle',
-    sku: 'EFWB-100',
-    category: 'Lifestyle',
-    totalReviews: 3240,
-    sentimentScore: 89,
-    sentimentTrend: 'up',
-    credibilityScore: 94,
-    lastAnalyzed: new Date(Date.now() - 1000 * 60 * 60),
-    status: 'active',
-    platforms: ['twitter', 'reddit'],
-  },
-  {
-    id: '5',
-    name: 'Gaming Keyboard RGB',
-    sku: 'GKR-500',
-    category: 'Gaming',
-    totalReviews: 2100,
-    sentimentScore: 72,
-    sentimentTrend: 'stable',
-    credibilityScore: 82,
-    lastAnalyzed: new Date(Date.now() - 1000 * 60 * 60 * 5),
-    status: 'paused',
-    platforms: ['youtube', 'forums'],
-  },
-];
+// Mock data removed. Usage strictly from API.
 
 const Products = () => {
   // Fetch products from API
@@ -307,7 +241,7 @@ const Products = () => {
           <div className="flex gap-4">
             <div className="glass-card px-4 py-2 flex items-center gap-2">
               <Package className="h-4 w-4 text-sentinel-credibility" />
-              <span className="text-sm font-medium">{mockProducts.length} Products</span>
+              <span className="text-sm font-medium">{products.length} Products</span>
             </div>
             <div className="glass-card px-4 py-2 flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-sentinel-positive" />
@@ -369,6 +303,31 @@ const Products = () => {
                     >
                       <Download className="h-4 w-4 mr-2" />
                       {scrapingProductId === product.id ? 'Scraping...' : 'Scrape Reddit Reviews'}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        setScrapingProductId(product.id);
+                        try {
+                          const res = await fetch(`http://localhost:8000/api/scrape/youtube?product_id=${product.id}&query=${encodeURIComponent(product.name)}`, {
+                            method: "POST",
+                            headers: { "Authorization": `Bearer ${localStorage.getItem("token") || ""}` }
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            alert(data.message);
+                          } else {
+                            alert("YouTube Scrape Failed: " + data.message);
+                          }
+                        } catch (e) {
+                          alert("YouTube Scrape Error");
+                        } finally {
+                          setScrapingProductId(null);
+                        }
+                      }}
+                      disabled={scrapingProductId === product.id}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Scrape YouTube Reviews
                     </DropdownMenuItem>
                     <DropdownMenuItem className="text-sentinel-negative">
                       <Trash2 className="h-4 w-4 mr-2" />

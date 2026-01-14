@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { 
+import {
   Settings as SettingsIcon,
   User,
   Bell,
@@ -57,7 +57,25 @@ const Settings = () => {
   const [credibilityThreshold, setCredibilityThreshold] = useState([75]);
   const [saved, setSaved] = useState(false);
 
+  // Profile State with LocalStorage Persistence
+  const [profile, setProfile] = useState({
+    firstName: localStorage.getItem('profile_firstName') || "Sentinel",
+    lastName: localStorage.getItem('profile_lastName') || "Admin",
+    email: localStorage.getItem('profile_email') || "admin@sentinel.ai",
+    org: localStorage.getItem('profile_org') || "Sentinel Engine Inc."
+  });
+
+  const handleProfileChange = (field: string, value: string) => {
+    setProfile(prev => ({ ...prev, [field]: value }));
+  };
+
   const handleSave = () => {
+    // Persist to LocalStorage (Simulating Backend Update)
+    localStorage.setItem('profile_firstName', profile.firstName);
+    localStorage.setItem('profile_lastName', profile.lastName);
+    localStorage.setItem('profile_email', profile.email);
+    localStorage.setItem('profile_org', profile.org);
+
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -249,22 +267,39 @@ const Settings = () => {
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>First Name</Label>
-                      <Input defaultValue="Sentinel" className="glass-card border-border/50" />
+                      <Input
+                        value={profile.firstName}
+                        onChange={(e) => handleProfileChange('firstName', e.target.value)}
+                        className="glass-card border-border/50"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Last Name</Label>
-                      <Input defaultValue="Admin" className="glass-card border-border/50" />
+                      <Input
+                        value={profile.lastName}
+                        onChange={(e) => handleProfileChange('lastName', e.target.value)}
+                        className="glass-card border-border/50"
+                      />
                     </div>
                   </div>
 
                   <div className="space-y-2">
                     <Label>Email</Label>
-                    <Input defaultValue="admin@sentinel.ai" type="email" className="glass-card border-border/50" />
+                    <Input
+                      value={profile.email}
+                      onChange={(e) => handleProfileChange('email', e.target.value)}
+                      type="email"
+                      className="glass-card border-border/50"
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <Label>Organization</Label>
-                    <Input defaultValue="Sentinel Engine Inc." className="glass-card border-border/50" />
+                    <Input
+                      value={profile.org}
+                      onChange={(e) => handleProfileChange('org', e.target.value)}
+                      className="glass-card border-border/50"
+                    />
                   </div>
 
                   <div className="space-y-2">
@@ -478,15 +513,13 @@ const Settings = () => {
                         <button
                           key={t}
                           onClick={() => setTheme(t as 'light' | 'dark' | 'system')}
-                          className={`p-4 rounded-xl border-2 transition-all ${
-                            theme === t 
-                              ? 'border-sentinel-positive bg-sentinel-positive/10' 
-                              : 'border-border hover:border-sentinel-positive/50'
-                          }`}
+                          className={`p-4 rounded-xl border-2 transition-all ${theme === t
+                            ? 'border-sentinel-positive bg-sentinel-positive/10'
+                            : 'border-border hover:border-sentinel-positive/50'
+                            }`}
                         >
-                          <div className={`h-8 w-8 mx-auto rounded-lg mb-2 ${
-                            t === 'light' ? 'bg-white' : t === 'dark' ? 'bg-gray-900' : 'bg-gradient-to-br from-white to-gray-900'
-                          }`} />
+                          <div className={`h-8 w-8 mx-auto rounded-lg mb-2 ${t === 'light' ? 'bg-white' : t === 'dark' ? 'bg-gray-900' : 'bg-gradient-to-br from-white to-gray-900'
+                            }`} />
                           <span className="text-sm capitalize">{t}</span>
                         </button>
                       ))}
@@ -605,7 +638,7 @@ const Settings = () => {
 
         {/* Save Button */}
         <motion.div variants={itemVariants} className="flex justify-end">
-          <Button 
+          <Button
             onClick={handleSave}
             className="bg-sentinel-positive hover:bg-sentinel-positive/90 text-black gap-2"
           >

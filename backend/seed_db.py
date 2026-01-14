@@ -107,17 +107,26 @@ async def seed_reviews():
             # Note: We manually insert to ensure timestamps are recent
             created_at = (datetime.utcnow() - timedelta(minutes=r["timestamp_offset"])).isoformat()
             
-            review_data = {
-                "product_id": product_id,
-                "text": r["text"],
-                "platform": r["platform"],
-                "source_url": r["source_url"],
-                "author": r["author"],
-                "text_hash": text_hash,
-                "created_at": created_at
-            }
-            
-            res = supabase.table("reviews").insert(review_data).execute()
+            try:
+                # Try inserting with text_hash first
+                review_data = {
+                    "product_id": product_id,
+                    "text": r["text"],
+                    "platform": r["platform"],
+                    "source_url": r["source_url"],
+                    "author": r["author"],
+                    "text_hash": text_hash, # Optimistic: assume migration ran
+                    "created_at": created_at
+                }
+                res = supabase.table("reviews").insert(review_data).execute()
+            except Exception as insert_err:
+                if "text_hash" in str(insert_err):
+                    print("! Migration 01_add_hash not run. Falling back to simple insert.")
+                    del review_data["text_hash"]
+                    res = supabase.table("reviews").insert(review_data).execute()
+                else:
+                    raise insert_err
+
             if not res.data:
                 print("Failed to insert review")
                 continue
@@ -139,7 +148,18 @@ async def seed_reviews():
                 "credibility_reasons": analysis.get("credibility_reasons", []),
                 "aspects": analysis.get("aspects", [])
             }
-            await save_sentiment_analysis(analysis_data)
+            # Handle missing credibility_reasons column too
+            try:
+                await save_sentiment_analysis(analysis_data)
+            except Exception as save_err:
+                if "credibility_reasons" in str(save_err):
+                     print("! Migration 01_add_features not run. omiting new fields.")
+                     del analysis_data["credibility_reasons"]
+                     # Retry
+                     await save_sentiment_analysis(analysis_data)
+                else:
+                    print(f"Failed to save analysis: {save_err}")
+                    
             success_count += 1
             
         except Exception as e:

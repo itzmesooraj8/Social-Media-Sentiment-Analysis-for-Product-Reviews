@@ -1,8 +1,8 @@
 
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
 import { Loader2 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { useEffect } from 'react';
 
 interface ProtectedRouteProps {
     children: React.ReactNode;
@@ -10,34 +10,13 @@ interface ProtectedRouteProps {
 
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     const navigate = useNavigate();
-    const [loading, setLoading] = useState(true);
-    const [authenticated, setAuthenticated] = useState(false);
+    const { user, loading } = useAuth();
 
     useEffect(() => {
-        const checkAuth = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-
-            if (!session) {
-                navigate('/auth');
-            } else {
-                setAuthenticated(true);
-            }
-            setLoading(false);
-        };
-
-        checkAuth();
-
-        // Listen for auth state changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (!session) {
-                navigate('/auth');
-            } else {
-                setAuthenticated(true);
-            }
-        });
-
-        return () => subscription.unsubscribe();
-    }, [navigate]);
+        if (!loading && !user) {
+            navigate('/login');
+        }
+    }, [user, loading, navigate]);
 
     if (loading) {
         return (
@@ -47,7 +26,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
         );
     }
 
-    return authenticated ? <>{children}</> : null;
+    return user ? <>{children}</> : null;
 };
 
 export default ProtectedRoute;

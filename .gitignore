@@ -37,3 +37,6 @@ venv/
 .env
 .env.*
 !.env.example
+
+# Generated Reports
+backend/generated_reports/

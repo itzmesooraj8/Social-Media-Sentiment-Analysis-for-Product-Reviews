@@ -93,7 +93,8 @@ export function AspectRadarChart({ data, isLoading }: AspectRadarChartProps) {
               />
             </RadarChart>
           </ResponsiveContainer>
+        </div>
       )}
-        </motion.div>
-      );
+    </motion.div>
+  );
 }
