@@ -52,6 +52,7 @@ const Analytics = () => {
   const { data: dashboardData, isLoading: isDashboardLoading } = useDashboardData();
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [aiSummary, setAiSummary] = useState("Analyzing recent negative feedback patterns...");
 
   // Fetch detailed analytics
   useEffect(() => {
@@ -62,8 +63,19 @@ const Analytics = () => {
         if (data.success) {
           setAnalyticsData(data.data);
         }
+
+        // Fetch AI Summary
+        const summaryRes = await fetch('http://localhost:8000/api/reports/summary');
+        const summaryData = await summaryRes.json();
+        if (summaryData.success) {
+          setAiSummary(summaryData.summary);
+        } else {
+          setAiSummary("Could not generate summary at this time.");
+        }
+
       } catch (error) {
         console.error("Failed to fetch analytics", error);
+        setAiSummary("System offline or unreachable.");
       } finally {
         setLoading(false);
       }
@@ -148,6 +160,23 @@ const Analytics = () => {
         <motion.div variants={itemVariants}>
           <h1 className="text-2xl font-bold">Advanced Analytics</h1>
           <p className="text-muted-foreground">Deep dive into sentiment patterns and trends</p>
+        </motion.div>
+
+        {/* AI Executive Summary */}
+        <motion.div variants={itemVariants}>
+          <Card className="glass-card border-sentinel-credibility/50 bg-sentinel-credibility/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Zap className="h-5 w-5 text-sentinel-credibility" />
+                AI Executive Summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm leading-relaxed whitespace-pre-line">
+                {aiSummary}
+              </div>
+            </CardContent>
+          </Card>
         </motion.div>
 
         {/* Quick Stats */}

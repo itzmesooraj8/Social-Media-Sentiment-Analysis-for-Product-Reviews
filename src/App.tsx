@@ -11,6 +11,7 @@ import Alerts from "./pages/Alerts";
 import Settings from "./pages/Settings";
 import Products from "./pages/Products";
 import Integrations from "./pages/Integrations";
+import Competitors from "./pages/Competitors";
 import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
@@ -52,6 +53,7 @@ const App = () => {
                 <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
                 <Route path="/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
                 <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
+                <Route path="/competitors" element={<ProtectedRoute><Competitors /></ProtectedRoute>} />
 
                 <Route path="*" element={<NotFound />} />
               </Routes>

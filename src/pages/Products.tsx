@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import {
   Package,
@@ -71,6 +72,42 @@ const Products = () => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isLoading, setIsLoading] = useState(true);
 
+  // Import State
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importingProductId, setImportingProductId] = useState<string | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+
+  const handleImportSubmit = async () => {
+    if (!importFile || !importingProductId) return;
+
+    const formData = new FormData();
+    formData.append('file', importFile);
+    formData.append('product_id', importingProductId);
+    formData.append('platform', 'twitter'); // Default or let user select
+
+    try {
+      const response = await fetch('http://localhost:8000/api/import/csv', {
+        method: 'POST',
+        headers: {
+          // Content-Type header must be undefined so browser sets boundary
+          "Authorization": `Bearer ${localStorage.getItem("token") || ""}`
+        },
+        body: formData
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert(data.data.message);
+        setIsImportDialogOpen(false);
+        setImportFile(null);
+      } else {
+        alert("Import failed: " + (data.message || data.detail));
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Import error");
+    }
+  };
+
   // Fetch data
   const fetchProducts = async () => {
     try {
@@ -111,19 +148,26 @@ const Products = () => {
     product.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+
   const handleScrapeReddit = async (product: Product) => {
     setScrapingProductId(product.id);
-    try {
+    const promise = async () => {
       const { scrapeReddit } = await import('@/lib/api');
       const result = await scrapeReddit(product.id, product.name);
-      if (result.success) {
-        alert(`Successfully scraped ${result.count} reviews for ${product.name}!`);
-      } else {
-        alert(result.message || 'Scraping failed');
-      }
-    } catch (error) {
-      console.error('Scraping error:', error);
-      alert('Failed to scrape reviews. Check backend connection.');
+      if (!result.success) throw new Error(result.message || 'Scraping failed');
+      return result;
+    };
+
+    toast.promise(promise(), {
+      loading: `Scraping Reddit reviews for ${product.name}...`,
+      success: (data) => `Successfully scraped ${data.count} reviews!`,
+      error: (err) => `Scraping failed: ${err.message}`,
+    });
+
+    try {
+      await promise();
+    } catch (e) {
+      // Handled by toast
     } finally {
       setScrapingProductId(null);
     }
@@ -224,6 +268,40 @@ const Products = () => {
               </div>
             </DialogContent>
           </Dialog>
+
+          {/* Import Dialog */}
+          <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+            <DialogContent className="glass-card border-border/50">
+              <DialogHeader>
+                <DialogTitle>Import Dataset (CSV)</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Select CSV File</Label>
+                  <Input
+                    type="file"
+                    accept=".csv,.txt"
+                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                    className="cursor-pointer"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Required columns: 'text' or 'content'. Optional: 'author', 'date'.
+                  </p>
+                </div>
+                <div className="flex gap-2 pt-4">
+                  <Button variant="outline" className="flex-1" onClick={() => setIsImportDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    disabled={!importFile}
+                    onClick={handleImportSubmit}
+                    className="flex-1 bg-sentinel-credibility hover:bg-sentinel-credibility/90">
+                    Upload & Analyze
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Search & Stats */}
@@ -305,29 +383,39 @@ const Products = () => {
                       {scrapingProductId === product.id ? 'Scraping...' : 'Scrape Reddit Reviews'}
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onClick={async () => {
+                      onClick={() => {
                         setScrapingProductId(product.id);
-                        try {
+                        const promise = async () => {
                           const res = await fetch(`http://localhost:8000/api/scrape/youtube?product_id=${product.id}&query=${encodeURIComponent(product.name)}`, {
                             method: "POST",
                             headers: { "Authorization": `Bearer ${localStorage.getItem("token") || ""}` }
                           });
                           const data = await res.json();
-                          if (data.success) {
-                            alert(data.message);
-                          } else {
-                            alert("YouTube Scrape Failed: " + data.message);
-                          }
-                        } catch (e) {
-                          alert("YouTube Scrape Error");
-                        } finally {
-                          setScrapingProductId(null);
-                        }
+                          if (!data.success) throw new Error(data.message);
+                          return data;
+                        };
+
+                        toast.promise(promise(), {
+                          loading: 'Searching YouTube comments...',
+                          success: (data) => data.message,
+                          error: (err) => `YouTube Scrape Error: ${err.message}`
+                        });
+
+                        promise().finally(() => setScrapingProductId(null));
                       }}
                       disabled={scrapingProductId === product.id}
                     >
                       <Download className="h-4 w-4 mr-2" />
                       Scrape YouTube Reviews
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setImportingProductId(product.id);
+                        setIsImportDialogOpen(true);
+                      }}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Import CSV Dataset (Twitter/X)
                     </DropdownMenuItem>
                     <DropdownMenuItem className="text-sentinel-negative">
                       <Trash2 className="h-4 w-4 mr-2" />

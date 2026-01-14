@@ -115,42 +115,65 @@ async def save_sentiment_analysis(analysis_data: dict):
         raise
 
 
-async def get_dashboard_metrics():
-    """Fetch aggregated metrics for the dashboard."""
+async def get_dashboard_stats():
+    """
+    Fetch aggregated dashboard stats using efficient Database RPC.
+    Falls back to Python calculation if RPC is not set up.
+    """
     try:
-        # Get total reviews count
-        reviews_response = supabase.table("reviews").select("id", count="exact").execute()
-        total_reviews = reviews_response.count if reviews_response.count else 0
+        # Try calling the RPC function
+        response = supabase.rpc('get_dashboard_stats', {}).execute()
+        if response.data:
+            return response.data
+            
+        raise Exception("RPC returned no data")
+    except Exception as e:
+        print(f"RPC 'get_dashboard_stats' failed (User might need to run schema.sql): {e}")
+        # Fallback to Python-side aggregation (Optimized)
+        return await _get_dashboard_metrics_fallback()
+
+async def _get_dashboard_metrics_fallback():
+    """Fallback aggregation if SQL function is missing."""
+    try:
+        # Get total reviews count (Lightweight)
+        reviews_resp = supabase.table("reviews").select("id, platform", count="exact").execute()
+        total_reviews = reviews_resp.count if reviews_resp.count else 0
         
-        # Get sentiment analysis results
-        sentiment_response = supabase.table("sentiment_analysis").select("*").limit(1000).execute()
-        sentiment_data = sentiment_response.data
+        # Get sentiment stats (Lightweight columns only)
+        # Fetching all Might be slow for 10k+ rows, but better than nothing for fallback
+        # In prod, the RPC is mandatory.
+        sentiment_resp = supabase.table("sentiment_analysis").select("label, credibility").execute()
+        sentiment_data = sentiment_resp.data
         
-        # Calculate metrics
         if sentiment_data:
-            positive_count = sum(1 for s in sentiment_data if s.get("label") == "POSITIVE")
-            negative_count = sum(1 for s in sentiment_data if s.get("label") == "NEGATIVE")
-            neutral_count = sum(1 for s in sentiment_data if s.get("label") == "NEUTRAL")
+            # Map sentiment to 0-100 score
+            score_map = {"POSITIVE": 100, "NEUTRAL": 50, "NEGATIVE": 0}
+            total_score = sum(score_map.get(s.get("label", "NEUTRAL").upper(), 50) for s in sentiment_data)
+            avg_sentiment = total_score / len(sentiment_data)
             
-            total = len(sentiment_data)
-            positive_pct = (positive_count / total * 100) if total > 0 else 0
-            
-            avg_credibility = sum(s.get("credibility", 0) for s in sentiment_data) / total if total > 0 else 0
+            avg_credibility = sum(s.get("credibility", 0) for s in sentiment_data) / len(sentiment_data)
         else:
-            positive_pct = 0
+            avg_sentiment = 0
             avg_credibility = 0
-        
+            
+        # Platform breakdown
+        platforms = {}
+        if reviews_resp.data:
+            for r in reviews_resp.data:
+                p = r.get("platform", "unknown")
+                platforms[p] = platforms.get(p, 0) + 1
+
         return {
             "totalReviews": total_reviews,
-            "sentimentDelta": positive_pct,
-            "botsDetected": 0,  # Placeholder for now
-            "averageCredibility": avg_credibility
+            "sentimentScore": avg_sentiment,
+            "averageCredibility": avg_credibility,
+            "platformBreakdown": platforms
         }
     except Exception as e:
-        print(f"Error fetching dashboard metrics: {e}")
+        print(f"Fallback metrics failed: {e}")
         return {
             "totalReviews": 0,
-            "sentimentDelta": 0,
-            "botsDetected": 0,
-            "averageCredibility": 0
+            "sentimentScore": 0,
+            "averageCredibility": 0,
+            "platformBreakdown": {}
         }

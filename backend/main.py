@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
+from collections import defaultdict
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -256,13 +257,22 @@ async def create_review(review: ReviewCreate):
 async def get_dashboard():
     """Get dashboard metrics and data"""
     try:
-        metrics = await get_dashboard_metrics()
+        # Use optimized SQL/RPC stats
+        from database import get_dashboard_stats
+        metrics_raw = await get_dashboard_stats()
+        
+        metrics = {
+             "totalReviews": metrics_raw.get("totalReviews", 0),
+             "sentimentDelta": metrics_raw.get("sentimentScore", 0), # Mapping score to delta for frontend compat
+             "botsDetected": 0,
+             "averageCredibility": metrics_raw.get("averageCredibility", 0)
+        }
         
         # Check if we have any data
         if metrics["totalReviews"] == 0:
             return {
                 "success": True,
-                "data": None  # Frontend will show empty state
+                "data": None
             }
         
         # Get recent reviews with sentiment
@@ -307,24 +317,13 @@ async def get_dashboard():
         # 3. Emotions
         emotion_counts = defaultdict(int)
         
-        # 4. Platform Breakdown
-        platform_counts = defaultdict(lambda: {"positive": 0, "neutral": 0, "negative": 0, "total": 0})
-        
         # Iterate over all recent reviews (or fetch more if needed) to build aggregates
-        # ideally fetch a larger set for stats, but we'll use the 50 fetched + maybe a separate query for global stats
-        # For Demo: using the recent 50 reviews to populate charts is often enough to show "live" movement
-        
         for r, fr in zip(raw_reviews, formatted_reviews):
             # Trends
             date_key = r.get("created_at", "")[:10] # YYYY-MM-DD
             sent = fr["sentiment"]
             trend_map[date_key][sent] += 1
             trend_map[date_key]["total"] += 1
-            
-            # Platforms
-            plat = fr["platform"]
-            platform_counts[plat][sent] += 1
-            platform_counts[plat]["total"] += 1
             
             # Aspects
             for asp in fr["aspects"]:
@@ -364,13 +363,22 @@ async def get_dashboard():
                 "reviewCount": len(scores)
             })
             
-        # Format Platforms
+        # Format Platforms (From RPC if available, or calc)
         platform_breakdown = []
-        for plat, counts in platform_counts.items():
-            platform_breakdown.append({
-                "platform": plat,
-                **counts
-            })
+        raw_platform_counts = metrics_raw.get("platformBreakdown", {})
+        if raw_platform_counts:
+             for plat, count in raw_platform_counts.items():
+                  # We don't have sentiment per platform from RPC yet, defaulting to 0 breakdown
+                  # Frontend Analytics chart handles 'total' correctly
+                  platform_breakdown.append({
+                      "platform": plat,
+                      "total": count,
+                      "positive": 0, "neutral": 0, "negative": 0
+                  })
+        else:
+             # Fallback
+             pass
+
             
         # Format Keywords (Simple frequency from text)
         # Real impl needs NLP keyword extraction
@@ -533,6 +541,59 @@ async def scrape_youtube_endpoint(product_id: str, query: str, user: dict = Depe
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"YouTube Scrape Failed: {str(e)}")
 
+# Import Endpoints
+from fastapi import UploadFile, File, Form
+
+@app.get("/api/reports/summary")
+async def get_executive_summary(product_id: Optional[str] = None):
+    """Generate AI Executive Summary from recent negative feedback."""
+    try:
+        # Get recent reviews (we want negative ones mostly for "insights")
+        # For efficiency, we'll fetch 50 recent and filter for negative in python 
+        # (since we don't have a direct join-filter helper yet and SQL is complex via API)
+        # Ideally: supabase.table("sentiment_analysis").select("review_id").eq("label", "NEGATIVE")
+        # then fetch reviews. 
+        # Let's just fetch recent 100 with sentiment and filter.
+        
+        reviews_data = await get_recent_reviews_with_sentiment(limit=100)
+        
+        negative_texts = []
+        product_context = "this product"
+        
+        for r in reviews_data:
+            sent = r.get("sentiment_analysis", {})
+            if isinstance(sent, list) and sent: sent = sent[0]
+            
+            label = sent.get("label", "NEUTRAL")
+            if label == "NEGATIVE":
+                negative_texts.append(r.get("text", ""))
+                
+        if not negative_texts:
+             return {"success": True, "summary": "No critical negative issues detected in recent reviews. Users seem generally satisfied."}
+             
+        summary = await ai_service.generate_executive_summary(negative_texts, product_context)
+        return {"success": True, "summary": summary}
+    except Exception as e:
+        print(f"Summary Error: {e}")
+        return {"success": False, "summary": "Could not generate summary."}
+
+
+@app.post("/api/import/csv")
+async def import_csv(
+    file: UploadFile = File(...),
+    product_id: str = Form(...),
+    platform: str = Form("twitter"),
+    user: dict = Depends(verify_user)
+):
+    """Import reviews from CSV file"""
+    try:
+        from services.csv_import_service import csv_import_service
+        contents = await file.read()
+        result = await csv_import_service.process_csv(contents, product_id, platform)
+        return {"success": True, "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
 
 # Report Endpoints
 class ReportRequest(BaseModel):
@@ -573,6 +634,107 @@ async def download_report(filename: str):
     raise HTTPException(status_code=404, detail="Report not found")
 
 
+@app.get("/api/products/compare")
+async def compare_products(id_a: str, id_b: str):
+    """Compare two products head-to-head"""
+    try:
+        # Helper to get stats
+        async def get_product_stats(pid):
+            # Fetch reviews + sentiment
+            # This is heavy if many reviews, but okay for demo scale
+            # Ideally fetch aggregating SQL
+            reviews = await get_reviews(pid, limit=200) 
+            if not reviews: return {"sentiment": 0, "credibility": 0, "count": 0, "aspects": {}}
+            
+            total_sent = 0
+            total_cred = 0
+            aspect_map = defaultdict(list)
+            
+            # We need sentiment analysis entries. 
+            # get_reviews doesn't return analysis! `get_recent_reviews_with_sentiment` does but not filtered by ID.
+            # We need `get_reviews_with_sentiment(product_id)`.
+            # Let's adjust logic:
+            # Query supabase manually
+            response = supabase.table("reviews")\
+                .select("*, sentiment_analysis(*)")\
+                .eq("product_id", pid)\
+                .limit(200)\
+                .execute()
+            
+            data = response.data
+            if not data: return {"sentiment": 0, "credibility": 0, "count": 0, "aspects": {}}
+            
+            count = len(data)
+            for r in data:
+                sent_entry = {}
+                if r.get("sentiment_analysis") and isinstance(r["sentiment_analysis"], list) and len(r["sentiment_analysis"]) > 0:
+                    sent_entry = r["sentiment_analysis"][0]
+                
+                label = sent_entry.get("label", "NEUTRAL")
+                score = 50
+                if label == "POSITIVE": score = 100
+                elif label == "NEGATIVE": score = 0
+                
+                total_sent += score
+                total_cred += float(sent_entry.get("credibility") or 0)
+                
+                for asp in sent_entry.get("aspects") or []:
+                    ascore = 3
+                    if asp["sentiment"] == "positive": ascore = 5
+                    elif asp["sentiment"] == "negative": ascore = 1
+                    aspect_map[asp["name"]].append(ascore)
+            
+            # Avg Aspect Scores
+            final_aspects = {}
+            for k, v in aspect_map.items():
+                final_aspects[k] = sum(v)/len(v)
+                
+            return {
+                "sentiment": total_sent / count,
+                "credibility": total_cred / count,
+                "count": count,
+                "aspects": final_aspects
+            }
+
+        stats_a = await get_product_stats(id_a)
+        stats_b = await get_product_stats(id_b)
+        
+        # Merge Aspects for Radar
+        all_aspects = set(stats_a["aspects"].keys()) | set(stats_b["aspects"].keys())
+        radar_data = []
+        for aspect in all_aspects:
+            radar_data.append({
+                "subject": aspect,
+                "A": stats_a["aspects"].get(aspect, 3), # Default neutral
+                "B": stats_b["aspects"].get(aspect, 3),
+                "fullMark": 5
+            })
+            
+        # Sort by subject for consistency
+        radar_data.sort(key=lambda x: x["subject"])
+        
+        return {
+            "success": True,
+            "data": {
+                "aspects": radar_data,
+                "metrics": {
+                    "productA": {
+                        "sentiment": stats_a["sentiment"],
+                        "credibility": stats_a["credibility"],
+                        "reviewCount": stats_a["count"]
+                    },
+                    "productB": {
+                        "sentiment": stats_b["sentiment"],
+                        "credibility": stats_b["credibility"],
+                        "reviewCount": stats_b["count"]
+                    }
+                }
+            }
+        }
+    except Exception as e:
+        print(f"Comparison Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

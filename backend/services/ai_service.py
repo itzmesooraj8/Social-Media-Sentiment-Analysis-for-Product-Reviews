@@ -28,6 +28,41 @@ class AIService:
     def __init__(self):
         self.api_url = HF_API_URL
 
+    async def generate_executive_summary(self, reviews: List[str], product_name: str) -> str:
+        """
+        Generate a business executive summary using LLM.
+        """
+        if not reviews:
+            return "Insufficient data to generate summary."
+            
+        # Prepare context (Text Blob)
+        # Limit to 10-15 short reviews to fit in context
+        joined_reviews = "\n- ".join([r[:200] for r in reviews[:15]])
+        prompt = f"Summarize these reviews for {product_name} into 3 short, actionable takeaways for the product manager:\n\n{joined_reviews}\n\nSummary:"
+        
+        API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-large"
+        
+        token = await self._get_api_key()
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await self._query_hf(client, API_URL, {
+                    "inputs": prompt, 
+                    "parameters": {"max_length": 150, "temperature": 0.7}
+                }, headers)
+                
+                if isinstance(response, dict) and "error" in response:
+                    return "AI Summary unavailable (Model loading or API limit)."
+                    
+                if isinstance(response, list) and len(response) > 0:
+                    return response[0].get("generated_text", "No summary generated.")
+                    
+                return "Analysis complete, but summary generation failed."
+            except Exception as e:
+                print(f"Summary Gen Error: {e}")
+                return "AI Summary service currently unavailable."
+
     async def _get_api_key(self) -> str:
         try:
             from database import supabase
@@ -196,29 +231,52 @@ class AIService:
     def _calculate_credibility(self, text: str) -> Dict[str, Any]:
         """
         Heuristic credibility score (0-100) with reasons.
+        Includes checks for spam, bots, and quality.
         """
-        score = 80 # Start high
+        score = 100 # Start perfect
         reasons = []
+        text_lower = text.lower()
         
         # 1. Content Length
-        if len(text) < 20: 
-            score -= 20
+        if len(text) < 15: 
+            score -= 30
             reasons.append("Very short content")
-        elif len(text) > 100: 
-            score += 10
-            reasons.append("Detailed review")
+        elif len(text) > 500: 
+            # Very long reviews are usually credible, but check for copy-paste loops
+            pass
         
         # 2. Capitalization Shouting
         caps_ratio = sum(1 for c in text if c.isupper()) / len(text) if text else 0
-        if caps_ratio > 0.5: 
-            score -= 30
+        if caps_ratio > 0.6: 
+            score -= 40
             reasons.append("Excessive capitalization")
         
         # 3. Spam keywords
-        spam_words = ["buy now", "click here", "subscribe", "winner", "crypto"]
-        if any(w in text.lower() for w in spam_words): 
-            score -= 40
+        spam_words = ["buy now", "click here", "subscribe", "winner", "crypto", "nft", "100% free", "call now"]
+        if any(w in text_lower for w in spam_words): 
+            score -= 50
             reasons.append("Spam keywords detected")
+            
+        # 4. AI Patterns
+        ai_words = ["as an ai", "start with", "generate a review", "prompts"]
+        if any(w in text_lower for w in ai_words):
+             score -= 80
+             reasons.append("AI generation artifacts")
+
+        # 5. Repeated Content (e.g. "Good Good Good")
+        words = text_lower.split()
+        if len(words) > 5:
+            unique_ratio = len(set(words)) / len(words)
+            if unique_ratio < 0.4:
+                score -= 30
+                reasons.append("Repetitive wording")
+
+        # 6. URL density
+        if "http" in text_lower:
+            url_count = text_lower.count("http")
+            if url_count > 1 and len(words) < 30:
+                score -= 40
+                reasons.append("Link farm")
             
         return {"score": max(min(score, 100), 0), "reasons": reasons}
 

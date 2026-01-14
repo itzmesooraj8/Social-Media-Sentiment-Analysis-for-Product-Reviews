@@ -54,10 +54,29 @@ const itemVariants = {
 const Settings = () => {
   const { theme, setTheme } = useTheme();
   const [showApiKey, setShowApiKey] = useState(false);
-  const [credibilityThreshold, setCredibilityThreshold] = useState([75]);
   const [saved, setSaved] = useState(false);
 
-  // Profile State with LocalStorage Persistence
+  // Settings State with Persistence
+  const [credibilityThreshold, setCredibilityThreshold] = useState([
+    parseInt(localStorage.getItem('setting_credibilityThreshold') || '75')
+  ]);
+  const [realTimeAnalysis, setRealTimeAnalysis] = useState(
+    localStorage.getItem('setting_realTimeAnalysis') !== 'false'
+  );
+  const [botDetection, setBotDetection] = useState(
+    localStorage.getItem('setting_botDetection') !== 'false'
+  );
+  const [sentimentAlerts, setSentimentAlerts] = useState(
+    localStorage.getItem('setting_sentimentAlerts') === 'true'
+  );
+
+  const saveSetting = (key: string, value: any) => {
+    localStorage.setItem(key, String(value));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  // Profile State ...
   const [profile, setProfile] = useState({
     firstName: localStorage.getItem('profile_firstName') || "Sentinel",
     lastName: localStorage.getItem('profile_lastName') || "Admin",
@@ -75,6 +94,12 @@ const Settings = () => {
     localStorage.setItem('profile_lastName', profile.lastName);
     localStorage.setItem('profile_email', profile.email);
     localStorage.setItem('profile_org', profile.org);
+
+    // Save Settings
+    localStorage.setItem('setting_credibilityThreshold', String(credibilityThreshold[0]));
+    localStorage.setItem('setting_realTimeAnalysis', String(realTimeAnalysis));
+    localStorage.setItem('setting_botDetection', String(botDetection));
+    localStorage.setItem('setting_sentimentAlerts', String(sentimentAlerts));
 
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -191,21 +216,30 @@ const Settings = () => {
                           <Label>Real-time Analysis</Label>
                           <p className="text-xs text-muted-foreground">Analyze reviews as they come in</p>
                         </div>
-                        <Switch defaultChecked />
+                        <Switch
+                          checked={realTimeAnalysis}
+                          onCheckedChange={setRealTimeAnalysis}
+                        />
                       </div>
                       <div className="flex items-center justify-between">
                         <div>
                           <Label>Bot Detection</Label>
                           <p className="text-xs text-muted-foreground">Automatically flag suspicious reviews</p>
                         </div>
-                        <Switch defaultChecked />
+                        <Switch
+                          checked={botDetection}
+                          onCheckedChange={setBotDetection}
+                        />
                       </div>
                       <div className="flex items-center justify-between">
                         <div>
                           <Label>Sentiment Alerts</Label>
                           <p className="text-xs text-muted-foreground">Alert on significant sentiment changes</p>
                         </div>
-                        <Switch defaultChecked />
+                        <Switch
+                          checked={sentimentAlerts}
+                          onCheckedChange={setSentimentAlerts}
+                        />
                       </div>
                     </div>
                   </CardContent>

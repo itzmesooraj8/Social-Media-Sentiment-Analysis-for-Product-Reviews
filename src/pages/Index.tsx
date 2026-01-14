@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { toast } from "sonner";
 import { FileText, BarChart3, MessageSquare, Shield } from 'lucide-react';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -23,6 +25,15 @@ const Index = () => {
   // Pulse Logic: If last 5 reviews are ALL negative, trigger crisis mode
   const recentReviews = data?.recentReviews || [];
   const isCrisis = recentReviews.length >= 5 && recentReviews.slice(0, 5).every(r => r.sentiment === 'negative');
+
+  useEffect(() => {
+    if (isCrisis) {
+      toast.error("CRISIS ALERT: Negative Sentiment Spike Detected!", {
+        description: "The last 5 reviews were negative. Use the War Room to investigate.",
+        duration: 8000,
+      });
+    }
+  }, [isCrisis]);
 
   return (
     <DashboardLayout lastUpdated={data?.lastUpdated} isCrisis={isCrisis}>
