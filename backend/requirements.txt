@@ -9,3 +9,4 @@ APScheduler==3.10.4
 spacy>=3.7.2
 openpyxl
 pandas
+praw

@@ -132,14 +132,18 @@ export function ReviewFeed({ reviews = [] }: ReviewFeedProps) {
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-medium text-sm">{review.username}</span>
                         <span className="text-xs text-muted-foreground">{formatTime(review.timestamp)}</span>
-                        {review.isBot && (
-                          <Badge variant="outline" className="text-sentinel-warning border-sentinel-warning/30 text-xs">
-                            Bot Suspected
+                        {(review.isBot || review.credibility < 40) && (
+                          <Badge variant="outline" className="text-sentinel-warning border-sentinel-warning/30 text-xs gap-1">
+                            <Flag className="h-3 w-3" />
+                            BOT / SPAM
                           </Badge>
                         )}
                       </div>
 
-                      <p className="text-sm text-foreground/80 line-clamp-2 mb-2">
+                      <p className={cn(
+                        "text-sm text-foreground/80 line-clamp-2 mb-2",
+                        (review.isBot || review.credibility < 40) && "opacity-50"
+                      )}>
                         {review.text}
                       </p>
 

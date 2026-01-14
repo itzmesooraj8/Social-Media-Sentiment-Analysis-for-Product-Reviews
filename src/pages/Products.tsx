@@ -35,6 +35,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -78,33 +85,43 @@ const Products = () => {
   const [importFile, setImportFile] = useState<File | null>(null);
 
   const handleImportSubmit = async () => {
-    if (!importFile || !importingProductId) return;
+    if (!importFile || !importingProductId) {
+      toast.error("Please select a file and a product.");
+      return;
+    }
 
     const formData = new FormData();
     formData.append('file', importFile);
     formData.append('product_id', importingProductId);
     formData.append('platform', 'twitter'); // Default or let user select
 
-    try {
+    const promise = async () => {
       const response = await fetch('http://localhost:8000/api/import/csv', {
         method: 'POST',
         headers: {
-          // Content-Type header must be undefined so browser sets boundary
           "Authorization": `Bearer ${localStorage.getItem("token") || ""}`
         },
         body: formData
       });
       const data = await response.json();
-      if (data.success) {
-        alert(data.data.message);
-        setIsImportDialogOpen(false);
-        setImportFile(null);
-      } else {
-        alert("Import failed: " + (data.message || data.detail));
-      }
+      if (!data.success) throw new Error(data.message || data.detail);
+      return data;
+    };
+
+    toast.promise(promise(), {
+      loading: 'Uploading and analyzing dataset...',
+      success: 'Dataset imported successfully!',
+      error: (err) => `Import failed: ${err.message}`
+    });
+
+    try {
+      await promise();
+      setIsImportDialogOpen(false);
+      setImportFile(null);
+      // setImportingProductId(null); // Keep or clear? Better clear.
+      setImportingProductId(null);
     } catch (e) {
-      console.error(e);
-      alert("Import error");
+      // Handled by toast
     }
   };
 
@@ -223,51 +240,64 @@ const Products = () => {
             <p className="text-muted-foreground">Manage and monitor your product sentiment analysis</p>
           </div>
 
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-sentinel-credibility hover:bg-sentinel-credibility/90">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Product
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="glass-card border-border/50">
-              <DialogHeader>
-                <DialogTitle>Add New Product</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label>Product Name</Label>
-                  <Input placeholder="Enter product name" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setImportingProductId(null); // Reset for manual selection
+                setIsImportDialogOpen(true);
+              }}
+            >
+              <Download className="h-4 w-4 mr-2 rotate-180" />
+              Import Dataset
+            </Button>
+
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-sentinel-credibility hover:bg-sentinel-credibility/90">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Product
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="glass-card border-border/50">
+                <DialogHeader>
+                  <DialogTitle>Add New Product</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
                   <div className="space-y-2">
-                    <Label>SKU</Label>
-                    <Input placeholder="SKU-12345" />
+                    <Label>Product Name</Label>
+                    <Input placeholder="Enter product name" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>SKU</Label>
+                      <Input placeholder="SKU-12345" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Category</Label>
+                      <Input placeholder="Electronics" />
+                    </div>
                   </div>
                   <div className="space-y-2">
-                    <Label>Category</Label>
-                    <Input placeholder="Electronics" />
+                    <Label>Description</Label>
+                    <Textarea placeholder="Brief product description..." />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Keywords to Track</Label>
+                    <Input placeholder="keyword1, keyword2, keyword3" />
+                  </div>
+                  <div className="flex gap-2 pt-4">
+                    <Button variant="outline" className="flex-1" onClick={() => setIsAddDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button className="flex-1 bg-sentinel-credibility hover:bg-sentinel-credibility/90">
+                      Add Product
+                    </Button>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Textarea placeholder="Brief product description..." />
-                </div>
-                <div className="space-y-2">
-                  <Label>Keywords to Track</Label>
-                  <Input placeholder="keyword1, keyword2, keyword3" />
-                </div>
-                <div className="flex gap-2 pt-4">
-                  <Button variant="outline" className="flex-1" onClick={() => setIsAddDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button className="flex-1 bg-sentinel-credibility hover:bg-sentinel-credibility/90">
-                    Add Product
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
+          </div>
 
           {/* Import Dialog */}
           <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
@@ -276,6 +306,23 @@ const Products = () => {
                 <DialogTitle>Import Dataset (CSV)</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Select Product</Label>
+                  <Select
+                    value={importingProductId || ""}
+                    onValueChange={setImportingProductId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a product..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Select CSV File</Label>
                   <Input
@@ -293,7 +340,7 @@ const Products = () => {
                     Cancel
                   </Button>
                   <Button
-                    disabled={!importFile}
+                    disabled={!importFile || !importingProductId}
                     onClick={handleImportSubmit}
                     className="flex-1 bg-sentinel-credibility hover:bg-sentinel-credibility/90">
                     Upload & Analyze

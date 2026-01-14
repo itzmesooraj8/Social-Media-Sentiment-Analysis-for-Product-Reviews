@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  LayoutDashboard, 
-  BarChart3, 
-  FileText, 
-  Bell, 
+import {
+  LayoutDashboard,
+  BarChart3,
+  FileText,
+  Bell,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -16,7 +16,8 @@ import {
   Users,
   Package,
   Link2,
-  HelpCircle
+  HelpCircle,
+  Swords
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,7 @@ const navItems = [
   { icon: FileText, label: 'Reports', path: '/reports' },
   { icon: Bell, label: 'Alerts', path: '/alerts' },
   { icon: Package, label: 'Products', path: '/products' },
+  { icon: Swords, label: 'Competitors', path: '/competitors' },
   { icon: Link2, label: 'Integrations', path: '/integrations' },
   { icon: Settings, label: 'Settings', path: '/settings' },
   { icon: HelpCircle, label: 'Help', path: '/help' },
@@ -89,7 +91,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
             </motion.div>
           )}
         </AnimatePresence>
-        
+
         {collapsed && (
           <div className="relative mx-auto">
             <Zap className="h-7 w-7 text-sentinel-positive" />
@@ -116,11 +118,11 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                     collapsed && 'justify-center px-2'
                   )}
                 >
-                  <item.icon 
+                  <item.icon
                     className={cn(
                       'h-5 w-5 flex-shrink-0 transition-colors',
                       isActive ? 'text-sentinel-positive' : 'text-muted-foreground'
-                    )} 
+                    )}
                   />
                   <AnimatePresence mode="wait">
                     {!collapsed && (
@@ -158,7 +160,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                   Data Filters
                 </h3>
-                
+
                 {/* Platform Select */}
                 <div className="space-y-2 mb-4">
                   <Label className="text-xs text-muted-foreground">Platform</Label>
