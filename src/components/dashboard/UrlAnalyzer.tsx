@@ -1,4 +1,50 @@
 import React, { useState } from 'react';
+import apiClient from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from 'sonner';
+
+interface Props {
+  products: { id: string; name: string }[];
+}
+
+export default function UrlAnalyzer({ products }: Props) {
+  const [url, setUrl] = useState('');
+  const [pid, setPid] = useState<string | null>(null);
+
+  const handleScan = async () => {
+    if (!url) { toast.error('Paste a YouTube or Reddit link first'); return; }
+    try {
+      toast.promise(apiClient.post('/api/analyze/url', { url, product_name: products.find(p => p.id === pid)?.name }), {
+        loading: 'Starting scan...',
+        success: 'Scan started',
+        error: 'Failed to start scan'
+      });
+    } catch (e: any) {
+      toast.error(e.message || 'Scan failed');
+    }
+  };
+
+  return (
+    <div className="flex gap-3 items-center">
+      <Input placeholder="Paste YouTube or Reddit Link" value={url} onChange={(e) => setUrl(e.target.value)} className="flex-1" />
+
+      <Select value={pid || ''} onValueChange={(v) => setPid(v || null)}>
+        <SelectTrigger className="w-56">
+          <SelectValue placeholder="Optional product" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="">None</SelectItem>
+          {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+        </SelectContent>
+      </Select>
+
+      <Button className="bg-sentinel-credibility hover:bg-sentinel-credibility/90" onClick={handleScan}>Scan Now</Button>
+    </div>
+  );
+}
+import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useQueryClient } from '@tanstack/react-query';

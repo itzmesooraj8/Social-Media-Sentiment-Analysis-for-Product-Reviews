@@ -22,11 +22,17 @@ def run_checks():
     app.dependency_overrides[get_current_user] = fake_user_dependency
     client = TestClient(app)
 
+    # Create two test products and use their IDs for compare to avoid UUID issues
+    prod_a = client.post('/api/products', json={"name":"Smoke A","sku":"SMOKE-A","category":"test"}).json()
+    prod_b = client.post('/api/products', json={"name":"Smoke B","sku":"SMOKE-B","category":"test"}).json()
+    id_a = prod_a.get('data', {}).get('id')
+    id_b = prod_b.get('data', {}).get('id')
+
     endpoints = [
         ("GET", "/api/analytics"),
         ("GET", "/api/alerts"),
         ("GET", "/api/analytics/topics"),
-        ("GET", "/api/products/compare?id_a=1&id_b=2"),
+        ("GET", f"/api/products/compare?id_a={id_a}&id_b={id_b}"),
         ("GET", "/api/dashboard"),
     ]
 

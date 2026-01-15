@@ -1,3 +1,109 @@
+import asyncio
+from typing import Optional, Dict, Any, List
+from urllib.parse import urlparse
+
+from services.youtube_scraper import youtube_scraper
+from services.reddit_scraper import reddit_scraper
+from services.ai_service import ai_service
+
+
+async def _analyze_reviews_async(reviews: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Run `ai_service.analyze_sentiment` on reviews concurrently where possible."""
+    results = []
+    tasks = []
+    for r in reviews:
+        text = r.get("text", "")
+        tasks.append(ai_service.analyze_sentiment(text))
+
+    try:
+        analyses = await asyncio.gather(*tasks, return_exceptions=True)
+    except Exception:
+        analyses = []
+
+    for r, a in zip(reviews, analyses):
+        if isinstance(a, Exception):
+            # If analysis failed, attach minimal placeholder
+            r["analysis"] = {"label": "NEUTRAL", "score": 0.5}
+        else:
+            r["analysis"] = a
+        results.append(r)
+
+    return results
+
+
+def process_url(url: str, product_name: Optional[str] = None) -> Dict[str, Any]:
+    """Detect platform from URL and run scraping + lightweight analysis.
+
+    This function returns a summary and does NOT persist to DB unless the caller
+    chooses to forward the reviews to the pipeline explicitly.
+    """
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+
+    platform = None
+    reviews: List[Dict[str, Any]] = []
+
+    # Detect platform
+    if "youtube" in hostname or "youtu.be" in hostname:
+        platform = "youtube"
+        try:
+            # youtube_scraper.search_video_comments may raise if API key missing
+            reviews = youtube_scraper.search_video_comments(url, max_results=50)
+        except Exception as e:
+            return {"status": "error", "message": f"YouTube scrape failed: {e}"}
+
+    elif "reddit" in hostname or "redd.it" in hostname:
+        platform = "reddit"
+        # reddit scraper is async for search; we call sync search if available
+        try:
+            # If reddit_scraper exposes async search_product_mentions, use it
+            import asyncio as _asyncio
+            if hasattr(reddit_scraper, "search_product_mentions"):
+                # search_product_mentions expects product name; try to extract id from path or use product_name
+                pname = product_name or parsed.path.strip('/') or "all"
+                reviews = _asyncio.get_event_loop().run_until_complete(reddit_scraper.search_product_mentions(pname, limit=50))
+        except Exception as e:
+            return {"status": "error", "message": f"Reddit scrape failed: {e}"}
+    else:
+        return {"status": "error", "message": "Unsupported URL platform. Only YouTube and Reddit URLs are supported."}
+
+    # If no reviews found
+    if not reviews:
+        return {"status": "ok", "platform": platform, "count": 0, "reviews": []}
+
+    # Attempt to run analysis asynchronously (may fail if AI service not configured)
+    try:
+        analyzed = asyncio.get_event_loop().run_until_complete(_analyze_reviews_async(reviews))
+    except Exception:
+        # Fallback: attach no analysis
+        analyzed = reviews
+
+    # Build a lightweight summary
+    pos = 0
+    neg = 0
+    neut = 0
+    for r in analyzed:
+        lab = None
+        if isinstance(r.get("analysis"), dict):
+            lab = r["analysis"].get("label")
+        if lab:
+            if lab.upper() == "POSITIVE": pos += 1
+            elif lab.upper() == "NEGATIVE": neg += 1
+            else: neut += 1
+        else:
+            neut += 1
+
+    summary = {
+        "status": "ok",
+        "platform": platform,
+        "count": len(analyzed),
+        "positive": pos,
+        "neutral": neut,
+        "negative": neg,
+        "sample": analyzed[:5]
+    }
+
+    return summary
 import re
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse, parse_qs
