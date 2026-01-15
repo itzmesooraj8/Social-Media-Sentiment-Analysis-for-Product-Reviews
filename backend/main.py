@@ -157,7 +157,7 @@ async def list_products(user: dict = Depends(get_current_user)):
 
 
 @app.post("/api/products")
-async def create_product(product: ProductCreate, user: dict = Depends(verify_user)):
+async def create_product(product: ProductCreate, user: dict = Depends(get_current_user)):
     """Create a new product"""
     try:
         product_data = {
@@ -185,7 +185,7 @@ async def create_product(product: ProductCreate, user: dict = Depends(verify_use
 
 
 @app.delete("/api/products/{product_id}")
-async def delete_product(product_id: str, user: dict = Depends(verify_user)):
+async def delete_product(product_id: str, user: dict = Depends(get_current_user)):
     """Delete a product"""
     try:
         supabase.table("products").delete().eq("id", product_id).execute()
@@ -288,7 +288,7 @@ async def analyze_url(request: UrlAnalyzeRequest, user: dict = Depends(get_curre
 
 # Dashboard Endpoints
 @app.get("/api/dashboard")
-async def get_dashboard(user: dict = Depends(verify_user)):
+async def get_dashboard(user: dict = Depends(get_current_user)):
     """Get dashboard metrics and data"""
     try:
         # Use optimized SQL/RPC stats

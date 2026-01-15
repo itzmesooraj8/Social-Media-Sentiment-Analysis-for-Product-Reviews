@@ -186,7 +186,8 @@ async def get_advanced_analytics():
     """
     try:
         # 1. Total Reviews
-        count_res = supabase.table("reviews").select("id, created_at, author", count="exact").execute()
+        # select username (existing column) instead of non-existent 'author'
+        count_res = supabase.table("reviews").select("id, created_at, username", count="exact").execute()
         total = count_res.count or 0
 
         # Compute first review time
@@ -209,8 +210,8 @@ async def get_advanced_analytics():
                     if t:
                         if first_time is None or t < first_time:
                             first_time = t
-                if r.get('author'):
-                    authors.add(r.get('author'))
+                if r.get('username'):
+                    authors.add(r.get('username'))
         except Exception:
             first_time = None
 

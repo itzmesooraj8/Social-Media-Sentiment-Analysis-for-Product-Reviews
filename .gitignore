@@ -41,3 +41,8 @@ venv/
 # Generated Reports
 backend/generated_reports/
 generated_reports/
+
+# Project cleanup
+bun.lockb
+package-lock.json
+lint_log.txt
