@@ -84,11 +84,12 @@ class CSVImportService:
         text_hash = hashlib.md5(text.encode('utf-8')).hexdigest()
         
         # 3. Save Review
+        # persist as `username` column to match DB schema (accept either `username` or `author` upstream)
         review_data = {
             "product_id": product_id,
             "text": text,
             "platform": platform,
-            "author": author,
+            "username": author,
             "text_hash": text_hash,
             "source_url": "csv_import"
         }

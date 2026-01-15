@@ -133,7 +133,7 @@ const Alerts = () => {
     const unreadCount = alerts.filter(a => !a.isRead && !a.isResolved).length;
 
     const markReadMutation = useMutation(async (id: string) => {
-        await fetch(`/api/alerts/mark-read/${id}`, { method: 'POST' });
+        await fetch(`/api/alerts/${id}/read`, { method: 'POST' });
     }, {
         onSuccess: () => queryClient.invalidateQueries(['alerts'])
     });
@@ -281,7 +281,7 @@ const Alerts = () => {
                                         {activeAlerts.length === 0 ? (
                                             <div className="p-8 text-center">
                                                 <CheckCircle2 className="h-12 w-12 mx-auto text-sentinel-positive mb-4" />
-                                                <p className="text-lg font-medium">All clear!</p>
+                                                <p className="text-lg font-medium">No Alerts</p>
                                                 <p className="text-muted-foreground">No active alerts at this time</p>
                                             </div>
                                         ) : (

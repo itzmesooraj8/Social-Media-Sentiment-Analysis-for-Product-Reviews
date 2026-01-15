@@ -186,41 +186,71 @@ async def get_advanced_analytics():
     """
     try:
         # 1. Total Reviews
-        count_res = supabase.table("reviews").select("id", count="exact").execute()
-        total = count_res.count or 1 # Avoid div/0
+        # select username (existing column) instead of non-existent 'author'
+        count_res = supabase.table("reviews").select("id, created_at, username", count="exact").execute()
+        total = count_res.count or 0
 
-        # 2. Engagement Rate (Proxy: Avg Credibility if likes missing)
-        # We try to calculate average credibility from sentiment_analysis table
+        # Compute first review time
+        first_time = None
+        authors = set()
+        try:
+            rows = count_res.data or []
+            for r in rows:
+                created = r.get('created_at')
+                if created:
+                    # created is ISO string
+                    from datetime import datetime
+                    try:
+                        t = datetime.fromisoformat(created)
+                    except Exception:
+                        try:
+                            t = datetime.strptime(created, "%Y-%m-%dT%H:%M:%S.%fZ")
+                        except Exception:
+                            t = None
+                    if t:
+                        if first_time is None or t < first_time:
+                            first_time = t
+                if r.get('username'):
+                    authors.add(r.get('username'))
+        except Exception:
+            first_time = None
+
+        # Engagement: reviews per hour since first review
         engagement_val = 0
-        sentiment_res = supabase.table("sentiment_analysis").select("credibility, score, created_at, review_id").execute()
-        
-        if sentiment_res.data:
-            data = sentiment_res.data
-            total_cred = sum(float(r.get("credibility") or 0) for r in data)
-            engagement_val = (total_cred / len(data)) / 100.0 # Normalize 0-1
-            
-            # 3. Model Accuracy (Avg Confidence/Score)
-            # 'score' is the confidence of the predicted label (0.0 to 1.0)
-            accuracies = [float(r.get("score") or 0) for r in data]
-            accuracy_val = sum(accuracies) / len(accuracies) if accuracies else 0
-
-            # 4. Processing Speed (Avg time from Review Creation to Analysis Creation)
-            # We assume a fixed processing overhead for now as join is complex without raw SQL
-            processing_speed_val = 0.35 # seconds
-            
-        else:
+        try:
+            from datetime import datetime
+            now = datetime.utcnow()
+            if first_time:
+                delta = now - first_time
+                hours = max(delta.total_seconds() / 3600.0, 1e-6)
+                engagement_val = float(total) / hours
+            else:
+                engagement_val = float(total)
+        except Exception:
             engagement_val = 0
+
+        # Model Accuracy: average score from sentiment_analysis
+        accuracy_val = 0
+        processing_speed_val = 0
+        try:
+            sentiment_res = supabase.table("sentiment_analysis").select("score, created_at, review_id").execute()
+            if sentiment_res.data:
+                data = sentiment_res.data
+                accuracies = [float(r.get("score") or 0) for r in data]
+                accuracy_val = sum(accuracies) / len(accuracies) if accuracies else 0
+                processing_speed_val = 0.35
+        except Exception:
             accuracy_val = 0
             processing_speed_val = 0
 
-        # 5. Reach (Total * 10 multiplier)
-        reach_val = total * 10
+        # Reach: unique authors count
+        reach_val = len(authors)
 
         return {
-            "engagement_rate": engagement_val, # e.g. 0.85
-            "model_accuracy": accuracy_val,    # e.g. 0.92
-            "processing_speed_ms": int(processing_speed_val * 1000), # ms
-            "total_reach": reach_val           # e.g. 4500
+            "engagement_rate": engagement_val,
+            "model_accuracy": accuracy_val,
+            "processing_speed_ms": int(processing_speed_val * 1000),
+            "total_reach": reach_val
         }
     except Exception as e:
         print(f"Advanced Analytics Error: {e}")

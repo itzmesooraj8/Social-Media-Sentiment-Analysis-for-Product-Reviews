@@ -127,4 +127,9 @@ export const getExecutiveSummary = async () => {
     return response.data;
 };
 
+export const getCompare = async (p1: string, p2: string) => {
+    const response = await apiClient.get(`/api/compare?p1=${encodeURIComponent(p1)}&p2=${encodeURIComponent(p2)}`);
+    return response.data;
+};
+
 export default apiClient;
