@@ -65,7 +65,8 @@ app.add_middleware(
 )
 
 @app.get("/health")
-async def health_check(user: dict = Depends(get_current_user)):
+async def health_check():
+    """Public health check endpoint (no auth) for local/dev usage."""
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 
@@ -104,9 +105,9 @@ async def root(user: dict = Depends(get_current_user)):
     }
 
 
-@app.get("/health")
-async def health_check(user: dict = Depends(get_current_user)):
-    """Health check endpoint"""
+@app.get("/healthz")
+async def healthz():
+    """Detailed health check endpoint (keeps auth off for demo)."""
     db_status = "connected" if supabase else "disconnected"
     return {
         "status": "healthy",
