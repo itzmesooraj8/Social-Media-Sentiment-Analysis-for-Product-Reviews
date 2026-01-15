@@ -21,16 +21,58 @@ if (!supabaseUrl || !supabaseKey) {
         subscribe: () => ({ unsubscribe: () => {} })
     });
 
+    // Simple in-memory/localStorage mock auth for dev when env is missing
+    let authCallback: ((event: string, session: any) => void) | null = null;
+
+    const notify = (event: string, session: any) => {
+        try {
+            if (authCallback) authCallback(event, session);
+        } catch (e) {
+            // swallow
+        }
+    };
+
     supabase = {
         auth: {
-            async signUp() { return { data: null, error: null }; },
-            async signInWithPassword() { return { data: null, error: null }; },
-            async signOut() { return { error: null }; },
-            async getUser() { return { data: { user: null } }; },
-            async getSession() { return { data: { session: null } }; },
-            onAuthStateChange() {
-                // Return an object shaped like the real client: { data: { subscription } }
-                const subscription = { unsubscribe: () => { /* noop */ } };
+            async signUp(email?: string, password?: string) {
+                // mimic account creation by delegating to signIn
+                const session = { access_token: 'dev-token', user: { id: 'dev-user', email } };
+                try { localStorage.setItem('mock_session', JSON.stringify(session)); } catch (e) {}
+                notify('SIGNED_IN', session);
+                return { data: session, error: null };
+            },
+            async signInWithPassword({ email, password }: { email?: string, password?: string } = {}) {
+                const session = { access_token: 'dev-token', user: { id: 'dev-user', email } };
+                try { localStorage.setItem('mock_session', JSON.stringify(session)); } catch (e) {}
+                notify('SIGNED_IN', session);
+                return { data: session, error: null };
+            },
+            async signOut() {
+                try { localStorage.removeItem('mock_session'); } catch (e) {}
+                notify('SIGNED_OUT', null);
+                return { error: null };
+            },
+            async getUser() {
+                try {
+                    const s = localStorage.getItem('mock_session');
+                    const session = s ? JSON.parse(s) : null;
+                    return { data: { user: session?.user ?? null } };
+                } catch (e) {
+                    return { data: { user: null } };
+                }
+            },
+            async getSession() {
+                try {
+                    const s = localStorage.getItem('mock_session');
+                    const session = s ? JSON.parse(s) : null;
+                    return { data: { session } };
+                } catch (e) {
+                    return { data: { session: null } };
+                }
+            },
+            onAuthStateChange(cb?: (event: string, session: any) => void) {
+                if (cb) authCallback = cb;
+                const subscription = { unsubscribe: () => { authCallback = null; } };
                 return { data: { subscription } };
             }
         },
