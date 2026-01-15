@@ -88,6 +88,11 @@ const Products = () => {
   const [isYouTubeDialogOpen, setIsYouTubeDialogOpen] = useState(false);
   const [youtubeQuery, setYoutubeQuery] = useState('');
   const [youtubeScrapePid, setYoutubeScrapePid] = useState<string | null>(null);
+  
+  // URL Analyzer state (for Direct URL Analysis feature)
+  const [analyzerUrl, setAnalyzerUrl] = useState('');
+  const [analyzerProductId, setAnalyzerProductId] = useState<string | null>(null);
+  const [analyzerProductName, setAnalyzerProductName] = useState('');
 
   // --- Queries ---
 
@@ -165,6 +170,23 @@ const Products = () => {
     },
     onError: (err: any) => {
       toast.error(`YouTube scrape failed: ${err.message}`);
+    }
+  });
+
+  const analyzeUrlMutation = useMutation({
+    mutationFn: async ({ url, product_name }: { url: string, product_name?: string }) => {
+      const payload = { url, product_name };
+      const res = await apiClient.post('/api/analyze/url', payload);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data?.message || 'URL analysis started');
+      // refresh dashboard and products
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (err: any) => {
+      toast.error(`URL analysis failed: ${err.message || err}`);
     }
   });
 
@@ -433,6 +455,47 @@ const Products = () => {
               <span className="text-sm font-medium">32.4K Reviews</span>
             </div>
           </div>
+        </div>
+
+        {/* URL Analyzer (Direct URL Analysis) */}
+        <div className="glass-card p-4 flex items-center gap-3">
+          <Input
+            placeholder="Paste YouTube or Reddit Link"
+            value={analyzerUrl}
+            onChange={(e) => setAnalyzerUrl(e.target.value)}
+            className="flex-1"
+          />
+
+          <Select value={analyzerProductId || ''} onValueChange={(v) => {
+            setAnalyzerProductId(v || null);
+            const p = products.find(x => x.id === v);
+            setAnalyzerProductName(p ? p.name : '');
+          }}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Optional product" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">None</SelectItem>
+              {products.map(p => (
+                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button
+            onClick={() => {
+              if (!analyzerUrl) { toast.error('Please paste a YouTube or Reddit link first'); return; }
+              const product_name = analyzerProductName || undefined;
+              toast.promise(analyzeUrlMutation.mutateAsync({ url: analyzerUrl, product_name }), {
+                loading: 'Starting analysis...',
+                success: 'Analysis started',
+                error: 'Failed to start analysis'
+              });
+            }}
+            className="bg-sentinel-credibility hover:bg-sentinel-credibility/90"
+          >
+            Scan Now
+          </Button>
         </div>
 
         {/* Products Grid */}
