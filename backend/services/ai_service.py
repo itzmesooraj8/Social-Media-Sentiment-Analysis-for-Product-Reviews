@@ -387,4 +387,151 @@ class AIService:
         # Format for Word Cloud (text, value)
         return [{"text": word, "value": count} for word, count in most_common]
 
+    async def generate_topic_clusters(self, reviews: List[str], top_n: int = 10) -> List[Dict[str, Any]]:
+        """
+        Generate topic clusters from a list of reviews.
+        - Extract most common nouns (using Spacy if available, else fallback to word frequency)
+        - For each topic, compute average sentiment score from reviews that mention the topic
+        - Persist a row to `topic_analysis` for each topic
+        Returns a list of topic dicts: {topic_name, sentiment, size, keywords}
+        """
+        if not reviews:
+            return []
+
+        from collections import Counter
+        import re
+        try:
+            from database import supabase
+        except Exception:
+            supabase = None
+
+        # 1) Extract candidate topic tokens
+        candidate_tokens = []
+        if nlp:
+            for r in reviews:
+                try:
+                    doc = nlp(r)
+                    for token in doc:
+                        if token.pos_ in ("NOUN", "PROPN") and len(token.text) > 2 and not token.is_stop:
+                            candidate_tokens.append(token.lemma_.lower())
+                except Exception:
+                    continue
+        else:
+            # Fallback: use extract_keywords which already removes stopwords
+            kw = self.extract_keywords(reviews, top_n=200)
+            candidate_tokens = [k["text"] for k in kw]
+
+        if not candidate_tokens:
+            return []
+
+        counts = Counter(candidate_tokens)
+        top_topics = [t for t, _ in counts.most_common(top_n)]
+
+        topics_output = []
+
+        # Normalize reviews for matching
+        normalized_reviews = [r.lower() for r in reviews]
+
+        # We'll reuse analyze_sentiment to compute a numeric score (0-1)
+        for topic in top_topics:
+            # Find reviews mentioning the topic token (simple substring match)
+            related_indices = [i for i, r in enumerate(normalized_reviews) if re.search(r"\b" + re.escape(topic) + r"\b", r)]
+            if not related_indices:
+                continue
+
+            # Compute sentiment scores for related reviews
+            sentiment_scores = []
+            for idx in related_indices:
+                try:
+                    sentiment = await self.analyze_sentiment(reviews[idx])
+                    score = float(sentiment.get("score") or 0.0)
+                    sentiment_scores.append(score)
+                except Exception:
+                    continue
+
+            avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0.0
+
+            # Extract keywords from related reviews (top 5)
+            related_texts = [reviews[i] for i in related_indices]
+            keywords_objs = self.extract_keywords(related_texts, top_n=10)
+            keywords = [k["text"] for k in keywords_objs[:5]]
+
+            topic_entry = {
+                "topic_name": topic,
+                "sentiment": avg_sentiment,
+                "size": len(related_indices),
+                "keywords": keywords,
+            }
+
+            # Persist to DB if supabase available
+            if supabase:
+                try:
+                    supabase.table("topic_analysis").insert({
+                        "topic_name": topic,
+                        "sentiment": avg_sentiment,
+                        "size": len(related_indices),
+                        "keywords": keywords,
+                    }).execute()
+                except Exception as e:
+                    print(f"Failed saving topic_analysis for {topic}: {e}")
+
+            topics_output.append(topic_entry)
+
+        return topics_output
+
+    async def check_for_alerts(self, review: Dict[str, Any]):
+        """
+        Create an alert in the `alerts` table if sentiment score below threshold.
+        Expects review dict that may contain 'score' or 'sentiment_score'.
+        """
+        try:
+            from database import supabase
+        except Exception:
+            supabase = None
+
+        # Extract score
+        score = None
+        if isinstance(review, dict):
+            score = review.get("score") or review.get("sentiment_score")
+            # If nested under 'analysis'
+            if score is None and review.get("analysis"):
+                score = review["analysis"].get("score")
+
+        try:
+            score = float(score) if score is not None else None
+        except Exception:
+            score = None
+
+        if score is None:
+            # Try to compute sentiment on review text if present
+            text = review.get("text") or review.get("review_text") if isinstance(review, dict) else None
+            if text:
+                try:
+                    analysis = await self.analyze_sentiment(text)
+                    score = float(analysis.get("score") or 0.0)
+                except Exception:
+                    score = None
+
+        if score is None:
+            return None
+
+        # Trigger alert when sentiment < 0.3
+        if score < 0.3:
+            alert_payload = {
+                "type": "sentiment_drop",
+                "severity": "high" if score < 0.15 else "medium",
+                "title": "Negative sentiment detected",
+                "message": review.get("text") or review.get("review_text") or "",
+                "platform": review.get("platform") if isinstance(review, dict) else None,
+                "is_read": False
+            }
+            if supabase:
+                try:
+                    supabase.table("alerts").insert(alert_payload).execute()
+                except Exception as e:
+                    print(f"Failed to insert alert: {e}")
+            return alert_payload
+
+        return None
+
 ai_service = AIService()

@@ -19,26 +19,52 @@ class YouTubeScraperService:
     def search_video_comments(self, query: str, max_results: int = 50) -> List[Dict[str, Any]]:
         """
         Search for videos matching query, then fetch comments from top video.
+        If query is a URL, extract video_id directly.
         """
         if not self.youtube:
              raise Exception("YouTube API Key missing/invalid. Cannot scrape.")
 
         try:
-            # 1. Search for video
-            print(f"Searching YouTube for: {query}")
-            search_response = self.youtube.search().list(
-                q=query,
-                part="id,snippet",
-                maxResults=1,
-                type="video"
-            ).execute()
+            video_id = None
+            video_title = "Unknown Video"
 
-            if not search_response.get("items"):
-                print("No video found.")
-                return []
+            # Check if query is a URL
+            import re
+            # Match standard v=VIDEO_ID or short URL /VIDEO_ID
+            # Standard: youtube.com/watch?v=...
+            # Short: youtu.be/...
+            url_regex = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
+            match = re.search(url_regex, query)
+            
+            if match and ("youtube.com" in query or "youtu.be" in query):
+                video_id = match.group(1)
+                print(f"Detected YouTube URL. extracting ID: {video_id}")
+                
+                # Fetch video title for context
+                vid_resp = self.youtube.videos().list(
+                    part="snippet",
+                    id=video_id
+                ).execute()
+                if vid_resp.get("items"):
+                    video_title = vid_resp["items"][0]["snippet"]["title"]
+            
+            if not video_id:
+                # 1. Search for video normally
+                print(f"Searching YouTube for: {query}")
+                search_response = self.youtube.search().list(
+                    q=query,
+                    part="id,snippet",
+                    maxResults=1,
+                    type="video"
+                ).execute()
 
-            video_id = search_response["items"][0]["id"]["videoId"]
-            video_title = search_response["items"][0]["snippet"]["title"]
+                if not search_response.get("items"):
+                    print("No video found.")
+                    return []
+
+                video_id = search_response["items"][0]["id"]["videoId"]
+                video_title = search_response["items"][0]["snippet"]["title"]
+            
             print(f"Found Video: {video_title} ({video_id})")
 
             # 2. Get Comments

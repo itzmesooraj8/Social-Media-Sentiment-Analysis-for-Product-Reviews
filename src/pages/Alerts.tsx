@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Bell,
@@ -72,80 +73,6 @@ interface AlertItem {
     };
 }
 
-const alertsData: AlertItem[] = [
-    {
-        id: '1',
-        type: 'bot_detected',
-        severity: 'critical',
-        title: 'Bot Network Detected',
-        message: 'Coordinated bot activity detected across 47 reviews in the last hour',
-        timestamp: new Date(Date.now() - 1000 * 60 * 15),
-        platform: 'Twitter',
-        isRead: false,
-        isResolved: false,
-        details: { confidence: 94, reviewCount: 47 }
-    },
-    {
-        id: '2',
-        type: 'spam_cluster',
-        severity: 'high',
-        title: 'Spam Cluster Identified',
-        message: 'Similar review patterns detected from 23 accounts with matching IP ranges',
-        timestamp: new Date(Date.now() - 1000 * 60 * 45),
-        platform: 'Reddit',
-        isRead: false,
-        isResolved: false,
-        details: { confidence: 87, reviewCount: 23 }
-    },
-    {
-        id: '3',
-        type: 'sentiment_shift',
-        severity: 'medium',
-        title: 'Sudden Sentiment Drop',
-        message: 'Product SKU-12345 experienced 34% negative sentiment increase in 24h',
-        timestamp: new Date(Date.now() - 1000 * 60 * 120),
-        platform: 'YouTube',
-        isRead: true,
-        isResolved: false,
-        details: { affectedProducts: ['SKU-12345', 'SKU-12346'] }
-    },
-    {
-        id: '4',
-        type: 'review_surge',
-        severity: 'medium',
-        title: 'Unusual Review Surge',
-        message: '312% increase in review volume detected for Electronics category',
-        timestamp: new Date(Date.now() - 1000 * 60 * 180),
-        platform: 'Forums',
-        isRead: true,
-        isResolved: false,
-        details: { reviewCount: 156 }
-    },
-    {
-        id: '5',
-        type: 'fake_review',
-        severity: 'high',
-        title: 'Fake Review Pattern',
-        message: 'AI-generated content detected in 12 reviews with 91% confidence',
-        timestamp: new Date(Date.now() - 1000 * 60 * 240),
-        platform: 'Twitter',
-        isRead: true,
-        isResolved: true,
-        details: { confidence: 91, reviewCount: 12 }
-    },
-    {
-        id: '6',
-        type: 'bot_detected',
-        severity: 'low',
-        title: 'Potential Bot Activity',
-        message: 'Unusual posting patterns detected from 3 accounts',
-        timestamp: new Date(Date.now() - 1000 * 60 * 360),
-        platform: 'Reddit',
-        isRead: true,
-        isResolved: true,
-        details: { confidence: 62, reviewCount: 3 }
-    },
-];
 
 const alertTypeConfig = {
     bot_detected: { icon: Bot, label: 'Bot Detected', color: 'text-sentinel-negative' },
@@ -175,7 +102,23 @@ const formatTimeAgo = (date: Date) => {
 const Alerts = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [filterSeverity, setFilterSeverity] = useState<string>('all');
-    const [alerts, setAlerts] = useState(alertsData);
+    const queryClient = useQueryClient();
+
+    const { data: alertsDataResp, isLoading } = useQuery({
+        queryKey: ['alerts'],
+        queryFn: async () => {
+            const res = await fetch('/api/alerts');
+            const json = await res.json();
+            return json.data || [];
+        }
+    });
+
+    const [alerts, setAlerts] = useState<AlertItem[]>(alertsDataResp || []);
+
+    // Keep local state in sync with server data
+    useEffect(() => {
+        if (alertsDataResp) setAlerts(alertsDataResp);
+    }, [alertsDataResp]);
     const [selectedAlert, setSelectedAlert] = useState<AlertItem | null>(null);
 
     const filteredAlerts = alerts.filter(alert => {
@@ -189,8 +132,14 @@ const Alerts = () => {
     const resolvedAlerts = filteredAlerts.filter(a => a.isResolved);
     const unreadCount = alerts.filter(a => !a.isRead && !a.isResolved).length;
 
+    const markReadMutation = useMutation(async (id: string) => {
+        await fetch(`/api/alerts/mark-read/${id}`, { method: 'POST' });
+    }, {
+        onSuccess: () => queryClient.invalidateQueries(['alerts'])
+    });
+
     const markAsRead = (id: string) => {
-        setAlerts(prev => prev.map(a => a.id === id ? { ...a, isRead: true } : a));
+        markReadMutation.mutate(id);
     };
 
     const resolveAlert = (id: string) => {

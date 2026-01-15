@@ -1,6 +1,14 @@
 import { motion } from 'framer-motion';
 import { Treemap, ResponsiveContainer, Tooltip } from 'recharts';
+import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+
+
+const sentimentColors = {
+  positive: 'hsl(142, 71%, 45%)',
+  neutral: 'hsl(0, 0%, 50%)',
+  negative: 'hsl(0, 84%, 60%)',
+};
 
 interface TopicData {
   name: string;
@@ -9,25 +17,9 @@ interface TopicData {
   keywords: string[];
 }
 
-const topicData: TopicData[] = [
-  { name: 'Product Quality', size: 450, sentiment: 'positive', keywords: ['durable', 'premium', 'quality', 'materials'] },
-  { name: 'Customer Service', size: 320, sentiment: 'neutral', keywords: ['response', 'support', 'help', 'team'] },
-  { name: 'Shipping & Delivery', size: 280, sentiment: 'negative', keywords: ['slow', 'delayed', 'shipping', 'arrived'] },
-  { name: 'Value for Money', size: 260, sentiment: 'positive', keywords: ['worth', 'price', 'affordable', 'deal'] },
-  { name: 'Ease of Use', size: 200, sentiment: 'positive', keywords: ['simple', 'easy', 'intuitive', 'setup'] },
-  { name: 'Features', size: 180, sentiment: 'neutral', keywords: ['features', 'options', 'functions', 'capabilities'] },
-  { name: 'Packaging', size: 120, sentiment: 'positive', keywords: ['packaging', 'box', 'presentation', 'unboxing'] },
-  { name: 'Warranty', size: 90, sentiment: 'neutral', keywords: ['warranty', 'guarantee', 'return', 'policy'] },
-];
-
-const sentimentColors = {
-  positive: 'hsl(142, 71%, 45%)',
-  neutral: 'hsl(0, 0%, 50%)',
-  negative: 'hsl(0, 84%, 60%)',
-};
-
 interface TopicClustersProps {
   isLoading?: boolean;
+  data?: TopicData[];
 }
 
 const CustomContent = (props: any) => {
@@ -67,8 +59,8 @@ const CustomContent = (props: any) => {
   );
 };
 
-export function TopicClusters({ isLoading }: TopicClustersProps) {
-  if (isLoading) {
+export function TopicClusters(props: TopicClustersProps) {
+  if (props.isLoading) {
     return (
       <div className="glass-card p-6 animate-pulse">
         <div className="h-6 w-40 bg-muted rounded mb-4" />
@@ -106,7 +98,20 @@ export function TopicClusters({ isLoading }: TopicClustersProps) {
     return null;
   };
 
-  const treemapData = topicData.map(topic => ({
+  // Support prop-driven data or fetch from API
+  const { data: topicsFromApi } = useQuery({
+    queryKey: ['topics'],
+    queryFn: async () => {
+      const res = await fetch('/api/analytics/topics');
+      const json = await res.json();
+      return json.data || [];
+    },
+    enabled: !props.data
+  });
+
+  const activeData: TopicData[] = (props as TopicClustersProps).data || topicsFromApi || [];
+
+  const treemapData = activeData.map(topic => ({
     ...topic,
     children: [{ name: topic.name, size: topic.size, sentiment: topic.sentiment, keywords: topic.keywords }],
   }));
@@ -126,7 +131,7 @@ export function TopicClusters({ isLoading }: TopicClustersProps) {
       <div className="h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <Treemap
-            data={topicData}
+            data={treemapData}
             dataKey="size"
             aspectRatio={4 / 3}
             stroke="hsl(0, 0%, 10%)"
@@ -154,7 +159,7 @@ export function TopicClusters({ isLoading }: TopicClustersProps) {
       <div className="mt-4 pt-4 border-t border-border/50">
         <h4 className="text-sm font-medium mb-3">Top Discussion Topics</h4>
         <div className="grid grid-cols-2 gap-2">
-          {topicData.slice(0, 4).map((topic, index) => (
+          {(activeData || []).slice(0, 4).map((topic, index) => (
             <div
               key={topic.name}
               className="flex items-center gap-2 p-2 rounded-lg bg-background/50"

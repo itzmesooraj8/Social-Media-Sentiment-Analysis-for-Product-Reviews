@@ -41,14 +41,11 @@ export const useDashboardData = (filters?: Partial<DashboardFilters>) => {
         if (response.success && response.data) {
           return response.data;
         }
-        // Return null if no data - will show empty state
         return null;
       } catch (error) {
-        // Return null on error - will show empty state
         return null;
       }
     },
-    // No polling needed with Realtime!
     refetchInterval: false,
     refetchOnWindowFocus: false,
     refetchOnMount: true,

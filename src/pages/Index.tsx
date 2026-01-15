@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from "sonner";
 import { FileText, BarChart3, MessageSquare, Shield } from 'lucide-react';
 import { useDashboardData } from '@/hooks/useDashboardData';
@@ -21,6 +22,15 @@ import { ExportButton } from '@/components/dashboard/ExportButton';
 
 const Index = () => {
   const { data, isLoading } = useDashboardData();
+
+  const { data: summaryResp, isLoading: summaryLoading } = useQuery({
+    queryKey: ['reportSummary'],
+    queryFn: async () => {
+      const res = await fetch('/api/reports/summary');
+      const j = await res.json();
+      return j;
+    }
+  });
 
   // Pulse Logic: If last 5 reviews are ALL negative, trigger crisis mode
   const recentReviews = data?.recentReviews || [];
@@ -87,7 +97,7 @@ const Index = () => {
         {/* Live Analyzer & Insights */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <LiveReviewAnalyzer />
-          <InsightCard isLoading={isLoading} />
+          <InsightCard isLoading={isLoading || summaryLoading} summary={summaryResp?.summary} />
         </div>
 
         {/* Sentiment Trend Chart */}

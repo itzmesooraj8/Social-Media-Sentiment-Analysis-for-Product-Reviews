@@ -77,7 +77,7 @@ const Integrations = () => {
       try {
         // In a real app, use the API. For now, since DB is likely empty, we handle the empty state.
         // But we should try to fetch.
-        const response = await fetch('http://localhost:8000/api/integrations');
+        const response = await fetch('/api/integrations');
         const data = await response.json();
         if (data.success) {
           // Map backend data to UI interface if needed, or use as is
@@ -85,11 +85,11 @@ const Integrations = () => {
             id: i.id,
             name: i.platform, // Mapping platform to name for now
             platform: i.platform,
-            status: i.active ? 'connected' : 'disconnected',
-            lastSync: i.updated_at ? new Date(i.updated_at) : null,
-            reviewsCollected: 0, // Not in simple integration table
+            status: i.status === 'active' ? 'connected' : (i.status === 'error' ? 'error' : 'disconnected'),
+            lastSync: i.last_sync ? new Date(i.last_sync) : null,
+            reviewsCollected: 0,
             syncFrequency: '30 minutes',
-            isEnabled: i.active
+            isEnabled: i.is_enabled
           }));
           setIntegrations(mapped);
         }

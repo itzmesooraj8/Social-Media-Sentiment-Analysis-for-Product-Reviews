@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
+import { getProducts, createProduct, deleteProduct, scrapeReddit } from '@/lib/api';
+import apiClient from '@/lib/api'; // Direct access for custom endpoints like YouTube if needed
 import {
   Package,
   Plus,
@@ -63,10 +66,11 @@ interface Product {
 // Mock data removed. Usage strictly from API.
 
 const Products = () => {
-  // Fetch products from API
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Dialog States
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [scrapingProductId, setScrapingProductId] = useState<string | null>(null);
   const [newProduct, setNewProduct] = useState({
     name: '',
     sku: '',
@@ -75,27 +79,97 @@ const Products = () => {
     keywords: ''
   });
 
-  const [products, setProducts] = useState<Product[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Import State
+  // Import Dialog State
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [importingProductId, setImportingProductId] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
 
-  const handleImportSubmit = async () => {
-    if (!importFile || !importingProductId) {
-      toast.error("Please select a file and a product.");
-      return;
+  // YouTube Scrape Dialog State
+  const [isYouTubeDialogOpen, setIsYouTubeDialogOpen] = useState(false);
+  const [youtubeQuery, setYoutubeQuery] = useState('');
+  const [youtubeScrapePid, setYoutubeScrapePid] = useState<string | null>(null);
+
+  // --- Queries ---
+
+  const { data: productsData, isLoading } = useQuery<Product[]>({
+    queryKey: ['products'],
+    queryFn: async () => {
+      const res = await getProducts();
+      if (!res.success) throw new Error(res.message);
+      // Transform API data to UI model
+      return res.data.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        category: p.category,
+        totalReviews: 0, // Backend doesn't return counts yet
+        sentimentScore: 0,
+        sentimentTrend: 'stable',
+        credibilityScore: 0,
+        lastAnalyzed: new Date(p.created_at || Date.now()),
+        status: p.status,
+        platforms: ['reddit', 'youtube']
+      }));
     }
+  });
 
-    const formData = new FormData();
-    formData.append('file', importFile);
-    formData.append('product_id', importingProductId);
-    formData.append('platform', 'twitter'); // Default or let user select
+  const products = productsData || [];
 
-    const promise = async () => {
+  // --- Mutations ---
+
+  const addProductMutation = useMutation({
+    mutationFn: async (data: typeof newProduct) => {
+      const payload = {
+        ...data,
+        keywords: data.keywords.split(',').map(k => k.trim())
+      };
+      return await createProduct(payload);
+    },
+    onSuccess: () => {
+      toast.success('Product created successfully');
+      setIsAddDialogOpen(false);
+      setNewProduct({ name: '', sku: '', category: '', description: '', keywords: '' });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (err: any) => {
+      toast.error(`Failed to create product: ${err.message || 'Unknown error'}`);
+    }
+  });
+
+  const scrapeRedditMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string, name: string }) => {
+      return await scrapeReddit(id, name);
+    },
+    onSuccess: (data) => {
+      toast.success(`Scraped ${data.count} reviews from Reddit!`);
+    },
+    onError: (err: any) => {
+      toast.error(`Reddit scrape failed: ${err.message}`);
+    }
+  });
+
+  const scrapeYouTubeMutation = useMutation({
+    mutationFn: async ({ pid, query }: { pid: string, query: string }) => {
+      const res = await apiClient.post(`/api/scrape/youtube`, null, {
+        params: { product_id: pid, query: query }
+      });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message);
+      setIsYouTubeDialogOpen(false);
+      // Invalidate products to update timestamps/counts if we had them
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      // Also dashboard
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (err: any) => {
+      toast.error(`YouTube scrape failed: ${err.message}`);
+    }
+  });
+
+  const importCsvMutation = useMutation({
+    mutationFn: async (formData: FormData) => {
       const response = await fetch('http://localhost:8000/api/import/csv', {
         method: 'POST',
         headers: {
@@ -104,60 +178,65 @@ const Products = () => {
         body: formData
       });
       const data = await response.json();
-      if (!data.success) throw new Error(data.message || data.detail);
+      if (!data.success) throw new Error(data.message);
       return data;
-    };
-
-    toast.promise(promise(), {
-      loading: 'Uploading and analyzing dataset...',
-      success: 'Dataset imported successfully!',
-      error: (err) => `Import failed: ${err.message}`
-    });
-
-    try {
-      await promise();
+    },
+    onSuccess: () => {
+      toast.success('Dataset imported successfully!');
       setIsImportDialogOpen(false);
       setImportFile(null);
-      // setImportingProductId(null); // Keep or clear? Better clear.
-      setImportingProductId(null);
-    } catch (e) {
-      // Handled by toast
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (err: any) => {
+      toast.error(`Import failed: ${err.message}`);
     }
+  });
+
+
+  // --- Event Handlers ---
+
+  const handleAddProduct = () => {
+    if (!newProduct.name || !newProduct.sku) {
+      toast.error("Name and SKU are required");
+      return;
+    }
+    addProductMutation.mutate(newProduct);
   };
 
-  // Fetch data
-  const fetchProducts = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/products');
-      const data = await response.json();
-      if (data.success) {
-        // Transform API data to UI model
-        const mapped = data.data.map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          sku: p.sku,
-          category: p.category,
-          totalReviews: 0, // Backend doesn't return counts yet
-          sentimentScore: 0,
-          sentimentTrend: 'stable',
-          credibilityScore: 0,
-          lastAnalyzed: new Date(p.created_at || Date.now()),
-          status: p.status,
-          platforms: ['reddit'] // Default
-        }));
-        setProducts(mapped);
-      }
-    } catch (error) {
-      console.error("Failed to fetch products", error);
-    } finally {
-      setIsLoading(false);
+  const handleImportSubmit = () => {
+    if (!importFile || !importingProductId) {
+      toast.error("Please select a file and a product.");
+      return;
     }
+    const formData = new FormData();
+    formData.append('file', importFile);
+    formData.append('product_id', importingProductId);
+    formData.append('platform', 'twitter');
+
+    toast.promise(importCsvMutation.mutateAsync(formData), {
+      loading: 'Uploading...',
+      success: 'Imported!',
+      error: 'Failed'
+    });
   };
 
-  // Initial load
-  useEffect(() => {
-    fetchProducts();
-  }, []);
+  const handleScrapeReddit = (product: Product) => {
+    toast.promise(scrapeRedditMutation.mutateAsync({ id: product.id, name: product.name }), {
+      loading: 'Scraping Reddit...',
+      success: (d) => `Got ${d.count} reviews`,
+      error: (e) => e.message
+    });
+  };
+
+  const handleYouTubeSubmit = () => {
+    if (!youtubeScrapePid || !youtubeQuery) return;
+    toast.promise(scrapeYouTubeMutation.mutateAsync({ pid: youtubeScrapePid, query: youtubeQuery }), {
+      loading: 'Searching YouTube...',
+      success: 'Started analysis!',
+      error: (e) => e.message
+    });
+  };
+
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -166,54 +245,7 @@ const Products = () => {
   );
 
 
-  const handleScrapeReddit = async (product: Product) => {
-    setScrapingProductId(product.id);
-    const promise = async () => {
-      const { scrapeReddit } = await import('@/lib/api');
-      const result = await scrapeReddit(product.id, product.name);
-      if (!result.success) throw new Error(result.message || 'Scraping failed');
-      return result;
-    };
 
-    toast.promise(promise(), {
-      loading: `Scraping Reddit reviews for ${product.name}...`,
-      success: (data) => `Successfully scraped ${data.count} reviews!`,
-      error: (err) => `Scraping failed: ${err.message}`,
-    });
-
-    try {
-      await promise();
-    } catch (e) {
-      // Handled by toast
-    } finally {
-      setScrapingProductId(null);
-    }
-  };
-
-  const handleAddProduct = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...newProduct,
-          keywords: newProduct.keywords.split(',').map(k => k.trim())
-        })
-      });
-      const data = await response.json();
-      if (data.success) {
-        alert('Product added!');
-        setIsAddDialogOpen(false);
-        setNewProduct({ name: '', sku: '', category: '', description: '', keywords: '' });
-        fetchProducts();
-      } else {
-        alert('Failed to add product');
-      }
-    } catch (e) {
-      console.error(e);
-      alert('Error adding product');
-    }
-  };
 
   const formatLastAnalyzed = (date: Date) => {
     const diff = Date.now() - date.getTime();
@@ -290,8 +322,8 @@ const Products = () => {
                     <Button variant="outline" className="flex-1" onClick={() => setIsAddDialogOpen(false)}>
                       Cancel
                     </Button>
-                    <Button className="flex-1 bg-sentinel-credibility hover:bg-sentinel-credibility/90">
-                      Add Product
+                    <Button className="flex-1 bg-sentinel-credibility hover:bg-sentinel-credibility/90" onClick={handleAddProduct} disabled={addProductMutation.status === 'pending'}>
+                      {addProductMutation.status === 'pending' ? 'Adding...' : 'Add Product'}
                     </Button>
                   </div>
                 </div>
@@ -344,6 +376,37 @@ const Products = () => {
                     onClick={handleImportSubmit}
                     className="flex-1 bg-sentinel-credibility hover:bg-sentinel-credibility/90">
                     Upload & Analyze
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* YouTube Scrape Dialog */}
+          <Dialog open={isYouTubeDialogOpen} onOpenChange={setIsYouTubeDialogOpen}>
+            <DialogContent className="glass-card border-border/50">
+              <DialogHeader>
+                <DialogTitle>Scrape YouTube</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>YouTube Video URL or Search Query</Label>
+                  <Input
+                    value={youtubeQuery}
+                    onChange={(e) => setYoutubeQuery(e.target.value)}
+                    placeholder="https://youtu.be/... or Product Review"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Paste a specific video link for best results.
+                  </p>
+                </div>
+                <div className="flex gap-2 pt-4">
+                  <Button variant="outline" className="flex-1" onClick={() => setIsYouTubeDialogOpen(false)}>Cancel</Button>
+                  <Button
+                    disabled={!youtubeQuery}
+                    onClick={handleYouTubeSubmit}
+                    className="flex-1 bg-red-600 hover:bg-red-700 text-white">
+                    Start Scraping
                   </Button>
                 </div>
               </div>
@@ -424,33 +487,17 @@ const Products = () => {
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => handleScrapeReddit(product)}
-                      disabled={scrapingProductId === product.id}
+                      disabled={scrapeRedditMutation.status === 'pending'}
                     >
                       <Download className="h-4 w-4 mr-2" />
-                      {scrapingProductId === product.id ? 'Scraping...' : 'Scrape Reddit Reviews'}
+                      {scrapeRedditMutation.status === 'pending' ? 'Scraping...' : 'Scrape Reddit Reviews'}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => {
-                        setScrapingProductId(product.id);
-                        const promise = async () => {
-                          const res = await fetch(`http://localhost:8000/api/scrape/youtube?product_id=${product.id}&query=${encodeURIComponent(product.name)}`, {
-                            method: "POST",
-                            headers: { "Authorization": `Bearer ${localStorage.getItem("token") || ""}` }
-                          });
-                          const data = await res.json();
-                          if (!data.success) throw new Error(data.message);
-                          return data;
-                        };
-
-                        toast.promise(promise(), {
-                          loading: 'Searching YouTube comments...',
-                          success: (data) => data.message,
-                          error: (err) => `YouTube Scrape Error: ${err.message}`
-                        });
-
-                        promise().finally(() => setScrapingProductId(null));
+                        setYoutubeScrapePid(product.id);
+                        setYoutubeQuery(product.name);
+                        setIsYouTubeDialogOpen(true);
                       }}
-                      disabled={scrapingProductId === product.id}
                     >
                       <Download className="h-4 w-4 mr-2" />
                       Scrape YouTube Reviews

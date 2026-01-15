@@ -239,6 +239,11 @@ async def create_review(review: ReviewCreate):
                 "aspects": sentiment_result.get("aspects", [])
             }
             await save_sentiment_analysis(analysis_data)
+            
+            # Check for alerts based on the new review and analysis
+            # We combine review data and analysis data for the check
+            full_review_data = {**review_data, "analysis": analysis_data}
+            await ai_service.check_for_alerts(full_review_data)
         
         return {
             "success": True,
@@ -494,6 +499,91 @@ async def get_integrations():
             "data": []
         }
 
+
+# Alerts Endpoints
+@app.get("/api/alerts")
+async def list_alerts():
+    """Fetch alerts from DB; return empty list if none."""
+    try:
+        if not supabase:
+            return {"success": True, "data": []}
+        resp = supabase.table("alerts").select("*").order("created_at", desc=True).execute()
+        data = resp.data or []
+        return {"success": True, "data": data}
+    except Exception as e:
+        print(f"Error fetching alerts: {e}")
+        return {"success": True, "data": []}
+
+
+@app.post("/api/alerts/mark-read/{alert_id}")
+async def mark_alert_read(alert_id: int):
+    try:
+        if not supabase:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        supabase.table("alerts").update({"is_read": True}).eq("id", alert_id).execute()
+        return {"success": True, "message": "Marked read"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error marking alert read: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Topics Analytics Endpoint
+@app.get("/api/analytics/topics")
+async def get_topic_clusters(limit: int = 100):
+    """Fetch recent reviews and generate topic clusters using AI service."""
+    try:
+        reviews = await get_reviews(limit=limit)
+        if not reviews:
+            return {"success": True, "data": []}
+
+        texts = [r.get("text", "") for r in reviews if r.get("text")]
+        topics = await ai_service.generate_topic_clusters(texts)
+        return {"success": True, "data": topics}
+    except Exception as e:
+        print(f"Topic cluster error: {e}")
+        return {"success": True, "data": []}
+
+
+# Settings Endpoints
+@app.get("/api/settings")
+async def get_settings(user_id: Optional[str] = None):
+    """Read settings from user_settings table. If user_id provided, filter by it."""
+    try:
+        if not supabase:
+            return {"success": True, "data": []}
+        query = supabase.table("user_settings").select("*")
+        if user_id:
+            query = query.eq("user_id", user_id)
+        resp = query.execute()
+        return {"success": True, "data": resp.data or []}
+    except Exception as e:
+        print(f"Error fetching settings: {e}")
+        return {"success": True, "data": []}
+
+
+@app.post("/api/settings")
+async def post_settings(payload: Dict[str, Any]):
+    """Upsert a user setting. Expects {user_id, key, value}."""
+    try:
+        if not supabase:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        user_id = payload.get("user_id")
+        key = payload.get("key")
+        value = payload.get("value")
+        if not user_id or not key:
+            raise HTTPException(status_code=400, detail="user_id and key are required")
+        # Upsert
+        up = {"user_id": user_id, "key": key, "value": value}
+        supabase.table("user_settings").upsert(up, on_conflict=["user_id", "key"]).execute()
+        return {"success": True, "data": up}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error saving setting: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Reddit Scraping Endpoint
 @app.post("/api/scrape/reddit")
 async def scrape_reddit(product_id: str, product_name: str, subreddits: Optional[List[str]] = None, user: dict = Depends(verify_user)):
@@ -547,30 +637,8 @@ from fastapi import UploadFile, File, Form
 async def get_executive_summary(product_id: Optional[str] = None):
     """Generate AI Executive Summary from recent negative feedback."""
     try:
-        # Get recent reviews (we want negative ones mostly for "insights")
-        # For efficiency, we'll fetch 50 recent and filter for negative in python 
-        # (since we don't have a direct join-filter helper yet and SQL is complex via API)
-        # Ideally: supabase.table("sentiment_analysis").select("review_id").eq("label", "NEGATIVE")
-        # then fetch reviews. 
-        # Let's just fetch recent 100 with sentiment and filter.
-        
-        reviews_data = await get_recent_reviews_with_sentiment(limit=100)
-        
-        negative_texts = []
-        product_context = "this product"
-        
-        for r in reviews_data:
-            sent = r.get("sentiment_analysis", {})
-            if isinstance(sent, list) and sent: sent = sent[0]
-            
-            label = sent.get("label", "NEUTRAL")
-            if label == "NEGATIVE":
-                negative_texts.append(r.get("text", ""))
-                
-        if not negative_texts:
-             return {"success": True, "summary": "No critical negative issues detected in recent reviews. Users seem generally satisfied."}
-             
-        summary = await ai_service.generate_executive_summary(negative_texts, product_context)
+        # Use report_service to generate a frequency-based summary from recent negative reviews
+        summary = await report_service.generate_summary(limit=50)
         return {"success": True, "summary": summary}
     except Exception as e:
         print(f"Summary Error: {e}")

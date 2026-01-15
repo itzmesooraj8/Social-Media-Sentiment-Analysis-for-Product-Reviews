@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/context/AuthContext';
 import { motion } from 'framer-motion';
 import {
   Settings as SettingsIcon,
@@ -56,32 +58,60 @@ const Settings = () => {
   const [showApiKey, setShowApiKey] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Settings State with Persistence
-  const [credibilityThreshold, setCredibilityThreshold] = useState([
-    parseInt(localStorage.getItem('setting_credibilityThreshold') || '75')
-  ]);
-  const [realTimeAnalysis, setRealTimeAnalysis] = useState(
-    localStorage.getItem('setting_realTimeAnalysis') !== 'false'
-  );
-  const [botDetection, setBotDetection] = useState(
-    localStorage.getItem('setting_botDetection') !== 'false'
-  );
-  const [sentimentAlerts, setSentimentAlerts] = useState(
-    localStorage.getItem('setting_sentimentAlerts') === 'true'
-  );
+  // Settings State (defaults); real values fetched from backend
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
 
-  const saveSetting = (key: string, value: any) => {
-    localStorage.setItem(key, String(value));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
+  const [credibilityThreshold, setCredibilityThreshold] = useState([75]);
+  const [realTimeAnalysis, setRealTimeAnalysis] = useState(true);
+  const [botDetection, setBotDetection] = useState(true);
+  const [sentimentAlerts, setSentimentAlerts] = useState(true);
 
-  // Profile State ...
+  const { data: settingsResp } = useQuery({
+    queryKey: ['settings', user?.id],
+    queryFn: async () => {
+      const uid = user?.id || 'default';
+      const res = await fetch(`/api/settings?user_id=${encodeURIComponent(uid)}`);
+      const json = await res.json();
+      return (json.data || []) as Array<{ key: string; value: string }>;
+    },
+    enabled: !!user || true
+  });
+
+  // Profile State
   const [profile, setProfile] = useState({
-    firstName: localStorage.getItem('profile_firstName') || "Sentinel",
-    lastName: localStorage.getItem('profile_lastName') || "Admin",
-    email: localStorage.getItem('profile_email') || "admin@sentinel.ai",
-    org: localStorage.getItem('profile_org') || "Sentinel Engine Inc."
+    firstName: "Sentinel",
+    lastName: "Admin",
+    email: "admin@sentinel.ai",
+    org: "Sentinel Engine Inc."
+  });
+
+  useEffect(() => {
+    if (!settingsResp) return;
+    // settingsResp is an array of { user_id, key, value }
+    const map: Record<string, string> = {};
+    settingsResp.forEach((s: any) => { map[s.key] = s.value; });
+
+    if (map['setting_credibilityThreshold']) setCredibilityThreshold([parseInt(map['setting_credibilityThreshold'])]);
+    if (map['setting_realTimeAnalysis']) setRealTimeAnalysis(map['setting_realTimeAnalysis'] !== 'false');
+    if (map['setting_botDetection']) setBotDetection(map['setting_botDetection'] !== 'false');
+    if (map['setting_sentimentAlerts']) setSentimentAlerts(map['setting_sentimentAlerts'] !== 'false');
+
+    // Load Profile Settings
+    if (map['profile_firstName']) setProfile(prev => ({ ...prev, firstName: map['profile_firstName'] }));
+    if (map['profile_lastName']) setProfile(prev => ({ ...prev, lastName: map['profile_lastName'] }));
+    if (map['profile_email']) setProfile(prev => ({ ...prev, email: map['profile_email'] }));
+    if (map['profile_org']) setProfile(prev => ({ ...prev, org: map['profile_org'] }));
+  }, [settingsResp]);
+
+  const saveSettingsMutation = useMutation(async (payloads: Array<{ user_id: string; key: string; value: any }>) => {
+    await Promise.all(payloads.map(p => fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })));
+  }, {
+    onSuccess: () => {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      queryClient.invalidateQueries(['settings']);
+    }
   });
 
   const handleProfileChange = (field: string, value: string) => {
@@ -89,20 +119,20 @@ const Settings = () => {
   };
 
   const handleSave = () => {
-    // Persist to LocalStorage (Simulating Backend Update)
-    localStorage.setItem('profile_firstName', profile.firstName);
-    localStorage.setItem('profile_lastName', profile.lastName);
-    localStorage.setItem('profile_email', profile.email);
-    localStorage.setItem('profile_org', profile.org);
+    const uid = user?.id || 'default';
+    const payloads = [
+      { user_id: uid, key: 'setting_credibilityThreshold', value: String(credibilityThreshold[0]) },
+      { user_id: uid, key: 'setting_realTimeAnalysis', value: String(realTimeAnalysis) },
+      { user_id: uid, key: 'setting_botDetection', value: String(botDetection) },
+      { user_id: uid, key: 'setting_sentimentAlerts', value: String(sentimentAlerts) },
+      // Profile Payloads
+      { user_id: uid, key: 'profile_firstName', value: profile.firstName },
+      { user_id: uid, key: 'profile_lastName', value: profile.lastName },
+      { user_id: uid, key: 'profile_email', value: profile.email },
+      { user_id: uid, key: 'profile_org', value: profile.org }
+    ];
 
-    // Save Settings
-    localStorage.setItem('setting_credibilityThreshold', String(credibilityThreshold[0]));
-    localStorage.setItem('setting_realTimeAnalysis', String(realTimeAnalysis));
-    localStorage.setItem('setting_botDetection', String(botDetection));
-    localStorage.setItem('setting_sentimentAlerts', String(sentimentAlerts));
-
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    saveSettingsMutation.mutate(payloads);
   };
 
   return (

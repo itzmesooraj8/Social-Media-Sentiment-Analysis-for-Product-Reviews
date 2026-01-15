@@ -109,7 +109,7 @@ const Analytics = () => {
   // 1. Correlation: Plots Real Sentiment vs. Credibility Score
   const correlationData = sentimentRows.map((row: any) => ({
     sentiment: row.score ? Math.round(row.score * 100) : 50,
-    engagement: Math.round((row.credibility || 0) + (Math.random() * 20)), // Visualizing credibility impact
+    engagement: Math.round(row.credibility || 0),
     volume: 100
   })).slice(0, 50); // Limit to 50 dots for cleaner UI
 
@@ -137,7 +137,7 @@ const Analytics = () => {
     return {
       month: monthName,
       thisYear: realCount,
-      lastYear: Math.floor(Math.random() * 40) + 10, // Benchmark
+      lastYear: 0,
       growth: realCount > 0 ? 10 : 0
     };
   });
@@ -354,29 +354,57 @@ const Analytics = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <TrendingUp className="h-5 w-5 text-sentinel-credibility" />
-                    Year-over-Year Comparison
+                    Real-Time Sentiment Trend (Hourly)
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-[400px]">
                     <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={comparisonData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                        <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                        <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                        <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: 'hsl(var(--card))',
-                            border: '1px solid hsl(var(--border))',
-                            borderRadius: '8px'
-                          }}
-                        />
-                        <Legend />
-                        <Bar yAxisId="left" dataKey="thisYear" name="This Year" fill="hsl(var(--sentinel-positive))" radius={[4, 4, 0, 0]} />
-                        <Bar yAxisId="left" dataKey="lastYear" name="Last Year" fill="hsl(var(--muted-foreground))" radius={[4, 4, 0, 0]} opacity={0.5} />
-                        <Line yAxisId="right" type="monotone" dataKey="growth" name="Growth %" stroke="hsl(var(--sentinel-credibility))" strokeWidth={2} />
-                      </ComposedChart>
+                      {
+                        (() => {
+                          // Build hourly buckets from sentimentRows for last 24 hours
+                          const now = new Date();
+                          const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                          const recent = (sentimentRows || []).filter((r: any) => r.created_at && new Date(r.created_at) >= dayAgo);
+
+                          const buckets: Record<string, { sum: number; count: number }> = {};
+                          recent.forEach((r: any) => {
+                            const dt = new Date(r.created_at);
+                            const label = dt.getHours().toString().padStart(2, '0') + ':00';
+                            const score = (typeof r.score === 'number') ? (r.score * 100) : (r.score ? Number(r.score) : 0);
+                            if (!buckets[label]) buckets[label] = { sum: 0, count: 0 };
+                            buckets[label].sum += score;
+                            buckets[label].count += 1;
+                          });
+
+                          // Create an array for the last 24 hours in chronological order
+                          const hourlyData = [] as any[];
+                          for (let i = 0; i < 24; i++) {
+                            const dt = new Date(now.getTime() - (23 - i) * 60 * 60 * 1000);
+                            const label = dt.getHours().toString().padStart(2, '0') + ':00';
+                            const b = buckets[label];
+                            hourlyData.push({ hour: label, avgSentiment: b && b.count ? (b.sum / b.count) : null, count: b ? b.count : 0 });
+                          }
+
+                          // If only single non-empty bucket, render a single-dot line by leaving other points null
+                          return (
+                            <ComposedChart data={hourlyData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                              <XAxis dataKey="hour" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: 'hsl(var(--card))',
+                                  border: '1px solid hsl(var(--border))',
+                                  borderRadius: '8px'
+                                }}
+                              />
+                              <Legend />
+                              <Line type="monotone" dataKey="avgSentiment" name="Avg Sentiment (0-100)" stroke="hsl(var(--sentinel-credibility))" strokeWidth={2} dot={{ r: 2 }} connectNulls={false} />
+                            </ComposedChart>
+                          );
+                        })()
+                      }
                     </ResponsiveContainer>
                   </div>
                 </CardContent>
