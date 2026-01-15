@@ -484,18 +484,26 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
 async def get_analytics(user: dict = Depends(get_current_user)):
     """Get analytics data"""
     try:
-        # Fetch sentiment analysis data
-        sentiment_response = supabase.table("sentiment_analysis").select("*").execute()
-        sentiment_data = sentiment_response.data or []
+        # To avoid fetching full tables and causing slow responses, fetch only recent rows
+        # and return aggregates. This keeps the analytics endpoint responsive.
+        from datetime import timedelta
+        cutoff = datetime.utcnow() - timedelta(days=30)
 
-        # Calculate platform breakdown
-        reviews_response = supabase.table("reviews").select("platform, author").execute()
-        reviews = reviews_response.data or []
+        # Fetch recent sentiment entries (last 30 days)
+        sentiment_resp = supabase.table("sentiment_analysis").select("label, score, credibility, created_at").gte("created_at", cutoff.isoformat()).execute()
+        sentiment_data = sentiment_resp.data or []
+
+        # Fetch recent review platform breakdown (last 30 days)
+        reviews_resp = supabase.table("reviews").select("platform, username, created_at").gte("created_at", cutoff.isoformat()).execute()
+        reviews = reviews_resp.data or []
 
         platform_counts = {}
+        authors = set()
         for review in reviews:
             platform = review.get("platform", "unknown")
             platform_counts[platform] = platform_counts.get(platform, 0) + 1
+            if review.get("username"):
+                authors.add(review.get("username"))
 
         # Advanced analytics: engagement (reviews per hour) and reach (unique authors)
         adv = await get_advanced_analytics()
@@ -539,6 +547,42 @@ async def get_integrations(user: dict = Depends(get_current_user)):
             "success": True,
             "data": []
         }
+
+
+class IntegrationItem(BaseModel):
+    platform: str
+    api_key: Optional[str] = None
+    is_enabled: Optional[bool] = False
+
+
+@app.post("/api/integrations")
+async def upsert_integration(item: IntegrationItem, user: dict = Depends(get_current_user)):
+    """Create or update an integration entry"""
+    try:
+        if not supabase:
+            raise HTTPException(status_code=500, detail="Database not configured")
+
+        payload = {
+            "platform": item.platform,
+            "api_key": item.api_key,
+            "is_enabled": item.is_enabled,
+            "last_sync": datetime.utcnow()
+        }
+
+        # Upsert based on platform uniqueness
+        try:
+            supabase.table("integrations").upsert(payload, on_conflict=["platform"]).execute()
+        except Exception:
+            # Fallback to delete/insert
+            supabase.table("integrations").delete().eq("platform", item.platform).execute()
+            supabase.table("integrations").insert(payload).execute()
+
+        return {"success": True, "message": "Integration saved", "data": payload}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Integration save error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Alerts Endpoints
