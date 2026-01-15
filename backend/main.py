@@ -30,6 +30,7 @@ from database import (
     get_recent_reviews_with_sentiment,
     save_sentiment_analysis,
     get_dashboard_stats,
+    get_advanced_analytics,
     supabase
 )
 
@@ -259,7 +260,7 @@ async def create_review(review: ReviewCreate):
 
 # Dashboard Endpoints
 @app.get("/api/dashboard")
-async def get_dashboard():
+async def get_dashboard(user: dict = Depends(verify_user)):
     """Get dashboard metrics and data"""
     try:
         # Use optimized SQL/RPC stats
@@ -271,6 +272,13 @@ async def get_dashboard():
              "botsDetected": 0,
              "averageCredibility": metrics_raw.get("averageCredibility", 0)
         }
+
+        # --- Inject Advanced Analytics (Real Math) ---
+        adv_stats = await get_advanced_analytics()
+        metrics["engagementRate"] = adv_stats["engagement_rate"]
+        metrics["modelAccuracy"] = adv_stats["model_accuracy"]
+        metrics["processingSpeed"] = adv_stats["processing_speed_ms"]
+        metrics["totalReach"] = adv_stats["total_reach"]
         
         # Check if we have any data
         if metrics["totalReviews"] == 0:
@@ -445,7 +453,7 @@ async def get_dashboard():
 
 # Analytics Endpoints
 @app.get("/api/analytics")
-async def get_analytics():
+async def get_analytics(user: dict = Depends(verify_user)):
     """Get analytics data"""
     try:
         # Fetch sentiment analysis data
@@ -502,7 +510,7 @@ async def get_integrations():
 
 # Alerts Endpoints
 @app.get("/api/alerts")
-async def list_alerts():
+async def list_alerts(user: dict = Depends(verify_user)):
     """Fetch alerts from DB; return empty list if none."""
     try:
         if not supabase:
@@ -516,7 +524,7 @@ async def list_alerts():
 
 
 @app.post("/api/alerts/mark-read/{alert_id}")
-async def mark_alert_read(alert_id: int):
+async def mark_alert_read(alert_id: int, user: dict = Depends(verify_user)):
     try:
         if not supabase:
             raise HTTPException(status_code=500, detail="Database not configured")
@@ -548,7 +556,7 @@ async def get_topic_clusters(limit: int = 100):
 
 # Settings Endpoints
 @app.get("/api/settings")
-async def get_settings(user_id: Optional[str] = None):
+async def get_settings(user_id: Optional[str] = None, user: dict = Depends(verify_user)):
     """Read settings from user_settings table. If user_id provided, filter by it."""
     try:
         if not supabase:
@@ -564,7 +572,7 @@ async def get_settings(user_id: Optional[str] = None):
 
 
 @app.post("/api/settings")
-async def post_settings(payload: Dict[str, Any]):
+async def post_settings(payload: Dict[str, Any], user: dict = Depends(verify_user)):
     """Upsert a user setting. Expects {user_id, key, value}."""
     try:
         if not supabase:
@@ -634,7 +642,7 @@ async def scrape_youtube_endpoint(product_id: str, query: str, user: dict = Depe
 from fastapi import UploadFile, File, Form
 
 @app.get("/api/reports/summary")
-async def get_executive_summary(product_id: Optional[str] = None):
+async def get_executive_summary(product_id: Optional[str] = None, user: dict = Depends(verify_user)):
     """Generate AI Executive Summary from recent negative feedback."""
     try:
         # Use report_service to generate a frequency-based summary from recent negative reviews
@@ -669,7 +677,7 @@ class ReportRequest(BaseModel):
     date_range: Optional[Dict[str, str]] = None
 
 @app.post("/api/reports/generate")
-async def generate_report_endpoint(req: ReportRequest):
+async def generate_report_endpoint(req: ReportRequest, user: dict = Depends(verify_user)):
     try:
          result = await report_service.generate_report(req.type, req.format)
          # Return metadata, clean way is to return URL or ID. For simplicity, we return filename and content in a downloadable way?

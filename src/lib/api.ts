@@ -121,4 +121,10 @@ export const scrapeReddit = async (productId: string, productName: string, subre
     return response.data;
 };
 
+// Executive Summary
+export const getExecutiveSummary = async () => {
+    const response = await apiClient.get('/api/reports/summary');
+    return response.data;
+};
+
 export default apiClient;

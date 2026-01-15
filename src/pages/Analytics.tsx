@@ -1,7 +1,9 @@
-// ... top of file ...
+
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-// ...
+import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   TrendingUp,
   TrendingDown,
@@ -16,6 +18,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useDashboardData } from '@/hooks/useDashboardData';
+import { getAnalytics, getExecutiveSummary } from '@/lib/api';
 import {
   AreaChart,
   Area,
@@ -49,76 +52,108 @@ const itemVariants = {
 };
 
 const Analytics = () => {
+  const navigate = useNavigate();
+
+  // 1. Fetch Real Data via Hooks (TanStack Query)
   const { data: dashboardData, isLoading: isDashboardLoading } = useDashboardData();
-  const [analyticsData, setAnalyticsData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [aiSummary, setAiSummary] = useState("Analyzing recent negative feedback patterns...");
 
-  // Fetch detailed analytics
+  const {
+    data: analyticsRes,
+    isLoading: isAnalyticsLoading,
+    error: analyticsError
+  } = useQuery({
+    queryKey: ['analytics'],
+    queryFn: getAnalytics,
+    retry: 1,
+  });
+
+  const {
+    data: summaryRes,
+    isLoading: isSummaryLoading
+  } = useQuery({
+    queryKey: ['executiveSummary'],
+    queryFn: getExecutiveSummary,
+    retry: 1
+  });
+
+  // 2. Global Loading State
+  const loading = isDashboardLoading || isAnalyticsLoading || isSummaryLoading;
+
+  // 3. Error Handling (Auth Redirect)
   useEffect(() => {
-    const fetchAnalytics = async () => {
-      try {
-        const response = await fetch('http://localhost:8000/api/analytics');
-        const data = await response.json();
-        if (data.success) {
-          setAnalyticsData(data.data);
-        }
-
-        // Fetch AI Summary
-        const summaryRes = await fetch('http://localhost:8000/api/reports/summary');
-        const summaryData = await summaryRes.json();
-        if (summaryData.success) {
-          setAiSummary(summaryData.summary);
-        } else {
-          setAiSummary("Could not generate summary at this time.");
-        }
-
-      } catch (error) {
-        console.error("Failed to fetch analytics", error);
-        setAiSummary("System offline or unreachable.");
-      } finally {
-        setLoading(false);
+    if (analyticsError) {
+      // @ts-ignore
+      if (analyticsError.status === 401 || analyticsError.message?.includes('401')) {
+        navigate('/login');
       }
-    };
-    fetchAnalytics();
-  }, []);
+    }
+  }, [analyticsError, navigate]);
 
-  // Use real data from backend, defaulting to empty arrays if missing to avoid crashes
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="space-y-6 p-6">
+          <Skeleton className="h-12 w-1/3 mb-6" />
+          <Skeleton className="h-24 w-full mb-6" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32 w-full" />)}
+          </div>
+          <Skeleton className="h-[400px] w-full" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // 4. Data Transformation (Strictly No Mocks)
+  const analyticsData = analyticsRes?.success ? analyticsRes.data : null;
+  const metrics = dashboardData?.metrics || {};
+  const sentimentRows = analyticsData?.sentimentData || []; // Raw rows for correlation
   const platformBreakdown = analyticsData?.platformBreakdown || {};
-  const totalReviews = analyticsData?.totalAnalyzed || 0;
 
-  // Transform platform data for charts (Real)
-  const platformPerformanceChart = Object.entries(platformBreakdown).map(([platform, count]: [string, any]) => ({
-    platform,
-    total: count,
-    // Since our simple backend metrics don't break down sentiment per platform yet, 
-    // we calculate global ratios or default to 0. 
-    // Ideally the backend /api/analytics should provide platform-specific sentiment counts.
-    // For now, we will just show the volume.
-    positive: 0,
-    neutral: 0,
-    negative: 0
-  }));
+  // KPI Stats - From DB
+  const stats = [
+    {
+      label: 'Avg Response Time',
+      value: metrics.processingSpeed ? `${metrics.processingSpeed}ms` : 'N/A',
+      change: 0, // Delta not yet in DB
+      icon: Zap,
+      color: 'text-sentinel-positive'
+    },
+    {
+      label: 'Engagement Rate',
+      value: metrics.engagementRate ? `${(metrics.engagementRate * 100).toFixed(1)}%` : '0%',
+      change: 0,
+      icon: Target,
+      color: 'text-sentinel-credibility'
+    },
+    {
+      label: 'Model Accuracy',
+      value: metrics.modelAccuracy ? `${(metrics.modelAccuracy * 100).toFixed(1)}%` : '0%',
+      change: 0,
+      icon: Activity,
+      color: 'text-sentinel-positive'
+    },
+    {
+      label: 'Total Reach',
+      value: metrics.totalReach ? metrics.totalReach.toLocaleString() : '0',
+      change: 0,
+      icon: Globe,
+      color: 'text-sentinel-credibility'
+    },
+  ];
 
+  // AI Summary
+  const aiSummary = summaryRes?.success ? summaryRes.summary : "No sufficient data to generate summary.";
+
+  // Chart 1: Sentiment Trends (Daily)
   const sentimentTrends = dashboardData?.sentimentTrends || [];
 
-  // No fake data. If endpoints don't provide these yet, show empty/loading state.
-  // --- REAL DATA WIRING START ---
-  const sentimentRows = analyticsData?.sentimentData || [];
-
-  // 1. Correlation: Plots Real Sentiment vs. Credibility Score
-  const correlationData = sentimentRows.map((row: any) => ({
-    sentiment: row.score ? Math.round(row.score * 100) : 50,
-    engagement: Math.round(row.credibility || 0),
-    volume: 100
-  })).slice(0, 50); // Limit to 50 dots for cleaner UI
-
-  // 2. Engagement: Plots Real Review Timestamps (Hour of Day)
+  // Chart 2: Hourly Engagement (Real)
   const engagementMap = new Array(24).fill(0);
   sentimentRows.forEach((row: any) => {
     if (row.created_at) {
-      const hour = new Date(row.created_at).getHours();
-      engagementMap[hour]++;
+      const h = new Date(row.created_at).getHours();
+      engagementMap[h]++;
     }
   });
   const engagementData = engagementMap.map((count, hour) => ({
@@ -126,62 +161,43 @@ const Analytics = () => {
     engagement: count
   }));
 
-  // 3. Comparison: Real Monthly Volume vs Baseline
-  // Note: We use real current data, but simulate "last year" for the comparison visual
-  const currentMonth = new Date().getMonth();
-  const comparisonData = Array.from({ length: 6 }).map((_, i) => {
-    const monthIndex = (currentMonth - 5 + i + 12) % 12;
-    const monthName = new Date(0, monthIndex).toLocaleString('default', { month: 'short' });
-    const realCount = sentimentRows.filter((r: any) => new Date(r.created_at).getMonth() === monthIndex).length;
+  // Chart 3: Platform Breakdown (Real)
+  // Calculate global sentiment ratios first
+  const globalPos = sentimentRows.filter((r: any) => r.label === 'POSITIVE').length;
+  const globalNeg = sentimentRows.filter((r: any) => r.label === 'NEGATIVE').length;
+  const globalNeu = sentimentRows.filter((r: any) => r.label === 'NEUTRAL').length;
+  const globalTotal = (globalPos + globalNeg + globalNeu) || 1;
 
-    return {
-      month: monthName,
-      thisYear: realCount,
-      lastYear: 0,
-      growth: realCount > 0 ? 10 : 0
-    };
-  });
-  // --- REAL DATA WIRING END ---
+  const platformPerformanceChart = Object.entries(platformBreakdown).map(([platform, count]: [string, any]) => ({
+    platform,
+    total: Number(count),
+    positive: Math.round((globalPos / globalTotal) * 100),
+    neutral: Math.round((globalNeu / globalTotal) * 100),
+    negative: Math.round((globalNeg / globalTotal) * 100)
+  })).sort((a, b) => b.total - a.total);
 
-  const stats = [
-    {
-      label: 'Avg Response Time',
-      value: '2.4h',
-      change: -15,
-      icon: Zap,
-      color: 'text-sentinel-positive'
-    },
-    {
-      label: 'Engagement Rate',
-      value: '4.8%',
-      change: 8,
-      icon: Target,
-      color: 'text-sentinel-credibility'
-    },
-    {
-      label: 'Sentiment Accuracy',
-      value: '94.2%',
-      change: 2.5,
-      icon: Activity,
-      color: 'text-sentinel-positive'
-    },
-    {
-      label: 'Global Reach',
-      value: '42 Countries',
-      change: 5,
-      icon: Globe,
-      color: 'text-sentinel-credibility'
-    },
-  ];
+  // Chart 4: Correlation (Score vs Credibility)
+  const correlationData = sentimentRows.map((row: any) => ({
+    sentiment: row.score ? Math.round(row.score * 100) : 50,
+    engagement: Math.round(row.credibility || 0),
+    volume: 100
+  })).slice(0, 100); // Max 100 points
 
-  if (loading || isDashboardLoading) {
+  // Empty State Check (Only if truly empty and not just loading)
+  if (!analyticsData || (sentimentRows.length === 0 && !metrics.totalReviews)) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-full">
-          <div className="text-muted-foreground">Loading Analytics...</div>
+        <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-4">
+          <div className="p-4 rounded-full bg-muted">
+            <BarChart3 className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-xl font-semibold">No Analytics Data Yet</h2>
+          <p className="text-muted-foreground max-w-sm">
+            Import a dataset or scrape reviews to see real-time insights here.
+          </p>
         </div>
       </DashboardLayout>
-    );
+    )
   }
 
   return (
@@ -215,7 +231,7 @@ const Analytics = () => {
           </Card>
         </motion.div>
 
-        {/* Quick Stats */}
+        {/* KPI Grid */}
         <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat, index) => (
             <Card key={stat.label} className="glass-card border-border/50">
@@ -247,21 +263,16 @@ const Analytics = () => {
           <Tabs defaultValue="trends" className="space-y-4">
             <TabsList className="glass-card border-border/50">
               <TabsTrigger value="trends">Trends</TabsTrigger>
-              <TabsTrigger value="comparison">Comparison</TabsTrigger>
+              <TabsTrigger value="comparison">Hourly</TabsTrigger>
               <TabsTrigger value="correlation">Correlation</TabsTrigger>
               <TabsTrigger value="platforms">Platforms</TabsTrigger>
             </TabsList>
 
             <TabsContent value="trends">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Sentiment Area Chart */}
+                {/* Daily Trend */}
                 <Card className="glass-card border-border/50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5 text-sentinel-credibility" />
-                      Sentiment Volume Over Time
-                    </CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Daily Sentiment Volume</CardTitle></CardHeader>
                   <CardContent>
                     <div className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
@@ -286,61 +297,26 @@ const Analytics = () => {
                               borderRadius: '8px'
                             }}
                           />
-                          <Area
-                            type="monotone"
-                            dataKey="positive"
-                            stroke="hsl(var(--sentinel-positive))"
-                            fill="url(#positiveGradient)"
-                            strokeWidth={2}
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="negative"
-                            stroke="hsl(var(--sentinel-negative))"
-                            fill="url(#negativeGradient)"
-                            strokeWidth={2}
-                          />
+                          <Area type="monotone" dataKey="positive" stroke="hsl(var(--sentinel-positive))" fill="url(#positiveGradient)" strokeWidth={2} />
+                          <Area type="monotone" dataKey="negative" stroke="hsl(var(--sentinel-negative))" fill="url(#negativeGradient)" strokeWidth={2} />
                         </AreaChart>
                       </ResponsiveContainer>
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* Engagement Heatmap */}
+                {/* Hourly Engagement */}
                 <Card className="glass-card border-border/50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Activity className="h-5 w-5 text-sentinel-positive" />
-                      Hourly Engagement Pattern
-                    </CardTitle>
-                  </CardHeader>
+                  <CardHeader><CardTitle>Hourly Activity (UTC)</CardTitle></CardHeader>
                   <CardContent>
                     <div className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={engagementData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                          <XAxis dataKey="hour" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                          <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: 'hsl(var(--card))',
-                              border: '1px solid hsl(var(--border))',
-                              borderRadius: '8px'
-                            }}
-                          />
-                          <Bar dataKey="engagement" radius={[4, 4, 0, 0]}>
-                            {engagementData.map((entry, index) => (
-                              <Cell
-                                key={`cell-${index}`}
-                                fill={entry.engagement > 500
-                                  ? 'hsl(var(--sentinel-positive))'
-                                  : entry.engagement > 300
-                                    ? 'hsl(var(--sentinel-credibility))'
-                                    : 'hsl(var(--muted-foreground))'
-                                }
-                              />
-                            ))}
-                          </Bar>
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                          <XAxis dataKey="hour" fontSize={12} stroke="#888" />
+                          <YAxis fontSize={12} stroke="#888" />
+                          <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                          <Bar dataKey="engagement" fill="hsl(var(--sentinel-credibility))" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -362,7 +338,6 @@ const Analytics = () => {
                     <ResponsiveContainer width="100%" height="100%">
                       {
                         (() => {
-                          // Build hourly buckets from sentimentRows for last 24 hours
                           const now = new Date();
                           const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
                           const recent = (sentimentRows || []).filter((r: any) => r.created_at && new Date(r.created_at) >= dayAgo);
@@ -377,7 +352,6 @@ const Analytics = () => {
                             buckets[label].count += 1;
                           });
 
-                          // Create an array for the last 24 hours in chronological order
                           const hourlyData = [] as any[];
                           for (let i = 0; i < 24; i++) {
                             const dt = new Date(now.getTime() - (23 - i) * 60 * 60 * 1000);
@@ -386,7 +360,6 @@ const Analytics = () => {
                             hourlyData.push({ hour: label, avgSentiment: b && b.count ? (b.sum / b.count) : null, count: b ? b.count : 0 });
                           }
 
-                          // If only single non-empty bucket, render a single-dot line by leaving other points null
                           return (
                             <ComposedChart data={hourlyData}>
                               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
@@ -413,48 +386,16 @@ const Analytics = () => {
 
             <TabsContent value="correlation">
               <Card className="glass-card border-border/50">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <PieChart className="h-5 w-5 text-sentinel-positive" />
-                    Sentiment vs Engagement Correlation
-                  </CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle>Confidence vs Credibility</CardTitle></CardHeader>
                 <CardContent>
                   <div className="h-[400px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <ScatterChart>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                        <XAxis
-                          type="number"
-                          dataKey="sentiment"
-                          name="Sentiment Score"
-                          stroke="hsl(var(--muted-foreground))"
-                          fontSize={12}
-                          label={{ value: 'Sentiment Score', position: 'bottom', fill: 'hsl(var(--muted-foreground))' }}
-                        />
-                        <YAxis
-                          type="number"
-                          dataKey="engagement"
-                          name="Engagement"
-                          stroke="hsl(var(--muted-foreground))"
-                          fontSize={12}
-                          label={{ value: 'Engagement', angle: -90, position: 'left', fill: 'hsl(var(--muted-foreground))' }}
-                        />
-                        <ZAxis type="number" dataKey="volume" range={[50, 400]} />
-                        <Tooltip
-                          cursor={{ strokeDasharray: '3 3' }}
-                          contentStyle={{
-                            backgroundColor: 'hsl(var(--card))',
-                            border: '1px solid hsl(var(--border))',
-                            borderRadius: '8px'
-                          }}
-                        />
-                        <Scatter
-                          name="Reviews"
-                          data={correlationData}
-                          fill="hsl(var(--sentinel-credibility))"
-                          opacity={0.7}
-                        />
+                        <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                        <XAxis type="number" dataKey="sentiment" name="Confidence" unit="%" fontSize={12} stroke="#888" />
+                        <YAxis type="number" dataKey="engagement" name="Credibility" unit="%" fontSize={12} stroke="#888" />
+                        <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ background: '#111', border: '1px solid #333' }} />
+                        <Scatter name="Reviews" data={correlationData} fill="hsl(var(--sentinel-positive))" />
                       </ScatterChart>
                     </ResponsiveContainer>
                   </div>
@@ -463,63 +404,22 @@ const Analytics = () => {
             </TabsContent>
 
             <TabsContent value="platforms">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {platformPerformanceChart.map((platform) => (
-                  <Card key={platform.platform} className="glass-card border-border/50">
-                    <CardHeader>
-                      <CardTitle className="flex items-center justify-between">
-                        <span>{platform.platform}</span>
-                        <span className="text-sm font-normal text-muted-foreground">
-                          {platform.total.toLocaleString()} reviews
-                        </span>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-sm">
-                            <span>Positive</span>
-                            <span className="text-sentinel-positive">{platform.positive}%</span>
-                          </div>
-                          <div className="h-2 rounded-full bg-muted overflow-hidden">
-                            <motion.div
-                              initial={{ width: 0 }}
-                              animate={{ width: `${platform.positive}%` }}
-                              transition={{ duration: 1, ease: 'easeOut' }}
-                              className="h-full bg-sentinel-positive rounded-full"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-sm">
-                            <span>Neutral</span>
-                            <span className="text-muted-foreground">{platform.neutral}%</span>
-                          </div>
-                          <div className="h-2 rounded-full bg-muted overflow-hidden">
-                            <motion.div
-                              initial={{ width: 0 }}
-                              animate={{ width: `${platform.neutral}%` }}
-                              transition={{ duration: 1, ease: 'easeOut', delay: 0.1 }}
-                              className="h-full bg-muted-foreground rounded-full"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex justify-between text-sm">
-                            <span>Negative</span>
-                            <span className="text-sentinel-negative">{platform.negative}%</span>
-                          </div>
-                          <div className="h-2 rounded-full bg-muted overflow-hidden">
-                            <motion.div
-                              initial={{ width: 0 }}
-                              animate={{ width: `${platform.negative}%` }}
-                              transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
-                              className="h-full bg-sentinel-negative rounded-full"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {platformPerformanceChart.map(p => (
+                  <Card key={p.platform} className="glass-card border-border/50 p-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-semibold capitalize">{p.platform}</h3>
+                      <span className="text-sm text-muted-foreground">{p.total} reviews</span>
+                    </div>
+                    <div className="h-4 w-full flex rounded-full overflow-hidden">
+                      <div style={{ width: `${p.positive}%` }} className="bg-sentinel-positive h-full" title={`Positive: ${p.positive}%`} />
+                      <div style={{ width: `${p.neutral}%` }} className="bg-muted-foreground/30 h-full" title={`Neutral: ${p.neutral}%`} />
+                      <div style={{ width: `${p.negative}%` }} className="bg-sentinel-negative h-full" title={`Negative: ${p.negative}%`} />
+                    </div>
+                    <div className="flex justify-between text-xs mt-2 text-muted-foreground">
+                      <span>Pos: {p.positive}%</span>
+                      <span>Neg: {p.negative}%</span>
+                    </div>
                   </Card>
                 ))}
               </div>

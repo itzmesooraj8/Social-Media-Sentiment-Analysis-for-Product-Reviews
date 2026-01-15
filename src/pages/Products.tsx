@@ -170,16 +170,13 @@ const Products = () => {
 
   const importCsvMutation = useMutation({
     mutationFn: async (formData: FormData) => {
-      const response = await fetch('http://localhost:8000/api/import/csv', {
-        method: 'POST',
+      // apiClient interceptor handles Auth
+      const response = await apiClient.post('/api/import/csv', formData, {
         headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token") || ""}`
+          'Content-Type': 'multipart/form-data',
         },
-        body: formData
       });
-      const data = await response.json();
-      if (!data.success) throw new Error(data.message);
-      return data;
+      return response.data;
     },
     onSuccess: () => {
       toast.success('Dataset imported successfully!');

@@ -355,37 +355,44 @@ class AIService:
 
     def extract_keywords(self, texts: List[str], top_n: int = 50) -> List[Dict[str, Any]]:
         """
-        Extract frequent keywords/topics from a list of texts.
-        Basic implementation: Tokenization + Stopword Removal + Frequency.
+        Extract frequent keywords/topics from a list of texts using Scikit-Learn.
+        Removes stopwords and extracts top N meaningful terms (unigrams/bigrams).
         """
-        from collections import Counter
-        import re
+        if not texts:
+            return []
 
-        stopwords = {
-            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with",
-            "is", "was", "are", "were", "be", "been", "this", "that", "these", "those",
-            "it", "i", "you", "he", "she", "we", "they", "my", "your", "his", "her", "their",
-            "what", "which", "who", "whom", "whose", "why", "how", "where", "when",
-            "from", "as", "by", "about", "into", "through", "during", "before", "after",
-            "above", "below", "up", "down", "out", "off", "over", "under", "again", "further",
-            "then", "once", "here", "there", "all", "any", "both", "each", "few", "more",
-            "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same",
-            "so", "than", "too", "very", "can", "will", "just", "don", "should", "now"
-        }
-
-        all_words = []
-        for text in texts:
-            # Simple normalization
-            clean_text = re.sub(r'[^\w\s]', '', text.lower())
-            words = clean_text.split()
-            filtered = [w for w in words if w not in stopwords and len(w) > 2]
-            all_words.extend(filtered)
-
-        counter = Counter(all_words)
-        most_common = counter.most_common(top_n)
-
-        # Format for Word Cloud (text, value)
-        return [{"text": word, "value": count} for word, count in most_common]
+        try:
+            from sklearn.feature_extraction.text import CountVectorizer
+            
+            # Custom stop words + standar English list
+            stop_words = 'english'
+            
+            # Use CountVectorizer to extract top words
+            # ngram_range=(1, 2) lets us capture "battery life" or "screen"
+            vectorizer = CountVectorizer(stop_words=stop_words, max_features=top_n, ngram_range=(1, 2))
+            X = vectorizer.fit_transform(texts)
+            
+            # Sum word counts
+            word_counts = X.toarray().sum(axis=0)
+            words = vectorizer.get_feature_names_out()
+            
+            # Zip and sort
+            freqs = sorted(zip(words, word_counts), key=lambda x: x[1], reverse=True)
+            
+            return [{"text": word, "value": int(count)} for word, count in freqs[:top_n]]
+            
+        except ImportError:
+            # Fallback if scikit-learn is missing
+            print("Warning: scikit-learn not found, using simple fallback.")
+            from collections import Counter
+            import re
+            all_text = " ".join(texts).lower()
+            words = re.findall(r'\w+', all_text)
+            common = Counter(words).most_common(top_n)
+            return [{"text": w, "value": c} for w, c in common]
+        except Exception as e:
+            print(f"Keyword Extraction Error: {e}")
+            return []
 
     async def generate_topic_clusters(self, reviews: List[str], top_n: int = 10) -> List[Dict[str, Any]]:
         """
