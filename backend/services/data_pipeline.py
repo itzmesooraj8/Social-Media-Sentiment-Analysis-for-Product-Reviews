@@ -33,12 +33,13 @@ async def process_scraped_reviews(product_id: str, reviews: List[Dict[str, Any]]
             import hashlib
             text_hash = hashlib.md5(review_data['text'].encode('utf-8')).hexdigest()
 
+            # Persist caller-provided `username` when available, otherwise fall back to `author`
             review_insert = {
                 "product_id": product_id,
                 "text": review_data['text'],
                 "platform": review_data.get('platform', 'unknown'),
                 "source_url": review_data.get('source_url'),
-                "author": review_data.get('author'),
+                "username": review_data.get('username') or review_data.get('author'),
                 "text_hash": text_hash
             }
             review_response = supabase.table("reviews").insert(review_insert).execute()
