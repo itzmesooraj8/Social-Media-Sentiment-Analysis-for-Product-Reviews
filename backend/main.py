@@ -494,7 +494,8 @@ async def get_analytics(user: dict = Depends(get_current_user)):
         sentiment_data = sentiment_resp.data or []
 
         # Fetch recent review platform breakdown (last 30 days)
-        reviews_resp = supabase.table("reviews").select("platform, username, created_at").gte("created_at", cutoff.isoformat()).execute()
+        # Avoid selecting `username` column if it doesn't exist; use `author` instead
+        reviews_resp = supabase.table("reviews").select("platform, author, created_at").gte("created_at", cutoff.isoformat()).execute()
         reviews = reviews_resp.data or []
 
         platform_counts = {}
@@ -502,8 +503,9 @@ async def get_analytics(user: dict = Depends(get_current_user)):
         for review in reviews:
             platform = review.get("platform", "unknown")
             platform_counts[platform] = platform_counts.get(platform, 0) + 1
-            if review.get("username"):
-                authors.add(review.get("username"))
+            # prefer `username` when present, otherwise `author`
+            if review.get("username") or review.get("author"):
+                authors.add(review.get("username") or review.get("author"))
 
         # Advanced analytics: engagement (reviews per hour) and reach (unique authors)
         adv = await get_advanced_analytics()
