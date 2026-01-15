@@ -39,3 +39,8 @@ async def verify_user(authorization: Optional[str] = Header(None)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials"
         )
+
+
+async def get_current_user(authorization: Optional[str] = Header(None)):
+    """Alias for verify_user to provide a standard dependency name across the app."""
+    return await verify_user(authorization)

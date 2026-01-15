@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getCompare, getProducts as apiGetProducts } from '@/lib/api';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -22,20 +23,16 @@ const Competitors = () => {
 
     // Fetch Products List
     useEffect(() => {
-        fetch('http://localhost:8000/api/products')
-            .then(res => res.json())
-            .then(d => {
-                if (d.success) setProducts(d.data);
-            })
-            .catch(console.error);
+        apiGetProducts().then(d => {
+            if (d.success) setProducts(d.data || []);
+        }).catch(console.error);
     }, []);
 
     // Fetch Comparison Data
     useEffect(() => {
         if (selectedA && selectedB) {
             setLoading(true);
-            fetch(`http://localhost:8000/api/products/compare?id_a=${selectedA}&id_b=${selectedB}`)
-                .then(res => res.json())
+            getCompare(selectedA, selectedB)
                 .then(d => {
                     if (d.success) setData(d.data);
                     setLoading(false);

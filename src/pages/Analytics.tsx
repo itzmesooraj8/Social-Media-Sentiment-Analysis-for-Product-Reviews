@@ -82,8 +82,7 @@ const Analytics = () => {
   // 3. Error Handling (Auth Redirect)
   useEffect(() => {
     if (analyticsError) {
-      // @ts-ignore
-      if (analyticsError.status === 401 || analyticsError.message?.includes('401')) {
+      if ((analyticsError as any).status === 401 || (analyticsError as any).message?.includes('401')) {
         navigate('/login');
       }
     }
@@ -110,18 +109,19 @@ const Analytics = () => {
   const sentimentRows = analyticsData?.sentimentData || []; // Raw rows for correlation
   const platformBreakdown = analyticsData?.platformBreakdown || {};
 
-  // KPI Stats - From DB
+  // KPI Stats - Use real analytics values (no mocks)
+  const analyticsMetrics = analyticsData || {};
   const stats = [
     {
       label: 'Avg Response Time',
       value: metrics.processingSpeed ? `${metrics.processingSpeed}ms` : 'N/A',
-      change: 0, // Delta not yet in DB
+      change: 0,
       icon: Zap,
       color: 'text-sentinel-positive'
     },
     {
-      label: 'Engagement Rate',
-      value: metrics.engagementRate ? `${(metrics.engagementRate * 100).toFixed(1)}%` : '0%',
+      label: 'Engagement (reviews/hr)',
+      value: analyticsMetrics.engagementRate !== undefined && analyticsMetrics.engagementRate !== null ? `${Number(analyticsMetrics.engagementRate).toFixed(2)} r/h` : '0 r/h',
       change: 0,
       icon: Target,
       color: 'text-sentinel-credibility'
@@ -135,7 +135,7 @@ const Analytics = () => {
     },
     {
       label: 'Total Reach',
-      value: metrics.totalReach ? metrics.totalReach.toLocaleString() : '0',
+      value: analyticsMetrics.totalReach ? analyticsMetrics.totalReach.toLocaleString() : '0',
       change: 0,
       icon: Globe,
       color: 'text-sentinel-credibility'

@@ -2,6 +2,7 @@
 from typing import List, Dict, Any
 from database import supabase, save_sentiment_analysis
 from services.ai_service import ai_service
+from services.monitor_service import monitor_service
 import asyncio
 
 async def process_scraped_reviews(product_id: str, reviews: List[Dict[str, Any]]) -> int:
@@ -62,8 +63,23 @@ async def process_scraped_reviews(product_id: str, reviews: List[Dict[str, Any]]
                 await save_sentiment_analysis(analysis_data)
                 saved_count += 1
                 
+                # Run monitor checks for this review (alerts, etc.)
+                try:
+                    # fire and forget
+                    asyncio.create_task(monitor_service.evaluate_review(product_id, review_data, sentiment_result))
+                except Exception as e:
+                    print(f"Failed to schedule monitor evaluate: {e}")
+                
         except Exception as e:
             print(f"Error processing review: {e}")
             continue
             
+    # After processing batch, extract and save topics (best-effort)
+    try:
+        if saved_count > 0:
+            await monitor_service.extract_and_save_topics(product_id, reviews)
+    except Exception as e:
+        print(f"Failed to extract/save topics: {e}")
+
     return saved_count
+

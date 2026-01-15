@@ -19,6 +19,7 @@ import { InsightCard } from '@/components/dashboard/InsightCard';
 import { TopicClusters } from '@/components/dashboard/TopicClusters';
 import { DateRangePicker } from '@/components/dashboard/DateRangePicker';
 import { ExportButton } from '@/components/dashboard/ExportButton';
+import UrlAnalyzer from '@/components/dashboard/UrlAnalyzer';
 
 const Index = () => {
   const { data, isLoading } = useDashboardData();
@@ -48,6 +49,8 @@ const Index = () => {
   return (
     <DashboardLayout lastUpdated={data?.lastUpdated} isCrisis={isCrisis}>
       <div className="space-y-6">
+        <UrlAnalyzer />
+
         {/* Controls Row */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <DateRangePicker />

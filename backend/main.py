@@ -18,10 +18,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from services.ai_service import ai_service
 from services.reddit_scraper import reddit_scraper
 from services.youtube_scraper import youtube_scraper
+from services.url_processor import url_processor
 from services.report_service import report_service
 from services.scheduler import start_scheduler
 from services.data_pipeline import process_scraped_reviews
-from auth.dependencies import verify_user
+from auth.dependencies import get_current_user
 from fastapi.responses import FileResponse, Response
 from database import (
     get_products,
@@ -64,7 +65,7 @@ app.add_middleware(
 )
 
 @app.get("/health")
-async def health_check():
+async def health_check(user: dict = Depends(get_current_user)):
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 
@@ -88,9 +89,14 @@ class ReviewCreate(BaseModel):
     source_url: Optional[str] = None
 
 
+class UrlAnalyzeRequest(BaseModel):
+    url: str
+    product_name: Optional[str] = None
+
+
 # Health Check
 @app.get("/")
-async def root():
+async def root(user: dict = Depends(get_current_user)):
     return {
         "status": "online",
         "message": "Sentiment Beacon API is running",
@@ -99,7 +105,7 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
+async def health_check(user: dict = Depends(get_current_user)):
     """Health check endpoint"""
     db_status = "connected" if supabase else "disconnected"
     return {
@@ -111,7 +117,7 @@ async def health_check():
 
 # Sentiment Analysis Endpoints
 @app.post("/api/analyze")
-async def analyze_sentiment(request: AnalyzeRequest):
+async def analyze_sentiment(request: AnalyzeRequest, user: dict = Depends(get_current_user)):
     """
     Analyze sentiment of a single text input.
     Returns sentiment label, score, emotions, and credibility.
@@ -132,7 +138,7 @@ async def analyze_sentiment(request: AnalyzeRequest):
 
 # Product Endpoints
 @app.get("/api/products")
-async def list_products():
+async def list_products(user: dict = Depends(get_current_user)):
     """Get all products"""
     try:
         products = await get_products()
@@ -193,7 +199,7 @@ async def delete_product(product_id: str, user: dict = Depends(verify_user)):
 
 # Review Endpoints
 @app.get("/api/reviews")
-async def list_reviews(product_id: Optional[str] = None, limit: int = 100):
+async def list_reviews(product_id: Optional[str] = None, limit: int = 100, user: dict = Depends(get_current_user)):
     """Get reviews, optionally filtered by product"""
     try:
         reviews = await get_reviews(product_id, limit)
@@ -207,7 +213,7 @@ async def list_reviews(product_id: Optional[str] = None, limit: int = 100):
 
 
 @app.post("/api/reviews")
-async def create_review(review: ReviewCreate):
+async def create_review(review: ReviewCreate, user: dict = Depends(get_current_user)):
     """Create a new review and analyze it"""
     try:
         # Analyze sentiment
@@ -256,6 +262,28 @@ async def create_review(review: ReviewCreate):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create review: {str(e)}")
+
+
+@app.post("/api/analyze/url")
+async def analyze_url(request: UrlAnalyzeRequest, user: dict = Depends(get_current_user)):
+    """Accept a YouTube or Reddit URL, scrape it and run the sentiment pipeline."""
+    try:
+        if not request.url or not request.url.strip():
+            raise HTTPException(status_code=400, detail="URL cannot be empty")
+
+        result = await url_processor.process_url(request.url, request.product_name)
+
+        if result.get("status") == "error":
+            raise HTTPException(status_code=400, detail=result.get("message"))
+
+        return {
+            "success": True,
+            "data": result
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"URL analysis failed: {str(e)}")
 
 
 # Dashboard Endpoints
@@ -453,28 +481,33 @@ async def get_dashboard(user: dict = Depends(verify_user)):
 
 # Analytics Endpoints
 @app.get("/api/analytics")
-async def get_analytics(user: dict = Depends(verify_user)):
+async def get_analytics(user: dict = Depends(get_current_user)):
     """Get analytics data"""
     try:
         # Fetch sentiment analysis data
         sentiment_response = supabase.table("sentiment_analysis").select("*").execute()
-        sentiment_data = sentiment_response.data
-        
+        sentiment_data = sentiment_response.data or []
+
         # Calculate platform breakdown
-        reviews_response = supabase.table("reviews").select("platform").execute()
-        reviews = reviews_response.data
-        
+        reviews_response = supabase.table("reviews").select("platform, author").execute()
+        reviews = reviews_response.data or []
+
         platform_counts = {}
         for review in reviews:
             platform = review.get("platform", "unknown")
             platform_counts[platform] = platform_counts.get(platform, 0) + 1
-        
+
+        # Advanced analytics: engagement (reviews per hour) and reach (unique authors)
+        adv = await get_advanced_analytics()
+
         return {
             "success": True,
             "data": {
                 "sentimentData": sentiment_data,
                 "platformBreakdown": platform_counts,
-                "totalAnalyzed": len(sentiment_data)
+                "totalAnalyzed": len(sentiment_data),
+                "engagementRate": adv.get("engagement_rate"),
+                "totalReach": adv.get("total_reach")
             }
         }
     except Exception as e:
@@ -492,7 +525,7 @@ async def get_analytics(user: dict = Depends(verify_user)):
 
 # Integration Endpoints
 @app.get("/api/integrations")
-async def get_integrations():
+async def get_integrations(user: dict = Depends(get_current_user)):
     """Get API integration status"""
     try:
         response = supabase.table("integrations").select("*").execute()
@@ -510,7 +543,7 @@ async def get_integrations():
 
 # Alerts Endpoints
 @app.get("/api/alerts")
-async def list_alerts(user: dict = Depends(verify_user)):
+async def list_alerts(user: dict = Depends(get_current_user)):
     """Fetch alerts from DB; return empty list if none."""
     try:
         if not supabase:
@@ -524,7 +557,7 @@ async def list_alerts(user: dict = Depends(verify_user)):
 
 
 @app.post("/api/alerts/mark-read/{alert_id}")
-async def mark_alert_read(alert_id: int, user: dict = Depends(verify_user)):
+async def mark_alert_read(alert_id: int, user: dict = Depends(get_current_user)):
     try:
         if not supabase:
             raise HTTPException(status_code=500, detail="Database not configured")
@@ -539,62 +572,99 @@ async def mark_alert_read(alert_id: int, user: dict = Depends(verify_user)):
 
 # Topics Analytics Endpoint
 @app.get("/api/analytics/topics")
-async def get_topic_clusters(limit: int = 100):
-    """Fetch recent reviews and generate topic clusters using AI service."""
+async def get_topic_clusters(limit: int = 100, user: dict = Depends(get_current_user)):
+    """Return topic clusters saved in `topic_clusters` table."""
     try:
-        reviews = await get_reviews(limit=limit)
-        if not reviews:
+        if not supabase:
             return {"success": True, "data": []}
-
-        texts = [r.get("text", "") for r in reviews if r.get("text")]
-        topics = await ai_service.generate_topic_clusters(texts)
-        return {"success": True, "data": topics}
+        resp = supabase.table("topic_clusters").select("*").order("mention_count", desc=True).limit(limit).execute()
+        return {"success": True, "data": resp.data or []}
     except Exception as e:
-        print(f"Topic cluster error: {e}")
+        print(f"Topic cluster fetch error: {e}")
         return {"success": True, "data": []}
 
 
 # Settings Endpoints
 @app.get("/api/settings")
-async def get_settings(user_id: Optional[str] = None, user: dict = Depends(verify_user)):
-    """Read settings from user_settings table. If user_id provided, filter by it."""
+async def get_settings(user: dict = Depends(get_current_user)):
+    """Read settings for the authenticated user from `user_settings` table."""
     try:
         if not supabase:
             return {"success": True, "data": []}
-        query = supabase.table("user_settings").select("*")
-        if user_id:
-            query = query.eq("user_id", user_id)
-        resp = query.execute()
+        # user may be an object with `id` or a dict
+        uid = None
+        try:
+            uid = getattr(user, 'id', None) or user.get('id')
+        except Exception:
+            uid = None
+        if not uid:
+            raise HTTPException(status_code=401, detail="Could not determine user id")
+        resp = supabase.table("user_settings").select("*").eq("user_id", uid).execute()
         return {"success": True, "data": resp.data or []}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error fetching settings: {e}")
         return {"success": True, "data": []}
 
 
+class SettingItem(BaseModel):
+    setting_key: str
+    setting_value: Optional[str] = None
+
+
 @app.post("/api/settings")
-async def post_settings(payload: Dict[str, Any], user: dict = Depends(verify_user)):
-    """Upsert a user setting. Expects {user_id, key, value}."""
+async def post_settings(item: SettingItem, user: dict = Depends(get_current_user)):
+    """Upsert a user setting for the authenticated user."""
     try:
         if not supabase:
             raise HTTPException(status_code=500, detail="Database not configured")
-        user_id = payload.get("user_id")
-        key = payload.get("key")
-        value = payload.get("value")
-        if not user_id or not key:
-            raise HTTPException(status_code=400, detail="user_id and key are required")
-        # Upsert
-        up = {"user_id": user_id, "key": key, "value": value}
-        supabase.table("user_settings").upsert(up, on_conflict=["user_id", "key"]).execute()
-        return {"success": True, "data": up}
+        uid = None
+        try:
+            uid = getattr(user, 'id', None) or user.get('id')
+        except Exception:
+            uid = None
+        if not uid:
+            raise HTTPException(status_code=401, detail="Could not determine user id")
+
+        payload = {"user_id": uid, "setting_key": item.setting_key, "setting_value": item.setting_value}
+        # Upsert row
+        try:
+            supabase.table("user_settings").upsert(payload, on_conflict=["user_id", "setting_key"]).execute()
+        except Exception:
+            # Fallback: delete existing then insert
+            try:
+                supabase.table("user_settings").delete().eq("user_id", uid).eq("setting_key", item.setting_key).execute()
+                supabase.table("user_settings").insert(payload).execute()
+            except Exception as e:
+                print(f"Failed to save setting fallback: {e}")
+                raise
+
+        return {"success": True, "data": payload}
     except HTTPException:
         raise
     except Exception as e:
         print(f"Error saving setting: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.post("/api/alerts/{alert_id}/read")
+async def mark_alert_read_new(alert_id: int, user: dict = Depends(get_current_user)):
+    """Mark an alert as read (new path)."""
+    try:
+        if not supabase:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        supabase.table("alerts").update({"is_read": True}).eq("id", alert_id).execute()
+        return {"success": True, "message": "Marked read"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error marking alert read: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Reddit Scraping Endpoint
 @app.post("/api/scrape/reddit")
-async def scrape_reddit(product_id: str, product_name: str, subreddits: Optional[List[str]] = None, user: dict = Depends(verify_user)):
+async def scrape_reddit(product_id: str, product_name: str, subreddits: Optional[List[str]] = None, user: dict = Depends(get_current_user)):
     """Scrape Reddit for product mentions"""
     try:
         if subreddits is None:
@@ -624,7 +694,7 @@ async def scrape_reddit(product_id: str, product_name: str, subreddits: Optional
 
 # YouTube Scraping Endpoint
 @app.post("/api/scrape/youtube")
-async def scrape_youtube_endpoint(product_id: str, query: str, user: dict = Depends(verify_user)):
+async def scrape_youtube_endpoint(product_id: str, query: str, user: dict = Depends(get_current_user)):
     """Scrape YouTube comments"""
     try:
         # Scrape
@@ -642,7 +712,7 @@ async def scrape_youtube_endpoint(product_id: str, query: str, user: dict = Depe
 from fastapi import UploadFile, File, Form
 
 @app.get("/api/reports/summary")
-async def get_executive_summary(product_id: Optional[str] = None, user: dict = Depends(verify_user)):
+async def get_executive_summary(product_id: Optional[str] = None, user: dict = Depends(get_current_user)):
     """Generate AI Executive Summary from recent negative feedback."""
     try:
         # Use report_service to generate a frequency-based summary from recent negative reviews
@@ -658,7 +728,7 @@ async def import_csv(
     file: UploadFile = File(...),
     product_id: str = Form(...),
     platform: str = Form("twitter"),
-    user: dict = Depends(verify_user)
+    user: dict = Depends(get_current_user)
 ):
     """Import reviews from CSV file"""
     try:
@@ -677,7 +747,7 @@ class ReportRequest(BaseModel):
     date_range: Optional[Dict[str, str]] = None
 
 @app.post("/api/reports/generate")
-async def generate_report_endpoint(req: ReportRequest, user: dict = Depends(verify_user)):
+async def generate_report_endpoint(req: ReportRequest, user: dict = Depends(get_current_user)):
     try:
          result = await report_service.generate_report(req.type, req.format)
          # Return metadata, clean way is to return URL or ID. For simplicity, we return filename and content in a downloadable way?
@@ -710,7 +780,7 @@ async def download_report(filename: str):
 
 
 @app.get("/api/products/compare")
-async def compare_products(id_a: str, id_b: str):
+async def compare_products(id_a: str, id_b: str, user: dict = Depends(get_current_user)):
     """Compare two products head-to-head"""
     try:
         # Helper to get stats
@@ -809,6 +879,12 @@ async def compare_products(id_a: str, id_b: str):
     except Exception as e:
         print(f"Comparison Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/compare")
+async def compare_products_short(p1: str, p2: str, user: dict = Depends(get_current_user)):
+    """Compatibility route that accepts p1/p2 query params and delegates to compare_products."""
+    return await compare_products(id_a=p1, id_b=p2, user=user)
         
 if __name__ == "__main__":
     import uvicorn
