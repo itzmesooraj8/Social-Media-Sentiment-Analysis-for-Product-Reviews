@@ -1,3 +1,38 @@
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
+import { Search, Loader2 } from 'lucide-react';
+import api from '@/lib/api';
+
+export default function UrlAnalyzer() {
+  const [url, setUrl] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const handleAnalyze = async () => {
+    if (!url) return;
+    setLoading(true);
+    try {
+      const res = await api.post('/api/analyze/url', { url });
+      const data = res.data || res;
+      toast({ title: 'Success', description: `Analyzed ${data.count || data.reviews?.length || 0} comments from ${data.platform || 'URL'}` });
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to analyze URL', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex gap-2 p-4 bg-card border rounded-lg mb-6">
+      <Input placeholder="Paste YouTube Link..." value={url} onChange={(e: any) => setUrl(e.target.value)} />
+      <Button onClick={handleAnalyze} disabled={loading}>
+        {loading ? <Loader2 className="animate-spin" /> : <Search />} Analyze
+      </Button>
+    </div>
+  );
+}
 import React, { useState } from 'react';
 import apiClient from '@/lib/api';
 import { Button } from '@/components/ui/button';

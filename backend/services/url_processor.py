@@ -1,4 +1,95 @@
 import asyncio
+from typing import List, Dict, Any, Optional
+from urllib.parse import urlparse
+
+from services.youtube_scraper import youtube_scraper
+from services.ai_service import ai_service
+
+
+async def process_url(url: str, product_name: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Lightweight URL analysis that scrapes YouTube (and can be extended for Reddit),
+    runs sentiment analysis on the first N comments and returns a short summary.
+
+    This implementation is intentionally defensive for demo environments where
+    API keys may be missing.
+    """
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    platform = "unknown"
+    reviews: List[Dict[str, Any]] = []
+
+    try:
+        if "youtube" in hostname or "youtu.be" in hostname:
+            platform = "youtube"
+            # youtube_scraper.search_video_comments accepts either a url or id
+            reviews = youtube_scraper.search_video_comments(url, max_results=100)
+
+        elif "reddit" in hostname or "redd.it" in hostname:
+            platform = "reddit"
+            # If reddit scraper is available, attempt to call it. Keep defensive.
+            try:
+                from services.reddit_scraper import reddit_scraper
+                if hasattr(reddit_scraper, "search_product_mentions"):
+                    # product_name is used as search when available
+                    pname = product_name or parsed.path.strip('/') or "all"
+                    reviews = await reddit_scraper.search_product_mentions(pname, limit=100)
+            except Exception:
+                reviews = []
+        else:
+            return {"status": "error", "message": "Unsupported URL platform. Only YouTube and Reddit are supported."}
+
+        if not reviews:
+            return {"status": "ok", "platform": platform, "count": 0, "reviews": []}
+
+        # Run sentiment analysis concurrently (bounded)
+        limit = 50
+        to_analyze = reviews[:limit]
+
+        async def _analyze_item(item: Dict[str, Any]):
+            text = item.get("text") or item.get("content") or str(item)
+            try:
+                res = await ai_service.analyze_sentiment(text)
+            except Exception:
+                res = {"label": "NEUTRAL", "score": 0.5}
+            return {"text": text, "analysis": res, "platform": item.get("platform", platform), "author": item.get("author") or item.get("username")}
+
+        tasks = [asyncio.create_task(_analyze_item(i)) for i in to_analyze]
+        analyzed = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Normalize results
+        results: List[Dict[str, Any]] = []
+        for a in analyzed:
+            if isinstance(a, Exception):
+                continue
+            results.append(a)
+
+        # Summary counts
+        pos = sum(1 for r in results if r.get("analysis", {}).get("label", "").upper() == "POSITIVE")
+        neg = sum(1 for r in results if r.get("analysis", {}).get("label", "").upper() == "NEGATIVE")
+        neut = len(results) - pos - neg
+
+        return {
+            "status": "success",
+            "platform": platform,
+            "count": len(results),
+            "positive": pos,
+            "neutral": neut,
+            "negative": neg,
+            "sample": results[:5]
+        }
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# Backwards-compatible sync wrapper for any callers expecting a sync function
+def process_url_sync(url: str, product_name: Optional[str] = None) -> Dict[str, Any]:
+    return asyncio.get_event_loop().run_until_complete(process_url(url, product_name))
+
+
+__all__ = ["process_url", "process_url_sync"]
+import asyncio
 from typing import Optional, Dict, Any, List
 from urllib.parse import urlparse
 
