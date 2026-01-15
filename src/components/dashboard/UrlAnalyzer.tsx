@@ -1,68 +1,79 @@
-import React, { useState } from 'react';
-import { Input } from '@/components/ui/input';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
+import { Search, Loader2, Link as LinkIcon } from 'lucide-react';
+import api from '@/lib/api';
 
-const UrlAnalyzer: React.FC = () => {
+export default function UrlAnalyzer() {
   const [url, setUrl] = useState('');
-  const [productName, setProductName] = useState('');
   const [loading, setLoading] = useState(false);
-  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
-  const handleScan = async () => {
-    if (!url || url.trim().length === 0) {
-      toast.error('Please paste a YouTube or Reddit link first');
+  const handleAnalyze = async () => {
+    if (!url) {
+      toast({ title: 'Validation Error', description: 'Please paste a URL first.', variant: 'destructive' });
       return;
     }
-
+    
     setLoading(true);
     try {
-      const res = await fetch('/api/analyze/url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, product_name: productName || undefined })
+      // Calls the secure backend endpoint
+      const res = await api.post('/api/analyze/url', { url });
+      const data = res.data || res;
+      toast({ 
+        title: 'Analysis Complete', 
+        description: `Successfully ingested ${data.count || 0} reviews from ${data.platform || 'resource'}. Refreshing dashboard...`,
+        variant: 'default'
       });
-
-      const j = await res.json();
-      if (!res.ok) {
-        toast.error(j.detail || j.message || 'Failed to analyze URL');
-        setLoading(false);
-        return;
-      }
-
-      const added = j.data?.reviews_added ?? 0;
-      const platform = j.data?.platform ?? 'resource';
-      toast.success(`Scraped ${added} comments from ${platform.charAt(0).toUpperCase() + platform.slice(1)}!`);
-
-      // Refresh dashboard data
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      setUrl('');
-      setProductName('');
-    } catch (e) {
-      toast.error('Error scanning URL: ' + (e as Error).message);
+      
+    } catch (e: any) {
+      console.error(e);
+      toast({ 
+        title: 'Analysis Failed', 
+        description: 'Could not scrape this URL. Check if the link is public.', 
+        variant: 'destructive' 
+      });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="w-full p-4 rounded-md border border-input bg-background">
-      <div className="flex flex-col md:flex-row gap-2">
-        <div className="flex-1">
-          <Input placeholder="Paste YouTube or Reddit Link" value={url} onChange={e => setUrl(e.target.value)} />
+    <div className="w-full p-6 bg-card border rounded-xl shadow-sm mb-8">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="p-2 bg-primary/10 rounded-lg">
+            <LinkIcon className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-lg">Live Content Analysis</h3>
+            <p className="text-muted-foreground text-sm">Paste a YouTube video or Reddit thread URL to analyze it in real-time.</p>
+          </div>
         </div>
-        <div className="w-48">
-          <Input placeholder="Optional product name" value={productName} onChange={e => setProductName(e.target.value)} />
-        </div>
-        <div className="w-36">
-          <Button onClick={handleScan} disabled={loading}>
-            {loading ? 'Scanning…' : 'Scan Now'}
+        
+        <div className="flex gap-3">
+          <Input 
+            placeholder="https://www.youtube.com/watch?v=..." 
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className="flex-1 text-base h-12"
+          />
+          <Button onClick={handleAnalyze} disabled={loading} size="lg" className="h-12 px-8">
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Scraping...
+              </>
+            ) : (
+              <>
+                <Search className="mr-2 h-4 w-4" />
+                Analyze Now
+              </>
+            )}
           </Button>
         </div>
       </div>
     </div>
   );
-};
-
-export default UrlAnalyzer;
+}

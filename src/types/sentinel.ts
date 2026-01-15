@@ -1,3 +1,46 @@
+export interface Sentiment {
+  score: number;
+  label: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  confidence: number;
+  keywords?: string[];
+}
+
+export interface Review {
+  id: string;
+  // The backend now prioritizes 'username' but some legacy rows have 'author'.
+  // This type definition handles both to prevent TS errors.
+  username: string;
+  author?: string; // Legacy fallback
+  
+  content: string;
+  rating?: number;
+  date: string; // ISO string from DB 'created_at'
+  platform: 'twitter' | 'reddit' | 'youtube' | 'amazon' | 'unknown';
+  
+  // Enriched Data
+  sentiment: Sentiment;
+  credibility: number; // 0-100 score
+  is_spam?: boolean;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  platform?: string;
+  sentiment_score?: number;
+  review_count?: number;
+  created_at?: string;
+}
+
+export interface DashboardMetrics {
+  totalReviews: number;
+  sentimentScore: number;
+  averageCredibility: number;
+  platformBreakdown: Record<string, number>;
+  sentimentTrends?: { date: string; sentiment: number; volume: number }[];
+}
 // Sentinel Engine Type Definitions
 
 export type Platform = 'twitter' | 'reddit' | 'youtube' | 'forums';
