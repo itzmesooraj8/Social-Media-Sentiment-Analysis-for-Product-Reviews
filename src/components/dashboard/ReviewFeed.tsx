@@ -130,7 +130,7 @@ export function ReviewFeed({ reviews = [] }: ReviewFeedProps) {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm">{review.username || (review as any).author || 'Anonymous User'}</span>
+                        <span className="font-medium text-sm">{review.username || review.author || 'Anonymous User'}</span>
                         <span className="text-xs text-muted-foreground">{formatTime(review.timestamp)}</span>
                         {(review.isBot || review.credibility < 40) && (
                           <Badge variant="outline" className="text-sentinel-warning border-sentinel-warning/30 text-xs gap-1">
@@ -194,7 +194,7 @@ export function ReviewFeed({ reviews = [] }: ReviewFeedProps) {
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium">{selectedReview.username || (selectedReview as any).author || 'Anonymous User'}</span>
+                  <span className="font-medium">{selectedReview.username || selectedReview.author || 'Anonymous User'}</span>
                   <Badge
                     variant="outline"
                     className={cn('text-xs', sentimentStyles[selectedReview.sentiment])}
