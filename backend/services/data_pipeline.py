@@ -100,6 +100,7 @@ async def process_scraped_reviews(product_id: str, reviews: List[Dict[str, Any]]
             review_insert = {
                 "product_id": product_id,
                 "text": review_data['text'],
+                "content": review_data['text'], # Map text to content for DB compatibility
                 "platform": review_data.get('platform', 'unknown'),
                 "source_url": review_data.get('source_url'),
                 "username": review_data.get('username') or review_data.get('author'),

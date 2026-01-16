@@ -46,3 +46,5 @@ generated_reports/
 bun.lockb
 package-lock.json
 lint_log.txt
+
+backend/seed_keys.py

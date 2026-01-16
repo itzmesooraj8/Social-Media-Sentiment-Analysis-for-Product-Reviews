@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-HF_API_URL = "https://api-inference.huggingface.co/models/distilbert-base-uncased-finetuned-sst-2-english"
+HF_API_URL = "https://router.huggingface.co/models/distilbert-base-uncased-finetuned-sst-2-english"
 
 class AIService:
     def __init__(self):
@@ -145,7 +145,7 @@ class AIService:
                 sentiment_task = self._query_hf(client, self.api_url, {"inputs": text[:512]}, headers)
                 
                 # 2. Emotion Analysis (Joy, Anger, etc.)
-                EMOTION_API_URL = "https://api-inference.huggingface.co/models/j-hartmann/emotion-english-distilroberta-base"
+                EMOTION_API_URL = "https://router.huggingface.co/models/j-hartmann/emotion-english-distilroberta-base"
                 emotion_task = self._query_hf(client, EMOTION_API_URL, {"inputs": text[:512]}, headers)
                 
                 results = await asyncio.gather(sentiment_task, emotion_task, return_exceptions=True)

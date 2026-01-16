@@ -13,13 +13,13 @@ load_dotenv()
 from services.url_processor import url_processor
 
 async def main():
-    test_url = "https://youtu.be/4KbrxIpQgkM?si=gIZqY7GjfpCB_yHG"
+    test_url = "https://www.youtube.com/watch?v=LXb3EKWsInQ"
     print(f"🚀 Testing YouTube Analysis for: {test_url}")
-    print("   Target Product: 'MKBHD S24 Review' (Test)")
+    print("   Target Product: 'iPhone 15 Review' (Test)")
     
     try:
         # Call the actual service logic used by the API
-        result = await url_processor.process_url(test_url, product_name="MKBHD S24 Review")
+        result = await url_processor.process_url(test_url, product_name="Music Video Test")
         
         if result.get('status') == 'success':
             print("\n✅ Analysis Complete & Saved to DB!")
