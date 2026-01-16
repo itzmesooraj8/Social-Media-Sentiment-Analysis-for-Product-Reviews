@@ -68,7 +68,7 @@ interface Product {
   lastAnalyzed: Date;
   status: 'active' | 'paused' | 'archived';
   platforms: string[];
-  last_updated?: string | Date;
+  last_updated?: string;
   current_sentiment?: number;
 }
 
