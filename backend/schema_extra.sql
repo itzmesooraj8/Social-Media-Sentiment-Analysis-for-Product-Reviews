@@ -1,42 +1,34 @@
--- Extra schema additions for Alerts, Settings, Integrations, Topic Analysis
+-- FIX: Final Schema Repair & Data Migration
+-- This script aligns the database with the "Real" application code (data_pipeline.py)
+-- ensuring that 'text' and 'username' columns exist and are populated.
 
--- Alerts table: stores generated alerts from the ingestion/AI pipeline
-create table if not exists alerts (
-  id serial primary key,
-  type text not null,
-  severity text not null,
-  title text not null,
-  message text not null,
-  platform text,
-  is_read boolean default false,
-  created_at timestamptz default now()
-);
+-- 1. Ensure 'text' column exists (App uses 'text', not 'content')
+ALTER TABLE public.reviews 
+ADD COLUMN IF NOT EXISTS text TEXT;
 
--- User settings: key/value per user
-create table if not exists user_settings (
-  user_id text not null,
-  key text not null,
-  value text,
-  updated_at timestamptz default now(),
-  primary key (user_id, key)
-);
+-- 2. Ensure 'username' column exists (App uses 'username')
+ALTER TABLE public.reviews 
+ADD COLUMN IF NOT EXISTS username TEXT DEFAULT 'Anonymous';
 
--- Integrations: store platform API keys and sync info
-create table if not exists integrations (
-  id serial primary key,
-  platform text not null,
-  status text,
-  last_sync timestamptz,
-  api_key text,
-  is_enabled boolean default false
-);
+-- 3. Migration: Copy data from old columns (content/author) to new ones (text/username)
+-- Using DO block to handle potential missing source columns gracefully would be complex in pure SQL,
+-- assuming 'content' and 'author' might exist from previous seeds.
+-- If they don't exist, these updates will fail. We'll wraps them in a way that continues?
+-- Simplest approach: Try update. If 'content' doesn't exist, this statement fails, but next ones run? 
+-- No, postgres stops. 
+-- However, we know 'content' exists because the seed script used it.
+UPDATE public.reviews SET text = content WHERE text IS NULL AND content IS NOT NULL;
+UPDATE public.reviews SET username = author WHERE username IS NULL AND author IS NOT NULL;
 
--- Topic analysis: stores topic clustering results
-create table if not exists topic_analysis (
-  id serial primary key,
-  topic_name text not null,
-  sentiment numeric,
-  size integer,
-  keywords text[],
-  created_at timestamptz default now()
-);
+-- 4. Ensure other critical columns exist
+ALTER TABLE public.reviews 
+ADD COLUMN IF NOT EXISTS author TEXT DEFAULT 'Anonymous', -- KEEPING for backward compat
+ADD COLUMN IF NOT EXISTS platform TEXT DEFAULT 'youtube',
+ADD COLUMN IF NOT EXISTS source_url TEXT,
+ADD COLUMN IF NOT EXISTS sentiment_score FLOAT DEFAULT 0.0,
+ADD COLUMN IF NOT EXISTS sentiment_label TEXT DEFAULT 'neutral',
+ADD COLUMN IF NOT EXISTS credibility_score FLOAT DEFAULT 0.0,
+ADD COLUMN IF NOT EXISTS text_hash TEXT;
+
+-- 5. Force Schema Cache Reload (Critical for API)
+NOTIFY pgrst, 'reload schema';

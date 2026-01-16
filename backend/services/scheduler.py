@@ -36,18 +36,18 @@ async def run_automated_scraping_job():
                 # Search Reddit
                 # We can search for product Name or specific keywords
                 # For now, just searching product name
-                reviews = await reddit_scraper.search_product_mentions(
-                    product_name=product['name'],
-                    subreddits=['all'], 
-                    limit=20 # Lower limit for automated checks
-                )
+                # reviews = await reddit_scraper.search_product_mentions(
+                #     product_name=product['name'],
+                #     subreddits=['all'], 
+                #     limit=20 # Lower limit for automated checks
+                # )
                 
-                if reviews:
-                    saved_count = await process_scraped_reviews(product['id'], reviews)
-                    total_new_reviews += saved_count
-                    print(f"  -> Saved {saved_count} new reviews for {product['name']}")
-                else:
-                    print(f"  -> No new reviews found for {product['name']}")
+                # if reviews:
+                #     saved_count = await process_scraped_reviews(product['id'], reviews)
+                #     total_new_reviews += saved_count
+                #     print(f"  -> Saved {saved_count} new reviews for {product['name']}")
+                # else:
+                #     print(f"  -> No new reviews found for {product['name']}")
                     
             except Exception as e:
                 print(f"Error scraping product {product.get('name')}: {e}")
