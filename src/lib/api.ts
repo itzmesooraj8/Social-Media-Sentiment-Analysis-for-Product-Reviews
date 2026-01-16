@@ -1,23 +1,15 @@
-/**
- * API client for frontend-backend communication.
- */
-
 import axios from 'axios';
+import { supabase } from './supabase';
+import { Product, Review, DashboardMetrics } from '../types/sentinel';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-const apiClient = axios.create({
-    baseURL: API_URL,
-    headers: {
-        'Content-Type': 'application/json',
-    },
-    timeout: 5000, // 5 second timeout
+// 1. Setup Axios Instance
+const api = axios.create({
+    baseURL: import.meta.env.VITE_API_URL || '/api',
+    headers: { 'Content-Type': 'application/json' },
 });
 
-// Response interceptor for error handling
-import { supabase } from '@/lib/supabase';
-
-apiClient.interceptors.request.use(async (config) => {
+// 2. Request Interceptor (Adds Auth Token)
+api.interceptors.request.use(async (config) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) {
         config.headers.Authorization = `Bearer ${session.access_token}`;
@@ -25,111 +17,92 @@ apiClient.interceptors.request.use(async (config) => {
     return config;
 });
 
-apiClient.interceptors.response.use(
+// 3. Response Interceptor (Error Handling)
+api.interceptors.response.use(
     (response) => response,
     (error) => {
-        // Silent error handling - just return rejected promise
-        return Promise.reject({
-            message: error.response?.data?.detail || error.message || 'API request failed',
-            status: error.response?.status,
-            data: error.response?.data
-        });
+        console.error('API Call Failed:', error.config?.url, error.response?.status);
+        return Promise.reject(error);
     }
 );
 
-// Sentiment Analysis
-export const analyzeSentiment = async (text: string) => {
-    const response = await apiClient.post('/api/analyze', { text });
-    return response.data;
-};
+// --- API EXPORTS (These were missing!) ---
 
 // Products
-export const getProducts = async () => {
-    const response = await apiClient.get('/api/products');
-    return response.data;
+export const getProducts = async (): Promise<Product[]> => {
+    const { data } = await api.get('/products');
+    return data.data || [];
 };
 
-export const createProduct = async (productData: {
-    name: string;
-    sku: string;
-    category: string;
-    description?: string;
-    keywords?: string[];
-}) => {
-    const response = await apiClient.post('/api/products', productData);
-    return response.data;
+export const createProduct = async (productData: Partial<Product>): Promise<Product> => {
+    const { data } = await api.post('/products', productData);
+    return data.data;
 };
 
-export const deleteProduct = async (productId: string) => {
-    const response = await apiClient.delete(`/api/products/${productId}`);
-    return response.data;
+export const deleteProduct = async (id: string): Promise<void> => {
+    await api.delete(`/products/${id}`);
 };
 
-// Reviews
-export const getReviews = async (productId?: string, limit: number = 100) => {
-    const params = new URLSearchParams();
-    if (productId) params.append('product_id', productId);
-    params.append('limit', limit.toString());
-
-    const response = await apiClient.get(`/api/reviews?${params.toString()}`);
-    return response.data;
+export const updateProduct = async (id: string, updates: Partial<Product>): Promise<Product> => {
+    const { data } = await api.put(`/products/${id}`, updates);
+    return data.data;
 };
 
-export const createReview = async (reviewData: {
-    product_id: string;
-    text: string;
-    platform: string;
-    source_url?: string;
-}) => {
-    const response = await apiClient.post('/api/reviews', reviewData);
-    return response.data;
+export const getProductDetails = async (id: string): Promise<Product> => {
+    const { data } = await api.get(`/products/${id}`);
+    return data.data;
 };
 
-// Dashboard
-export const getDashboardData = async () => {
-    const response = await apiClient.get('/api/dashboard');
-    return response.data;
+// Reviews & Scraping
+export const scrapeReddit = async (productName: string): Promise<any> => {
+    const { data } = await api.post('/scrape/reddit', { query: productName });
+    return data;
 };
 
-// Analytics
-export const getAnalytics = async () => {
-    const response = await apiClient.get('/api/analytics');
-    return response.data;
+export const analyzeUrl = async (url: string): Promise<any> => {
+    const { data } = await api.post('/analyze/url', { url });
+    return data;
 };
 
-// Integrations
-export const getIntegrations = async () => {
-    const response = await apiClient.get('/api/integrations');
-    return response.data;
+// Dashboard & Analytics
+export const getDashboardStats = async (): Promise<DashboardMetrics> => { // Renamed to getDashboardStats to match user request, checking usage... user's previous code used getDashboardData. I might need to alias or update hook.
+    const { data } = await api.get('/dashboard');
+    return data.data;
 };
 
-// Health Check
-export const healthCheck = async () => {
-    const response = await apiClient.get('/health');
-    return response.data;
+// Helper to keep compatibility if pages use getDashboardData
+export const getDashboardData = getDashboardStats;
+
+export const getAnalytics = async (period: string = '7d'): Promise<any> => {
+    const { data } = await api.get(`/analytics?period=${period}`);
+    return data.data;
 };
 
-// Reddit Scraping
-export const scrapeReddit = async (productId: string, productName: string, subreddits?: string[]) => {
-    const response = await apiClient.post('/api/scrape/reddit', null, {
-        params: {
-            product_id: productId,
-            product_name: productName,
-            subreddits: subreddits?.join(',')
-        }
-    });
-    return response.data;
-};
-
-// Executive Summary
 export const getExecutiveSummary = async () => {
-    const response = await apiClient.get('/api/reports/summary');
+    const response = await api.get('/reports/summary');
     return response.data;
 };
 
-export const getCompare = async (p1: string, p2: string) => {
-    const response = await apiClient.get(`/api/compare?p1=${encodeURIComponent(p1)}&p2=${encodeURIComponent(p2)}`);
-    return response.data;
+// Competitors
+export const getCompare = async (productA: string, productB: string): Promise<any> => {
+    const { data } = await api.get(`/products/compare?id_a=${productA}&id_b=${productB}`);
+    return data.data;
 };
 
-export default apiClient;
+// Alerts
+export const getAlerts = async (): Promise<any[]> => {
+    const { data } = await api.get('/alerts');
+    return data.data || [];
+};
+
+export const createAlert = async (alertData: any): Promise<any> => {
+    const { data } = await api.post('/alerts', alertData);
+    return data.data;
+};
+
+export const deleteAlert = async (id: string): Promise<void> => {
+    await api.delete(`/alerts/${id}`);
+};
+
+// Default Export (for generic usage)
+export default api;

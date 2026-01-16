@@ -40,6 +40,17 @@ def main():
         print("\n⚠️  ACTION REQUIRED: You MUST run the SQL script in Supabase Dashboard!")
         sys.exit(1)
 
+    # 1b. Test Reviews Table Schema (Crucial for Live Analyzer)
+    print("   Checking 'reviews' table schema...", end=" ")
+    try:
+        # Try to select the specific columns that were causing crashes
+        supabase.table("reviews").select("text, username, platform, source_url").limit(1).execute()
+        print("✅ OK")
+    except Exception as e:
+        print(f"\n❌ FAILED. The 'reviews' table is outdated (Missing 'text' or 'username' columns).\n   Error: {str(e)}")
+        print("\n⚠️  ACTION REQUIRED: Copy/Paste content of 'backend/schema_extra.sql' into Supabase SQL Editor!")
+        sys.exit(1)
+
     # 2. Seed Live Data
     print("\n🌱 SEEDING DEMO DATA...")
     try:

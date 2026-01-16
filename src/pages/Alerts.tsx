@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getAlerts } from '@/lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -107,9 +108,8 @@ const Alerts = () => {
     const { data: alertsDataResp, isLoading } = useQuery({
         queryKey: ['alerts'],
         queryFn: async () => {
-            const res = await fetch('/api/alerts');
-            const json = await res.json();
-            return json.data || [];
+            const data = await getAlerts();
+            return data;
         }
     });
 
@@ -132,10 +132,11 @@ const Alerts = () => {
     const resolvedAlerts = filteredAlerts.filter(a => a.isResolved);
     const unreadCount = alerts.filter(a => !a.isRead && !a.isResolved).length;
 
-    const markReadMutation = useMutation(async (id: string) => {
-        await fetch(`/api/alerts/${id}/read`, { method: 'POST' });
-    }, {
-        onSuccess: () => queryClient.invalidateQueries(['alerts'])
+    const markReadMutation = useMutation({
+        mutationFn: async (id: string) => {
+            await fetch(`/api/alerts/${id}/read`, { method: 'POST' });
+        },
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] })
     });
 
     const markAsRead = (id: string) => {
@@ -287,8 +288,8 @@ const Alerts = () => {
                                         ) : (
                                             <div className="divide-y divide-border/50">
                                                 {activeAlerts.map((alert, index) => {
-                                                    const typeConfig = alertTypeConfig[alert.type];
-                                                    const sevConfig = severityConfig[alert.severity];
+                                                    const typeConfig = alertTypeConfig[alert.type] || alertTypeConfig['bot_detected']; // Fallback
+                                                    const sevConfig = severityConfig[alert.severity] || severityConfig['low'];
 
                                                     return (
                                                         <motion.div

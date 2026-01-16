@@ -104,13 +104,14 @@ const Settings = () => {
     if (map['profile_org']) setProfile(prev => ({ ...prev, org: map['profile_org'] }));
   }, [settingsResp]);
 
-  const saveSettingsMutation = useMutation(async (payloads: Array<{ user_id: string; key: string; value: any }>) => {
-    await Promise.all(payloads.map(p => fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })));
-  }, {
+  const saveSettingsMutation = useMutation({
+    mutationFn: async (payloads: Array<{ user_id: string; key: string; value: any }>) => {
+      await Promise.all(payloads.map(p => fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })));
+    },
     onSuccess: () => {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-      queryClient.invalidateQueries(['settings']);
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
     }
   });
 

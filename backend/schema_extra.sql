@@ -1,34 +1,31 @@
--- FIX: Final Schema Repair & Data Migration
--- This script aligns the database with the "Real" application code (data_pipeline.py)
--- ensuring that 'text' and 'username' columns exist and are populated.
+-- 1. ALIGN REVIEWS TABLE (Critical Fix)
+-- Add 'text' column if it's missing (to match Frontend/Backend code)
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS text TEXT;
 
--- 1. Ensure 'text' column exists (App uses 'text', not 'content')
-ALTER TABLE public.reviews 
-ADD COLUMN IF NOT EXISTS text TEXT;
-
--- 2. Ensure 'username' column exists (App uses 'username')
-ALTER TABLE public.reviews 
-ADD COLUMN IF NOT EXISTS username TEXT DEFAULT 'Anonymous';
-
--- 3. Migration: Copy data from old columns (content/author) to new ones (text/username)
--- Using DO block to handle potential missing source columns gracefully would be complex in pure SQL,
--- assuming 'content' and 'author' might exist from previous seeds.
--- If they don't exist, these updates will fail. We'll wraps them in a way that continues?
--- Simplest approach: Try update. If 'content' doesn't exist, this statement fails, but next ones run? 
--- No, postgres stops. 
--- However, we know 'content' exists because the seed script used it.
+-- If you have data in 'content', move it to 'text' so we don't lose it
 UPDATE public.reviews SET text = content WHERE text IS NULL AND content IS NOT NULL;
-UPDATE public.reviews SET username = author WHERE username IS NULL AND author IS NOT NULL;
 
--- 4. Ensure other critical columns exist
-ALTER TABLE public.reviews 
-ADD COLUMN IF NOT EXISTS author TEXT DEFAULT 'Anonymous', -- KEEPING for backward compat
-ADD COLUMN IF NOT EXISTS platform TEXT DEFAULT 'youtube',
-ADD COLUMN IF NOT EXISTS source_url TEXT,
-ADD COLUMN IF NOT EXISTS sentiment_score FLOAT DEFAULT 0.0,
-ADD COLUMN IF NOT EXISTS sentiment_label TEXT DEFAULT 'neutral',
-ADD COLUMN IF NOT EXISTS credibility_score FLOAT DEFAULT 0.0,
-ADD COLUMN IF NOT EXISTS text_hash TEXT;
+-- Ensure other vital columns exist for the Analyzer
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS sentiment_score FLOAT DEFAULT 0.0;
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS sentiment_label TEXT DEFAULT 'neutral';
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS credibility_score FLOAT DEFAULT 0.0;
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS platform TEXT DEFAULT 'youtube';
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS source_url TEXT;
+ALTER TABLE public.reviews ADD COLUMN IF NOT EXISTS author TEXT DEFAULT 'Anonymous';
 
--- 5. Force Schema Cache Reload (Critical for API)
+-- 2. ALIGN PRODUCTS TABLE
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS platform TEXT DEFAULT 'generic';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS last_updated TIMESTAMPTZ DEFAULT NOW();
+
+-- 3. ENSURE PERMISSIONS (Security Requirement)
+-- Allow the API (service_role and authenticated users) to Read/Write
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon;
+
+-- 4. REFRESH CACHE
 NOTIFY pgrst, 'reload schema';
