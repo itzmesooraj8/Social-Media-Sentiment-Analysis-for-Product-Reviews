@@ -1,208 +1,13 @@
-import asyncio
-from typing import List, Dict, Any, Optional
-from urllib.parse import urlparse
-
-from services.youtube_scraper import youtube_scraper
-from services.ai_service import ai_service
-
-
-async def process_url(url: str, product_name: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Lightweight URL analysis that scrapes YouTube (and can be extended for Reddit),
-    runs sentiment analysis on the first N comments and returns a short summary.
-
-    This implementation is intentionally defensive for demo environments where
-    API keys may be missing.
-    """
-    parsed = urlparse(url)
-    hostname = (parsed.hostname or "").lower()
-    platform = "unknown"
-    reviews: List[Dict[str, Any]] = []
-
-    try:
-        if "youtube" in hostname or "youtu.be" in hostname:
-            platform = "youtube"
-            # youtube_scraper.search_video_comments accepts either a url or id
-            reviews = youtube_scraper.search_video_comments(url, max_results=100)
-
-        elif "reddit" in hostname or "redd.it" in hostname:
-            platform = "reddit"
-            # If reddit scraper is available, attempt to call it. Keep defensive.
-            try:
-                from services.reddit_scraper import reddit_scraper
-                if hasattr(reddit_scraper, "search_product_mentions"):
-                    # product_name is used as search when available
-                    pname = product_name or parsed.path.strip('/') or "all"
-                    reviews = await reddit_scraper.search_product_mentions(pname, limit=100)
-            except Exception:
-                reviews = []
-        else:
-            return {"status": "error", "message": "Unsupported URL platform. Only YouTube and Reddit are supported."}
-
-        if not reviews:
-            return {"status": "ok", "platform": platform, "count": 0, "reviews": []}
-
-        # Run sentiment analysis concurrently (bounded)
-        limit = 50
-        to_analyze = reviews[:limit]
-
-        async def _analyze_item(item: Dict[str, Any]):
-            text = item.get("text") or item.get("content") or str(item)
-            try:
-                res = await ai_service.analyze_sentiment(text)
-            except Exception:
-                res = {"label": "NEUTRAL", "score": 0.5}
-            return {"text": text, "analysis": res, "platform": item.get("platform", platform), "author": item.get("author") or item.get("username")}
-
-        tasks = [asyncio.create_task(_analyze_item(i)) for i in to_analyze]
-        analyzed = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Normalize results
-        results: List[Dict[str, Any]] = []
-        for a in analyzed:
-            if isinstance(a, Exception):
-                continue
-            results.append(a)
-
-        # Summary counts
-        pos = sum(1 for r in results if r.get("analysis", {}).get("label", "").upper() == "POSITIVE")
-        neg = sum(1 for r in results if r.get("analysis", {}).get("label", "").upper() == "NEGATIVE")
-        neut = len(results) - pos - neg
-
-        return {
-            "status": "success",
-            "platform": platform,
-            "count": len(results),
-            "positive": pos,
-            "neutral": neut,
-            "negative": neg,
-            "sample": results[:5]
-        }
-
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-# Backwards-compatible sync wrapper for any callers expecting a sync function
-def process_url_sync(url: str, product_name: Optional[str] = None) -> Dict[str, Any]:
-    return asyncio.get_event_loop().run_until_complete(process_url(url, product_name))
-
-
-__all__ = ["process_url", "process_url_sync"]
-import asyncio
-from typing import Optional, Dict, Any, List
-from urllib.parse import urlparse
-
-from services.youtube_scraper import youtube_scraper
-from services.reddit_scraper import reddit_scraper
-from services.ai_service import ai_service
-
-
-async def _analyze_reviews_async(reviews: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Run `ai_service.analyze_sentiment` on reviews concurrently where possible."""
-    results = []
-    tasks = []
-    for r in reviews:
-        text = r.get("text", "")
-        tasks.append(ai_service.analyze_sentiment(text))
-
-    try:
-        analyses = await asyncio.gather(*tasks, return_exceptions=True)
-    except Exception:
-        analyses = []
-
-    for r, a in zip(reviews, analyses):
-        if isinstance(a, Exception):
-            # If analysis failed, attach minimal placeholder
-            r["analysis"] = {"label": "NEUTRAL", "score": 0.5}
-        else:
-            r["analysis"] = a
-        results.append(r)
-
-    return results
-
-
-def process_url(url: str, product_name: Optional[str] = None) -> Dict[str, Any]:
-    """Detect platform from URL and run scraping + lightweight analysis.
-
-    This function returns a summary and does NOT persist to DB unless the caller
-    chooses to forward the reviews to the pipeline explicitly.
-    """
-    parsed = urlparse(url)
-    hostname = (parsed.hostname or "").lower()
-
-    platform = None
-    reviews: List[Dict[str, Any]] = []
-
-    # Detect platform
-    if "youtube" in hostname or "youtu.be" in hostname:
-        platform = "youtube"
-        try:
-            # youtube_scraper.search_video_comments may raise if API key missing
-            reviews = youtube_scraper.search_video_comments(url, max_results=50)
-        except Exception as e:
-            return {"status": "error", "message": f"YouTube scrape failed: {e}"}
-
-    elif "reddit" in hostname or "redd.it" in hostname:
-        platform = "reddit"
-        # reddit scraper is async for search; we call sync search if available
-        try:
-            # If reddit_scraper exposes async search_product_mentions, use it
-            import asyncio as _asyncio
-            if hasattr(reddit_scraper, "search_product_mentions"):
-                # search_product_mentions expects product name; try to extract id from path or use product_name
-                pname = product_name or parsed.path.strip('/') or "all"
-                reviews = _asyncio.get_event_loop().run_until_complete(reddit_scraper.search_product_mentions(pname, limit=50))
-        except Exception as e:
-            return {"status": "error", "message": f"Reddit scrape failed: {e}"}
-    else:
-        return {"status": "error", "message": "Unsupported URL platform. Only YouTube and Reddit URLs are supported."}
-
-    # If no reviews found
-    if not reviews:
-        return {"status": "ok", "platform": platform, "count": 0, "reviews": []}
-
-    # Attempt to run analysis asynchronously (may fail if AI service not configured)
-    try:
-        analyzed = asyncio.get_event_loop().run_until_complete(_analyze_reviews_async(reviews))
-    except Exception:
-        # Fallback: attach no analysis
-        analyzed = reviews
-
-    # Build a lightweight summary
-    pos = 0
-    neg = 0
-    neut = 0
-    for r in analyzed:
-        lab = None
-        if isinstance(r.get("analysis"), dict):
-            lab = r["analysis"].get("label")
-        if lab:
-            if lab.upper() == "POSITIVE": pos += 1
-            elif lab.upper() == "NEGATIVE": neg += 1
-            else: neut += 1
-        else:
-            neut += 1
-
-    summary = {
-        "status": "ok",
-        "platform": platform,
-        "count": len(analyzed),
-        "positive": pos,
-        "neutral": neut,
-        "negative": neg,
-        "sample": analyzed[:5]
-    }
-
-    return summary
 import re
+import asyncio
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse, parse_qs
+import traceback
 
 from services.youtube_scraper import youtube_scraper
 from services.reddit_scraper import reddit_scraper
 from database import get_products, add_product
-
+from services.data_pipeline import data_pipeline
 
 class UrlProcessorService:
     async def process_url(self, url: str, product_name: Optional[str] = None) -> Dict[str, Any]:
@@ -225,6 +30,7 @@ class UrlProcessorService:
                 # create product minimally
                 sku = product_name.lower().replace(" ", "-")[:40]
                 pdata = {"name": product_name, "sku": sku, "category": "imported", "description": "Imported via URL Analyzer", "keywords": []}
+                # add_product returns a list of created items
                 created = await add_product(pdata)
                 if created:
                     product_id = created[0].get("id")
@@ -233,6 +39,9 @@ class UrlProcessorService:
         if not product_id:
             # Create a generic import product if none exists
             pdata = {"name": "Imported via URL Analyzer", "sku": "imported", "category": "imported", "description": "Auto-created product for URL imports", "keywords": []}
+            # Check if it exists first? add_product in database.py blindly inserts. 
+            # Ideally we check, but for now let's hope it works or we catch dup info if enforced by DB.
+            # Assuming DB allows dups or we simply create new one.
             created = await add_product(pdata)
             if created:
                 product_id = created[0].get("id")
@@ -334,7 +143,6 @@ class UrlProcessorService:
                 reviews = await reviews
 
             # Run pipeline to save & analyze
-            from services.data_pipeline import data_pipeline
             processed = await data_pipeline.process_reviews(reviews, product_id)
             added = len(processed)
 
@@ -346,7 +154,6 @@ class UrlProcessorService:
             }
 
         except Exception as e:
-            import traceback
             traceback.print_exc()
             return {"status": "error", "message": str(e)}
 

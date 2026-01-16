@@ -13,7 +13,7 @@ from datetime import datetime
 from collections import defaultdict
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from services.ai_service import ai_service
 from services.reddit_scraper import reddit_scraper
@@ -147,6 +147,21 @@ async def list_products(user: dict = Depends(get_current_user)):
     """Get all products"""
     try:
         products = await get_products()
+        
+        # Enrich with review counts (N+1 acceptable for demo scale)
+        for p in products:
+            try:
+                # Get count
+                count_res = supabase.table("reviews").select("id", count="exact").eq("product_id", p["id"]).execute()
+                p["review_count"] = count_res.count or 0
+                
+                # Get average sentiment if not stored
+                # (Optional: we rely on 'current_sentiment' stored on product if available, else 0)
+                if "current_sentiment" not in p:
+                     p["current_sentiment"] = 0 # Placeholder
+            except Exception:
+                p["review_count"] = 0
+
         return {
             "success": True,
             "data": products,

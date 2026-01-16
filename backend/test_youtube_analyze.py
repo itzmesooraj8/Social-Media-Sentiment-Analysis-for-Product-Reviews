@@ -14,7 +14,7 @@ from services.url_processor import url_processor
 
 async def main():
     test_url = "https://www.youtube.com/watch?v=LXb3EKWsInQ"
-    print(f"🚀 Testing YouTube Analysis for: {test_url}")
+    print(f"Testing YouTube Analysis for: {test_url}")
     print("   Target Product: 'iPhone 15 Review' (Test)")
     
     try:
@@ -22,17 +22,17 @@ async def main():
         result = await url_processor.process_url(test_url, product_name="Music Video Test")
         
         if result.get('status') == 'success':
-            print("\n✅ Analysis Complete & Saved to DB!")
+            print("\nAnalysis Complete & Saved to DB!")
             print(f"   Product ID: {result.get('product_id')}")
             print(f"   Reviews Added: {result.get('reviews_added')}")
             print(f"   Platform: {result.get('platform')}")
         else:
-            print(f"\n❌ Analysis Failed: {result.get('message')}")
+            print(f"\nAnalysis Failed: {result.get('message')}")
             
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f"\n❌ Script Error: {e}")
+        print(f"\nScript Error: {e}")
 
 if __name__ == "__main__":
     if sys.platform == 'win32':

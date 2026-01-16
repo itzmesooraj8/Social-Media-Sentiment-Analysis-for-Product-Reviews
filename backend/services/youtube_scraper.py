@@ -21,19 +21,19 @@ class YouTubeScraperService:
         self.enabled = False
 
         if not _GOOGLE_AVAILABLE:
-            print("⚠️ YouTube scraping disabled: 'google-api-python-client' not installed.")
+            print("YouTube scraping disabled: 'google-api-python-client' not installed.")
             return
 
         if self.api_key:
             try:
                 self.youtube = build("youtube", "v3", developerKey=self.api_key)
                 self.enabled = True
-                print("✓ YouTube Client Initialized")
+                print("YouTube Client Initialized")
             except Exception as e:
                 self.enabled = False
-                print(f"❌ YouTube Client Init Failed: {e}")
+                print(f"YouTube Client Init Failed: {e}")
         else:
-            print("ℹ️ YouTube scraping disabled: YOUTUBE_API_KEY not found in environment.")
+            print("YouTube scraping disabled: YOUTUBE_API_KEY not found in environment.")
 
     def search_video_comments(self, query: str, max_results: int = 50) -> List[Dict[str, Any]]:
         """

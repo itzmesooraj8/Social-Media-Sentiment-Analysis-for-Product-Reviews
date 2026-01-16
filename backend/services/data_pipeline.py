@@ -89,11 +89,11 @@ class DataPipelineService:
                     # Retry with safer data
                     supabase.table("reviews").insert(retry_data).execute()
                     saved_count += 1
-                    print(f"   ⚠️ Saved review with reduced fields (Schema mismatch handled).")
+                    print(f"   Saved review with reduced fields (Schema mismatch handled).")
                 except Exception as final_error:
-                    print(f"   ❌ Final Save Error: {final_error}")
+                    print(f"   Final Save Error: {final_error}")
 
-        print(f"✅ Data Pipeline: Successfully saved {saved_count}/{len(processed_reviews)} reviews.")
+        print(f"Data Pipeline: Successfully saved {saved_count}/{len(processed_reviews)} reviews.")
         return processed_reviews
 
 data_pipeline = DataPipelineService()

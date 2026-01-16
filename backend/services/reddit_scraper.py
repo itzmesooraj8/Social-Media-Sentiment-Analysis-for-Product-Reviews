@@ -24,7 +24,7 @@ class RedditScraperService:
                     client_secret=os.environ.get("REDDIT_CLIENT_SECRET", ""),
                     user_agent=os.environ.get("REDDIT_USER_AGENT", "SentimentBeacon/1.0")
                 )
-                print("✓ Reddit client initialized")
+                print("Reddit client initialized")
             except Exception as e:
                 print(f"Reddit client initialization failed: {e}")
     
@@ -72,7 +72,7 @@ class RedditScraperService:
                                 'subreddit': subreddit_name
                             })
             
-            print(f"✓ Found {len(reviews)} Reddit mentions for '{product_name}'")
+            print(f"Found {len(reviews)} Reddit mentions for '{product_name}'")
             return reviews
             
         except Exception as e:

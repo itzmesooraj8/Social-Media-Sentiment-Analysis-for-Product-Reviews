@@ -120,7 +120,7 @@ const Products = () => {
         name: p.name,
         sku: p.sku,
         category: p.category,
-        totalReviews: 0,
+        totalReviews: p.review_count || 0,
         sentimentScore: p.current_sentiment || 0,
         sentimentTrend: 'stable',
         credibilityScore: 0,

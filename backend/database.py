@@ -18,7 +18,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 else:
     try:
         supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        print("✓ Supabase client initialized successfully")
+        print("Supabase client initialized successfully")
     except Exception as e:
         print(f"Error initializing Supabase client: {e}")
         supabase = None
@@ -122,11 +122,11 @@ async def get_dashboard_stats():
     """
     try:
         # Try calling the RPC function
-        response = supabase.rpc('get_dashboard_stats', {}).execute()
-        if response.data:
-            return response.data
+        # response = supabase.rpc('get_dashboard_stats', {}).execute()
+        # if response.data:
+        #     return response.data
             
-        raise Exception("RPC returned no data")
+        raise Exception("RPC disabled to force fallback calculation")
     except Exception as e:
         print(f"RPC 'get_dashboard_stats' failed (User might need to run schema.sql): {e}")
         # Fallback to Python-side aggregation (Optimized)

@@ -114,7 +114,7 @@ class AIService:
             text_hash = self._compute_hash(text)
             cached = await get_analysis_by_hash(text_hash)
             if cached:
-                print(f"✓ Using cached analysis for hash {text_hash[:8]}")
+                print(f"Using cached analysis for hash {text_hash[:8]}")
                 return {
                     "label": cached.get("label"),
                     "score": float(cached.get("score") or 0.0),
