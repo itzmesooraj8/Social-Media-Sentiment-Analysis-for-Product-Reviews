@@ -30,6 +30,8 @@ async def main():
             print(f"\n❌ Analysis Failed: {result.get('message')}")
             
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"\n❌ Script Error: {e}")
 
 if __name__ == "__main__":

@@ -201,7 +201,6 @@ from urllib.parse import urlparse, parse_qs
 
 from services.youtube_scraper import youtube_scraper
 from services.reddit_scraper import reddit_scraper
-from services.data_pipeline import process_scraped_reviews
 from database import get_products, add_product
 
 
@@ -335,7 +334,9 @@ class UrlProcessorService:
                 reviews = await reviews
 
             # Run pipeline to save & analyze
-            added = await process_scraped_reviews(product_id, reviews)
+            from services.data_pipeline import data_pipeline
+            processed = await data_pipeline.process_reviews(reviews, product_id)
+            added = len(processed)
 
             return {
                 "status": "success",
@@ -345,6 +346,8 @@ class UrlProcessorService:
             }
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return {"status": "error", "message": str(e)}
 
 

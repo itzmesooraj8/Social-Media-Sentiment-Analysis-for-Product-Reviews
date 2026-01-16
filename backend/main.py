@@ -239,6 +239,32 @@ async def update_product(product_id: str, updates: ProductUpdate, user: dict = D
 
 
 # Review Endpoints
+# Product Review Endpoint (Fixed for Frontend)
+@app.get("/api/products/{product_id}/reviews")
+async def get_product_reviews(product_id: str, user: dict = Depends(get_current_user)):
+    try:
+        response = supabase.table("reviews").select("*").eq("product_id", product_id).order("created_at", desc=True).execute()
+        
+        # --- FIX: NORMALIZE DATA FOR FRONTEND ---
+        normalized_data = []
+        for item in response.data:
+            normalized_data.append({
+                **item,
+                # Ensure 'text' exists (use 'content' if 'text' is missing)
+                "text": item.get("text") or item.get("content", ""),
+                # Ensure 'username' exists (use 'author' if 'username' is missing)
+                "username": item.get("username") or item.get("author", "Anonymous"),
+                # Ensure scores are floats
+                "sentiment_score": float(item.get("sentiment_score") or 0.0),
+                "credibility_score": float(item.get("credibility_score") or 0.0)
+            })
+        # ----------------------------------------
+
+        return {"success": True, "data": normalized_data}
+    except Exception as e:
+        print(f"Error fetching reviews: {e}")
+        return {"success": False, "data": []}
+
 @app.get("/api/reviews")
 async def list_reviews(product_id: Optional[str] = None, limit: int = 100, user: dict = Depends(get_current_user)):
     """Get reviews, optionally filtered by product"""
