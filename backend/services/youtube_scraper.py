@@ -1,19 +1,35 @@
 import os
 import datetime
 from typing import List, Dict, Any
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+
+try:
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+    _GOOGLE_AVAILABLE = True
+except Exception:
+    build = None  # type: ignore
+    HttpError = Exception  # fallback
+    _GOOGLE_AVAILABLE = False
+
 
 class YouTubeScraperService:
     def __init__(self):
         # Use provided key or env var
         self.api_key = os.environ.get("YOUTUBE_API_KEY", "")
         self.youtube = None
+        self.enabled = False
+
+        if not _GOOGLE_AVAILABLE:
+            print("YouTube client library not installed. To enable YouTube scraping, run: pip install google-api-python-client")
+            return
+
         if self.api_key:
             try:
                 self.youtube = build("youtube", "v3", developerKey=self.api_key)
+                self.enabled = True
                 print("✓ YouTube Client Initialized")
             except Exception as e:
+                self.enabled = False
                 print(f"YouTube Client Init Failed: {e}")
 
     def search_video_comments(self, query: str, max_results: int = 50) -> List[Dict[str, Any]]:
@@ -21,8 +37,8 @@ class YouTubeScraperService:
         Search for videos matching query, then fetch comments from top video.
         If query is a URL, extract video_id directly.
         """
-        if not self.youtube:
-             raise Exception("YouTube API Key missing/invalid. Cannot scrape.")
+        if not self.enabled or not self.youtube:
+            raise Exception("YouTube scraping not available: missing client library or API key. See backend logs.")
 
         try:
             video_id = None

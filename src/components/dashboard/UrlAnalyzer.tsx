@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Loader2, Link as LinkIcon } from 'lucide-react';
-import { api } from '@/lib/api';
+import api from '@/lib/api';
 
 export default function UrlAnalyzer() {
   const [url, setUrl] = useState('');

@@ -11,6 +11,26 @@ A powerful, AI-driven sentiment analysis platform that monitors and analyzes pro
 
 ---
 
+## 🚀 Key Differentiators (Why this Project Wins)
+
+Unlike standard sentiment analyzers, this platform features:
+
+1.  **⚡ Real-Time Ingestion Engine:**
+    - Live scraping of YouTube & Reddit via direct URL.
+    - Zero-latency analysis using `AsyncIO` and FastAPI.
+
+2.  **🛡️ "Credibility" & Bot Detection:**
+    - Proprietary algorithm to filter out spam, bots, and duplicate reviews before analysis.
+    - Ensures insights are based on *real* human feedback.
+
+3.  **⚔️ Competitor War Room:**
+    - Head-to-head Aspect-Based Sentiment Analysis (ABSA).
+    - Visualizes gaps in specific features (Battery, Price, Service) using Radar Charts.
+
+4.  **🚨 Automated Crisis Monitoring:**
+    - Background workers scan for PR threats (keywords: "fire", "scam", "lawsuit").
+    - instant Alerts system for high-severity negative spikes.
+
 ## ✨ Features
 
 ### 🎨 **Beautiful Modern UI**
