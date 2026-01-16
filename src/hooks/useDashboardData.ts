@@ -1,82 +1,63 @@
-import { useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getDashboardData } from '@/lib/api';
-import { subscribeToTable } from '@/lib/supabase';
-import { DashboardData, DashboardFilters } from '@/types/sentinel';
+import { useState, useEffect } from 'react';
+import { getDashboardStats, getAnalytics, getAlerts, getDashboardData } from '@/lib/api';
+import { useToast } from './use-toast';
+import { useQuery } from '@tanstack/react-query';
 
-// Hook for fetching REAL dashboard data - NO MOCK DATA
-// Now enhanced with Supabase Realtime subscriptions!
-export const useDashboardData = (filters?: Partial<DashboardFilters>) => {
-  const queryClient = useQueryClient();
+export function useDashboardData() {
+  const { toast } = useToast();
 
-  // Setup Real-time subscriptions
+  // 1. Fetch Dashboard Metrics with Auto-Refresh
+  const {
+    data: metrics,
+    isLoading: isLoadingMetrics,
+    refetch: refetchMetrics
+  } = useQuery({
+    queryKey: ['dashboard-metrics'],
+    // Using getDashboardData as it returns the comprehensive metrics structure expected by the dashboard
+    queryFn: async () => {
+      const res = await getDashboardData();
+      return res.data;
+    },
+    refetchInterval: 5000, // ⚡ AUTO-REFRESH every 5 seconds
+  });
+
+  // 2. Fetch Analytics Data
+  const {
+    data: analytics,
+    isLoading: isLoadingAnalytics
+  } = useQuery({
+    queryKey: ['dashboard-analytics'],
+    queryFn: () => getAnalytics('7d'),
+    refetchInterval: 10000, // Update charts every 10s
+  });
+
+  // 3. Fetch Alerts
+  // Assuming getAlerts returns { success: true, data: [...] }
+  const {
+    data: alertsData,
+    isLoading: isLoadingAlerts
+  } = useQuery({
+    queryKey: ['dashboard-alerts'],
+    queryFn: getAlerts,
+    refetchInterval: 5000,
+  });
+
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    console.log('🔌 Connecting to Supabase Realtime...');
+    if (!isLoadingMetrics && !isLoadingAnalytics && !isLoadingAlerts) {
+      setLoading(false);
+    }
+  }, [isLoadingMetrics, isLoadingAnalytics, isLoadingAlerts]);
 
-    // Subscribe to reviews
-    const reviewsChannel = subscribeToTable('reviews', (payload) => {
-      console.log('⚡ Realtime Update (Reviews):', payload);
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['realtime-metrics'] });
-    });
-
-    // Subscribe to sentiment_analysis
-    const sentimentChannel = subscribeToTable('sentiment_analysis', (payload) => {
-      console.log('⚡ Realtime Update (Analysis):', payload);
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    });
-
-    return () => {
-      console.log('🔌 Disconnecting Realtime...');
-      reviewsChannel.unsubscribe();
-      sentimentChannel.unsubscribe();
-    };
-  }, [queryClient]);
-
-  return useQuery<DashboardData | null>({
-    queryKey: ['dashboard', filters],
-    queryFn: async () => {
-      try {
-        const response = await getDashboardData();
-        if (response.success && response.data) {
-          return response.data;
-        }
-        return null;
-      } catch (error) {
-        return null;
-      }
-    },
-    refetchInterval: false,
-    refetchOnWindowFocus: false,
-    refetchOnMount: true,
-    retry: false,
-  });
-};
-
-// Hook for real-time metrics
-export const useRealTimeMetrics = () => {
-  return useQuery({
-    queryKey: ['realtime-metrics'],
-    queryFn: async () => {
-      const response = await getDashboardData();
-      return response.success && response.data ? response.data.metrics : null;
-    },
-    refetchInterval: false,
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
-};
-
-// Hook for alerts
-export const useAlerts = () => {
-  return useQuery({
-    queryKey: ['alerts'],
-    queryFn: async () => {
-      const response = await getDashboardData();
-      return response.success && response.data ? response.data.alerts : [];
-    },
-    refetchInterval: false,
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
-};
+  return {
+    metrics,
+    analytics,
+    alerts: alertsData?.data || [],
+    loading,
+    refresh: () => {
+      refetchMetrics();
+      toast({ title: "Refreshing data..." });
+    }
+  };
+}

@@ -23,8 +23,11 @@ export interface Product {
   platform: string;
   url: string;
   image_url?: string;
-  status: 'active' | 'archived';
-  last_updated: string;
+  status: 'active' | 'archived' | 'paused';
+  last_updated?: string;
+  category?: string;
+  sku?: string;
+  current_sentiment?: number;
 }
 
 export interface DashboardMetrics {

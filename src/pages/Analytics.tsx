@@ -55,7 +55,7 @@ const Analytics = () => {
   const navigate = useNavigate();
 
   // 1. Fetch Real Data via Hooks (TanStack Query)
-  const { data: dashboardData, isLoading: isDashboardLoading } = useDashboardData();
+  const { metrics: dashboardData, loading: isDashboardLoading } = useDashboardData();
 
   const {
     data: analyticsRes,
@@ -63,7 +63,7 @@ const Analytics = () => {
     error: analyticsError
   } = useQuery({
     queryKey: ['analytics'],
-    queryFn: getAnalytics,
+    queryFn: () => getAnalytics('7d'),
     retry: 1,
   });
 
@@ -82,7 +82,14 @@ const Analytics = () => {
   // 3. Error Handling (Auth Redirect)
   useEffect(() => {
     if (analyticsError) {
-      if ((analyticsError as any).status === 401 || (analyticsError as any).message?.includes('401')) {
+      // Check for 401 status in various error structures
+      const isUnauthorized =
+        (analyticsError as any).status === 401 ||
+        (analyticsError as any).response?.status === 401 ||
+        (analyticsError as any).message?.includes('401');
+
+      if (isUnauthorized) {
+        // Optional: toast({ title: "Session Expired", description: "Please login again." });
         navigate('/login');
       }
     }

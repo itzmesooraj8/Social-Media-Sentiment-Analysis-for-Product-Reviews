@@ -68,6 +68,8 @@ interface Product {
   lastAnalyzed: Date;
   status: 'active' | 'paused' | 'archived';
   platforms: string[];
+  last_updated?: string | Date;
+  current_sentiment?: number;
 }
 
 const Products = () => {
@@ -119,12 +121,14 @@ const Products = () => {
         sku: p.sku,
         category: p.category,
         totalReviews: 0,
-        sentimentScore: 0,
+        sentimentScore: p.current_sentiment || 0,
         sentimentTrend: 'stable',
         credibilityScore: 0,
         lastAnalyzed: new Date(p.created_at || Date.now()),
         status: p.status,
-        platforms: ['reddit', 'youtube']
+        platforms: ['reddit', 'youtube'],
+        last_updated: p.last_updated,
+        current_sentiment: p.current_sentiment
       }));
     }
   });
@@ -509,7 +513,13 @@ const Products = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="font-semibold truncate text-lg">{product.name}</h3>
-                    <Badge variant="outline" className={cn('text-xs capitalize', statusStyles[product.status])}>{product.status}</Badge>
+                    {product.last_updated && new Date(product.last_updated).getTime() > Date.now() - 600000 && (!product.current_sentiment || product.current_sentiment === 0) ? (
+                      <Badge variant="outline" className="animate-pulse border-blue-500 text-blue-500">
+                        <span className="mr-1">●</span> Analyzing...
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className={cn('text-xs capitalize', statusStyles[product.status])}>{product.status}</Badge>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">{product.sku} • {product.category}</div>
                 </div>
