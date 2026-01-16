@@ -51,7 +51,11 @@ app = FastAPI(
 async def startup_event():
     """Start background services on app startup"""
     try:
-        start_scheduler()
+        # Allow disabling the automatic scheduler during local stabilization
+        if os.environ.get("SKIP_SCHEDULER", "").lower() in ["1", "true", "yes"]:
+            print("Scheduler start skipped (SKIP_SCHEDULER set).")
+        else:
+            start_scheduler()
     except Exception as e:
         print(f"Failed to start scheduler: {e}")
 
