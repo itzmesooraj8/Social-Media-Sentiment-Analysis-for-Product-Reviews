@@ -20,7 +20,9 @@ import os
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 
-load_dotenv()
+from pathlib import Path
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 HF_API_URL = "https://router.huggingface.co/models/distilbert-base-uncased-finetuned-sst-2-english"
 

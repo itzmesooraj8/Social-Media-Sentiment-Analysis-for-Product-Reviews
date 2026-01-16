@@ -382,6 +382,7 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
              "botsDetected": 0,
              "averageCredibility": metrics_raw.get("averageCredibility", 0)
         }
+        print(f"DEBUG: Dashboard Metrics: {metrics}")
 
         # --- Inject Advanced Analytics (Real Math) ---
         adv_stats = await get_advanced_analytics()
@@ -533,6 +534,8 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
         }
     except Exception as e:
         print(f"Error fetching dashboard data: {e}")
+        import traceback
+        traceback.print_exc()
         # Return empty data instead of crashing
         return {
             "success": True,

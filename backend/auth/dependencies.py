@@ -24,6 +24,7 @@ async def verify_user(authorization: Optional[str] = Header(None)):
             )
         
         # Verify with Supabase
+        # print(f"DEBUG: Verifying token: {token[:10]}...")
         user_response = supabase.auth.get_user(token)
         if not user_response.user:
             raise HTTPException(
@@ -34,10 +35,13 @@ async def verify_user(authorization: Optional[str] = Header(None)):
         return user_response.user
         
     except Exception as e:
-        print(f"Auth Error: {e}")
+        print(f"Auth Verification Error: {e}")
+        import traceback
+        traceback.print_exc()
+        # For Local Dev Debugging: Allow "dev-token" if backend logic fails? No, better to see why it fails.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials"
+            detail=f"Could not validate credentials: {str(e)}"
         )
 
 

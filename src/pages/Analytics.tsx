@@ -112,7 +112,7 @@ const Analytics = () => {
 
   // 4. Data Transformation (Strictly No Mocks)
   const analyticsData = analyticsRes?.success ? analyticsRes.data : null;
-  const metrics = dashboardData?.metrics || {};
+  const metrics = (dashboardData as any)?.metrics || {};
   const sentimentRows = analyticsData?.sentimentData || []; // Raw rows for correlation
   const platformBreakdown = analyticsData?.platformBreakdown || {};
 
@@ -153,7 +153,7 @@ const Analytics = () => {
   const aiSummary = summaryRes?.success ? summaryRes.summary : "No sufficient data to generate summary.";
 
   // Chart 1: Sentiment Trends (Daily)
-  const sentimentTrends = dashboardData?.sentimentTrends || [];
+  const sentimentTrends = (dashboardData as any)?.sentimentTrends || [];
 
   // Chart 2: Hourly Engagement (Real)
   const engagementMap = new Array(24).fill(0);

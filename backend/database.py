@@ -5,22 +5,29 @@ import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables (Robust path handling)
+from pathlib import Path
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 # Initialize Supabase client
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
+# Debug prints to trace initialization
+print(f"DEBUG: Loading .env from {env_path}")
+print(f"DEBUG: SUPABASE_URL Found? {bool(SUPABASE_URL)}")
+print(f"DEBUG: SUPABASE_KEY Found? {bool(SUPABASE_KEY)}")
+
 if not SUPABASE_URL or not SUPABASE_KEY:
-    print("Warning: Supabase credentials not found in environment variables")
+    print("❌ CRITICAL: Supabase credentials not found in environment variables!")
     supabase: Client = None
 else:
     try:
         supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        print("Supabase client initialized successfully")
+        print("✅ Supabase client initialized successfully")
     except Exception as e:
-        print(f"Error initializing Supabase client: {e}")
+        print(f"❌ Error initializing Supabase client: {e}")
         supabase = None
 
 
@@ -134,14 +141,17 @@ async def get_dashboard_stats():
 
 async def _get_dashboard_metrics_fallback():
     """Fallback aggregation if SQL function is missing."""
+    print("DEBUG: Entering _get_dashboard_metrics_fallback")
     try:
         # Get total reviews count (Lightweight)
-        reviews_resp = supabase.table("reviews").select("id, platform", count="exact").execute()
+        print("DEBUG: Fetching count...")
+        # count="exact" with head=True might be better, but let's try standard count
+        reviews_resp = supabase.table("reviews").select("id", count="exact").execute()
         total_reviews = reviews_resp.count if reviews_resp.count else 0
+        print(f"DEBUG: Count: {total_reviews}")
         
-        # Get sentiment stats (Lightweight columns only)
-        # Fetching all Might be slow for 10k+ rows, but better than nothing for fallback
-        # In prod, the RPC is mandatory.
+        # Get sentiment stats
+        print("DEBUG: Fetching sentiment stats...")
         sentiment_resp = supabase.table("sentiment_analysis").select("label, credibility").execute()
         sentiment_data = sentiment_resp.data
         
@@ -156,12 +166,21 @@ async def _get_dashboard_metrics_fallback():
             avg_sentiment = 0
             avg_credibility = 0
             
-        # Platform breakdown
+        print("DEBUG: Fetching platform breakdown...")
+        # Platform breakdown - aggregate manually
+        # Select current platforms from reviews
+        platform_resp = supabase.table("reviews").select("platform").execute()
         platforms = {}
-        if reviews_resp.data:
-            for r in reviews_resp.data:
-                p = r.get("platform", "unknown")
-                platforms[p] = platforms.get(p, 0) + 1
+        if platform_resp.data:
+             for r in platform_resp.data:
+                 p = r.get("platform", "unknown")
+                 platforms[p] = platforms.get(p, 0) + 1
+        return {
+            "totalReviews": total_reviews,
+            "sentimentScore": avg_sentiment,
+            "averageCredibility": avg_credibility,
+            "platformBreakdown": platforms
+        }
 
         return {
             "totalReviews": total_reviews,
@@ -171,6 +190,8 @@ async def _get_dashboard_metrics_fallback():
         }
     except Exception as e:
         print(f"Fallback metrics failed: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "totalReviews": 0,
             "sentimentScore": 0,

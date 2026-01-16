@@ -13,6 +13,9 @@ api.interceptors.request.use(async (config) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) {
         config.headers.Authorization = `Bearer ${session.access_token}`;
+        console.log("Token attached:", session.access_token.substring(0, 10));
+    } else {
+        console.warn("No active session token available for API call.");
     }
     return config;
 });
@@ -21,12 +24,13 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
     (response) => response,
     (error) => {
+        // Log error but don't crash unless necessary
         console.error('API Call Failed:', error.config?.url, error.response?.status);
         return Promise.reject(error);
     }
 );
 
-// --- API EXPORTS (These were missing!) ---
+// --- API EXPORTS (Required for Build) ---
 
 // Products
 export const getProducts = async (): Promise<Product[]> => {
@@ -43,13 +47,13 @@ export const deleteProduct = async (id: string): Promise<void> => {
     await api.delete(`/products/${id}`);
 };
 
-export const updateProduct = async (id: string, updates: Partial<Product>): Promise<Product> => {
-    const { data } = await api.put(`/products/${id}`, updates);
+export const getProductDetails = async (id: string): Promise<Product> => {
+    const { data } = await api.get(`/products/${id}`);
     return data.data;
 };
 
-export const getProductDetails = async (id: string): Promise<Product> => {
-    const { data } = await api.get(`/products/${id}`);
+export const updateProduct = async (id: string, updates: Partial<Product>): Promise<Product> => {
+    const { data } = await api.put(`/products/${id}`, updates);
     return data.data;
 };
 
@@ -65,26 +69,26 @@ export const analyzeUrl = async (url: string): Promise<any> => {
 };
 
 // Dashboard & Analytics
-export const getDashboardStats = async (): Promise<DashboardMetrics> => { // Renamed to getDashboardStats to match user request, checking usage... user's previous code used getDashboardData. I might need to alias or update hook.
+export const getDashboardStats = async (): Promise<DashboardMetrics> => {
     const { data } = await api.get('/dashboard');
     return data.data;
 };
-
-// Helper to keep compatibility if pages use getDashboardData
-export const getDashboardData = getDashboardStats;
 
 export const getAnalytics = async (period: string = '7d'): Promise<any> => {
     const { data } = await api.get(`/analytics?period=${period}`);
     return data.data;
 };
 
+// Executive Summary
 export const getExecutiveSummary = async () => {
-    const response = await api.get('/reports/summary');
-    return response.data;
+    const { data } = await api.get('/reports/summary');
+    return data;
 };
 
 // Competitors
 export const getCompare = async (productA: string, productB: string): Promise<any> => {
+    // Handle case where IDs might be undefined during initial load
+    if (!productA || !productB) return { metrics: {}, aspects: [] };
     const { data } = await api.get(`/products/compare?id_a=${productA}&id_b=${productB}`);
     return data.data;
 };
@@ -104,5 +108,9 @@ export const deleteAlert = async (id: string): Promise<void> => {
     await api.delete(`/alerts/${id}`);
 };
 
-// Default Export (for generic usage)
+export const updateAlert = async (id: string, updates: any): Promise<any> => {
+    const { data } = await api.put(`/alerts/${id}`, updates);
+    return data.data;
+};
+
 export default api;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getDashboardStats, getAnalytics, getAlerts, getDashboardData } from '@/lib/api';
+import { getDashboardStats, getAnalytics, getAlerts } from '@/lib/api';
 import { useToast } from './use-toast';
 import { useQuery } from '@tanstack/react-query';
 
@@ -15,8 +15,8 @@ export function useDashboardData() {
     queryKey: ['dashboard-metrics'],
     // Using getDashboardData as it returns the comprehensive metrics structure expected by the dashboard
     queryFn: async () => {
-      const res = await getDashboardData();
-      return res.data;
+      const res = await getDashboardStats();
+      return res;
     },
     refetchInterval: 5000, // ⚡ AUTO-REFRESH every 5 seconds
   });
@@ -53,7 +53,7 @@ export function useDashboardData() {
   return {
     metrics,
     analytics,
-    alerts: alertsData?.data || [],
+    alerts: alertsData || [],
     loading,
     refresh: () => {
       refetchMetrics();

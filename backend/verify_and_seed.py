@@ -84,9 +84,10 @@ def main():
             for r in reviews:
                 review_payload.append({
                     "product_id": pid,
-                    "text": r["text"], # Standardized to 'text'
-                    "username": f"User{random.randint(100,999)}", # Standardized to 'username'
-                    "author": "Anonymous",
+                    "text": r["text"],
+                    "content": r["text"], # Dual-write to satisfy schema
+                    "username": f"User{random.randint(100,999)}",
+                    "author": f"User{random.randint(100,999)}", # Dual-write
                     "source": "youtube",
                     "platform": "youtube", 
                     "sentiment_label": r["sentiment"],
