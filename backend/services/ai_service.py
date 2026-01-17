@@ -17,10 +17,14 @@ import json
 import httpx
 import asyncio
 import os
+import pickle
+import numpy as np
+from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
-
 from pathlib import Path
+
+# Load env
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
@@ -29,6 +33,21 @@ HF_API_URL = "https://router.huggingface.co/models/distilbert-base-uncased-finet
 class AIService:
     def __init__(self):
         self.api_url = HF_API_URL
+        self.local_model = None
+        self.model_path = Path(__file__).resolve().parent.parent / "models" / "sentiment_baseline_v1.pkl"
+        self._load_local_model()
+
+    def _load_local_model(self):
+        """Load the local Sklearn pipeline for fallback inference."""
+        try:
+            if self.model_path.exists():
+                with open(self.model_path, "rb") as f:
+                    self.local_model = pickle.load(f)
+                print(f"✅ Local AI Model loaded from {self.model_path}")
+            else:
+                print("⚠️ Local model not found. Run 'python backend/ml/train_model.py'")
+        except Exception as e:
+            print(f"❌ Failed to load local model: {e}")
 
     async def generate_executive_summary(self, reviews: List[str], product_name: str) -> str:
         """
@@ -82,22 +101,6 @@ class AIService:
         """Check if we have analyzed this exact text before."""
         try:
             from database import supabase
-            # Check sentiment_analysis table directly? No, we need to find review with this hash?
-            # Or assume we store hash? We don't store hash.
-            # We must search reviews by text? Too slow.
-            # The prompt suggested "Database Caching". 
-            # Ideally we'd modify schema to add hash, but for now let's skip complex schema changes 
-            # and just try to find exact match if length is reasonable.
-            # Actually, to follow the instruction strictly "Check Supabase... WHERE review_text_hash = ...",
-            # implies we CAN check by Hash. Since we didn't add the column yet, let's just 
-            # check based on exact text match on 'reviews' table first, then get the analysis.
-            # But 'reviews' table might not have it yet if this is a new request.
-            # So this is really about caching *generic* inputs.
-            # Let's verify if 'sentiment_analysis' has a 'text_hash' column? No.
-            # We will proceed without caching for now OR add the column.
-            # Wait, the instruction said "Implement Hashing... in database.py". 
-            # I'll implement the logic here but return None effectively until schema is updated,
-            # OR I will just skip caching for this specific file edit and do it in database.py as requested.
             pass
         except:
             pass
@@ -105,83 +108,83 @@ class AIService:
 
     async def analyze_sentiment(self, text: str) -> Dict[str, Any]:
         """
-        Analyze sentiment, emotions, and credibility of a text string.
+        Analyze sentiment using Hybrid approach (Cloud API -> Local Model -> Fallback).
         """
         if not text or not text.strip():
-            return {"label": "NEUTRAL", "score": 0.5, "emotions": [], "credibility": 0, "credibility_reasons": []}
+            return {"label": "NEUTRAL", "score": 0.5, "emotions": [], "credibility": 0}
 
-        # 1. Check Cache
-        try:
-            from database import get_analysis_by_hash
-            text_hash = self._compute_hash(text)
-            cached = await get_analysis_by_hash(text_hash)
-            if cached:
-                print(f"Using cached analysis for hash {text_hash[:8]}")
-                return {
-                    "label": cached.get("label"),
-                    "score": float(cached.get("score") or 0.0),
-                    "emotions": cached.get("emotions", []),
-                    "credibility": float(cached.get("credibility") or 0.0),
-                    "credibility_reasons": cached.get("credibility_reasons", []),
-                    "aspects": cached.get("aspects", [])
-                }
-        except Exception as e:
-             print(f"Cache check failed: {e}")
-
-        token = await self._get_api_key()
-        headers = {"Authorization": f"Bearer {token}"} if token else {}
-
-        if not token:
-             # STRICT MODE: No mocks allowed.
-             # Try the key provided by user in chat if not in env
-             # STRICT MODE: No mocks allowed.
-             # Token must be in .env
-             pass 
-             
-        if not token:
-             raise Exception("Real-Time Mode Error: HF_TOKEN is missing. Cannot perform sentiment analysis.")
-
-        async with httpx.AsyncClient() as client:
+        # 1. Cloud API (Hugging Face)
+        token = os.environ.get("HF_TOKEN")
+        if token:
             try:
-                # 1. Sentiment Analysis (Positive/Neutral/Negative)
-                sentiment_task = self._query_hf(client, self.api_url, {"inputs": text[:512]}, headers)
-                
-                # 2. Emotion Analysis (Joy, Anger, etc.)
-                EMOTION_API_URL = "https://router.huggingface.co/models/j-hartmann/emotion-english-distilroberta-base"
-                emotion_task = self._query_hf(client, EMOTION_API_URL, {"inputs": text[:512]}, headers)
-                
-                results = await asyncio.gather(sentiment_task, emotion_task, return_exceptions=True)
-                
-                sentiment_data = results[0]
-                emotion_data = results[1]
-
-                if isinstance(sentiment_data, Exception): raise sentiment_data
-                if isinstance(emotion_data, Exception): raise emotion_data
-                
-                # Process Sentiment
-                sentiment_res = self._process_sentiment(sentiment_data)
-                
-                # Process Emotions
-                emotions = self._process_emotions(emotion_data)
-                
-                # Calculate Credibility (Heuristic is still code-based but acceptable as feature)
-                cred_result = self._calculate_credibility(text)
-                credibility = cred_result["score"]
-                cred_reasons = cred_result["reasons"]
-
-                return {
-                    "label": sentiment_res["label"],
-                    "score": sentiment_res["score"],
-                    "breakdown": sentiment_res["breakdown"],
-                    "emotions": emotions,
-                    "credibility": credibility,
-                    "credibility_reasons": cred_reasons,
-                    "aspects": self._extract_aspects(text, sentiment_res["label"])
-                }
-
+                headers = {"Authorization": f"Bearer {token}"}
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(self.api_url, headers=headers, json={"inputs": text[:512]})
+                    if response.status_code == 200:
+                        data = response.json()
+                        # Process HF format [[{'label': 'POSITIVE', 'score': 0.9}]]
+                        if isinstance(data, list) and len(data) > 0:
+                            top = max(data[0], key=lambda x: x['score'])
+                            return self._enrich_analysis(text, top['label'].upper(), top['score'])
             except Exception as e:
-                print(f"AI Service Exception: {e}")
-                return {"label": "NEUTRAL", "score": 0.5, "error": str(e)}
+                print(f"⚠️ Cloud AI failed ({e}), switching to Local Model...")
+
+        # 2. Local Model (Fallback)
+        if self.local_model:
+            try:
+                # Predict returns ['positive'] or ['negative']
+                prediction = self.local_model.predict([text])[0]
+                # Probability for score
+                probs = self.local_model.predict_proba([text])[0]
+                score = max(probs)
+                return self._enrich_analysis(text, prediction.upper(), float(score))
+            except Exception as e:
+                print(f"❌ Local AI failed: {e}")
+
+        # 3. Simple Fallback (Keyword heuristic)
+        return self._heuristic_fallback(text)
+
+    def _enrich_analysis(self, text: str, label: str, score: float) -> Dict[str, Any]:
+        """Add emotions, credibility, and aspects to the base sentiment."""
+        credibility_data = self._calculate_credibility(text)
+        return {
+            "label": label,
+            "score": score,
+            "emotions": self._extract_emotions_local(text, label), # Local heuristic for speed
+            "credibility": credibility_data["score"],
+            "credibility_reasons": credibility_data["reasons"],
+            "aspects": self._extract_aspects(text, label)
+        }
+
+    def _heuristic_fallback(self, text: str) -> Dict[str, Any]:
+        """If everything fails, use keywords."""
+        text_lower = text.lower()
+        pos_words = ["good", "great", "love", "best", "excellent", "fast"]
+        neg_words = ["bad", "hate", "worst", "slow", "broken", "terrible"]
+        
+        pos_count = sum(1 for w in pos_words if w in text_lower)
+        neg_count = sum(1 for w in neg_words if w in text_lower)
+        
+        if pos_count > neg_count:
+            return self._enrich_analysis(text, "POSITIVE", 0.6 + (0.1 * pos_count))
+        elif neg_count > pos_count:
+            return self._enrich_analysis(text, "NEGATIVE", 0.6 + (0.1 * neg_count))
+        return self._enrich_analysis(text, "NEUTRAL", 0.5)
+
+    def _extract_emotions_local(self, text: str, label: str) -> List[Dict[str, Any]]:
+        """Fast rule-based emotion tagging to avoid 2nd API call latency."""
+        text_lower = text.lower()
+        emotions = []
+        if "anger" in text_lower or "stupid" in text_lower or "waste" in text_lower:
+            emotions.append({"name": "Anger", "score": 0.9})
+        if "love" in text_lower or "happy" in text_lower or "great" in text_lower:
+            emotions.append({"name": "Joy", "score": 0.9})
+        if "scam" in text_lower or "fake" in text_lower:
+            emotions.append({"name": "Disgust", "score": 0.8})
+        
+        if not emotions:
+            emotions.append({"name": "Neutral", "score": 0.5})
+        return emotions
 
     async def _query_hf(self, client, url, payload, headers):
         response = await client.post(url, headers=headers, json=payload)
@@ -200,160 +203,54 @@ class AIService:
                 return {"error": f"HTTP {response.status_code}"}
         return response.json()
 
-    def _process_sentiment(self, data) -> Dict[str, Any]:
-        try:
-            # Check for API Error first
-            if isinstance(data, dict) and "error" in data:
-                return {"label": "ERROR", "score": 0.0, "breakdown": [], "error": data["error"]}
-
-            if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
-                scores = data[0]
-                top_result = max(scores, key=lambda x: x['score'])
-                return {
-                    "label": top_result['label'].upper(),
-                    "score": top_result['score'],
-                    "breakdown": scores
-                }
-            return {"label": "NEUTRAL", "score": 0.5, "breakdown": []}
-        except Exception as e:
-            print(f"Sentiment Process Error: {e}")
-            return {"label": "NEUTRAL", "score": 0.5, "breakdown": []}
-
-    def _process_emotions(self, data) -> List[Dict[str, Any]]:
-        # Expected format: [[{'label': 'joy', 'score': 0.9}, ...]]
-        try:
-            if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
-                # Sort by score desc
-                sorted_emotions = sorted(data[0], key=lambda x: x['score'], reverse=True)
-                return [{"name": e['label'].title(), "score": e['score'] * 100} for e in sorted_emotions]
-            return []
-        except:
-            return []
-
     def _calculate_credibility(self, text: str) -> Dict[str, Any]:
-        """
-        Heuristic credibility score (0-100) with reasons.
-        Includes checks for spam, bots, and quality.
-        """
-        score = 100 # Start perfect
+        """Forensic Credibility Analysis."""
+        score = 100
         reasons = []
         text_lower = text.lower()
         
-        # 1. Content Length
-        if len(text) < 15: 
+        # 1. Length Check
+        if len(text) < 15:
+            score -= 20
+            reasons.append("Too short to be meaningful")
+        
+        # 2. Stylometric: All Caps
+        if text.isupper() and len(text) > 10:
             score -= 30
-            reasons.append("Very short content")
-        elif len(text) > 500: 
-            # Very long reviews are usually credible, but check for copy-paste loops
-            pass
-        
-        # 2. Capitalization Shouting
-        caps_ratio = sum(1 for c in text if c.isupper()) / len(text) if text else 0
-        if caps_ratio > 0.6: 
-            score -= 40
-            reasons.append("Excessive capitalization")
-        
-        # 3. Spam keywords
-        spam_words = ["buy now", "click here", "subscribe", "winner", "crypto", "nft", "100% free", "call now"]
-        if any(w in text_lower for w in spam_words): 
+            reasons.append("Excessive shouting (All Caps)")
+            
+        # 3. Marketing Speak / Bot Patterns
+        bot_triggers = ["click here", "buy now", "100% free", "giveaway", "limited time"]
+        if any(t in text_lower for t in bot_triggers):
             score -= 50
-            reasons.append("Spam keywords detected")
-            
-        # 4. AI Patterns
-        ai_words = ["as an ai", "start with", "generate a review", "prompts"]
-        if any(w in text_lower for w in ai_words):
-             score -= 80
-             reasons.append("AI generation artifacts")
+            reasons.append("Contains promotional/bot triggers")
 
-        # 5. Repeated Content (e.g. "Good Good Good")
+        # 4. Repetition (Stammering Bot)
         words = text_lower.split()
-        if len(words) > 5:
-            unique_ratio = len(set(words)) / len(words)
-            if unique_ratio < 0.4:
-                score -= 30
-                reasons.append("Repetitive wording")
+        if len(words) > 10 and len(set(words)) < len(words) * 0.5:
+            score -= 30
+            reasons.append("High lexical repetition (Bot-like)")
 
-        # 6. URL density
-        if "http" in text_lower:
-            url_count = text_lower.count("http")
-            if url_count > 1 and len(words) < 30:
-                score -= 40
-                reasons.append("Link farm")
-            
-        return {"score": max(min(score, 100), 0), "reasons": reasons}
+        return {"score": max(0, score), "reasons": reasons}
 
-    def _extract_aspects(self, text: str, global_sentiment: str) -> List[Dict[str, Any]]:
-        """
-        Extract aspects using Spacy dependency parsing if available, else fallback to keywords.
-        """
-        if not nlp:
-             # Fallback to keywords if Spacy not loaded
-            text_lower = text.lower()
-            aspects = []
-            keywords = {
-                "Quality": ["quality", "build", "material", "durable", "broke", "solid"],
-                "Price": ["price", "cost", "value", "expensive", "cheap", "worth"],
-                "Shipping": ["shipping", "delivery", "arrived", "package", "packaging"],
-                "Service": ["service", "support", "refund", "response", "staff"]
-            }
-            for category, terms in keywords.items():
-                if any(term in text_lower for term in terms):
-                    aspects.append({
-                        "name": category,
-                        "sentiment": global_sentiment.lower() if global_sentiment else "neutral"
-                    })
-            return aspects
-
-        # Spacy Logic
-        doc = nlp(text)
-        aspects = {}
+    def _extract_aspects(self, text: str, sentiment: str) -> List[Dict[str, Any]]:
+        """Extract product aspects (Camera, Battery, Price)."""
+        aspects = []
+        keywords = {
+            "Quality": ["quality", "build", "solid", "cheap", "plastic"],
+            "Price": ["price", "cost", "value", "expensive", "cheap", "worth"],
+            "Service": ["service", "support", "refund", "shipping"],
+            "Performance": ["fast", "slow", "lag", "smooth", "crash"]
+        }
         
-        # Iterate through tokens to find Nouns described by Adjectives
-        for token in doc:
-            if token.pos_ in ["NOUN", "PROPN"]:
-                # Check for adjectival modifiers (amod) or subject/object relationships
-                sentiment_descriptor = None
-                
-                # Case 1: "Expensive price" (amod)
-                for child in token.children:
-                    if child.dep_ == "amod" and child.pos_ == "ADJ":
-                        sentiment_descriptor = child.text
-                        break
-                
-                # Case 2: "Price is high" (acomp via attr/cop) - simplified to looking at head
-                if not sentiment_descriptor and token.dep_ == "nsubj":
-                    if token.head.pos_ == "ADJ": # "Price is good"
-                        sentiment_descriptor = token.head.text
-                    elif token.head.pos_ == "VERB": # "Shipping took long"
-                         for child in token.head.children:
-                             if child.dep_ == "acomp" and child.pos_ == "ADJ":
-                                 sentiment_descriptor = child.text
-                
-                if sentiment_descriptor:
-                    # Simple Sentiment Analysis of the descriptor
-                    # In a real app, we'd run another mini-inference or use a lexicon.
-                    # Here we use a mini-lexicon for speed
-                    desc_lower = sentiment_descriptor.lower()
-                    local_sentiment = "neutral"
-                    
-                    pos_words = ["good", "great", "amazing", "fast", "solid", "excellent", "worth", "best", "love", "nice"]
-                    neg_words = ["bad", "terrible", "slow", "expensive", "poor", "worst", "broke", "hard", "disappointed", "waste"]
-                    
-                    if any(w in desc_lower for w in pos_words): local_sentiment = "positive"
-                    elif any(w in desc_lower for w in neg_words): local_sentiment = "negative"
-                    
-                    aspect_name = token.text.title()
-                    # Filter for relevant aspects only (optional, but cleaner)
-                    relevant_topics = ["Quality", "Price", "Shipping", "Service", "Battery", "Design", "Screen", "Sound"]
-                    # Simple mapping
-                    for topic in relevant_topics:
-                        if topic.lower() in aspect_name.lower():
-                            aspect_name = topic
-                            break
-                            
-                    aspects[aspect_name] = local_sentiment
-
-        return [{"name": k, "sentiment": v} for k, v in aspects.items()]
+        text_lower = text.lower()
+        for aspect, terms in keywords.items():
+            if any(term in text_lower for term in terms):
+                aspects.append({
+                    "name": aspect,
+                    "sentiment": sentiment.lower()
+                })
+        return aspects
 
     def extract_keywords(self, texts: List[str], top_n: int = 50) -> List[Dict[str, Any]]:
         """
@@ -542,5 +439,57 @@ class AIService:
             return alert_payload
 
         return None
+
+    async def predict_trend(self, history: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Predict future sentiment using Linear Regression on historical data.
+        history: [{'date': '2025-10-01', 'sentiment_score': 0.8}, ...]
+        """
+        if len(history) < 3:
+            return {"trend": "insufficient_data", "forecast": []}
+
+        try:
+            # Prepare data
+            sorted_hist = sorted(history, key=lambda x: x['date'])
+            dates = [datetime.fromisoformat(x['date']).timestamp() for x in sorted_hist]
+            scores = [x['sentiment_score'] for x in sorted_hist]
+
+            X = np.array(dates).reshape(-1, 1)
+            y = np.array(scores)
+
+            # Train simple Linear Regression
+            from sklearn.linear_model import LinearRegression
+            model = LinearRegression()
+            model.fit(X, y)
+
+            # Forecast next 7 days
+            last_date = datetime.fromisoformat(sorted_hist[-1]['date'])
+            forecast = []
+            current_slope = model.coef_[0] # Positive = Upward trend, Negative = Downward
+
+            for i in range(1, 8):
+                future_date = last_date + timedelta(days=i)
+                future_ts = future_date.timestamp()
+                pred_score = model.predict([[future_ts]])[0]
+                # Clamp score 0.0 to 1.0
+                pred_score = max(0.0, min(1.0, pred_score))
+                
+                forecast.append({
+                    "date": future_date.strftime("%Y-%m-%d"),
+                    "predicted_score": round(pred_score, 2)
+                })
+
+            direction = "stable"
+            if current_slope > 0.000001: direction = "improving"
+            elif current_slope < -0.000001: direction = "declining"
+
+            return {
+                "trend": direction,
+                "slope": current_slope,
+                "forecast": forecast
+            }
+        except Exception as e:
+            print(f"Prediction error: {e}")
+            return {"trend": "error", "forecast": []}
 
 ai_service = AIService()

@@ -14,3 +14,6 @@ scikit-learn
 nltk
 google-api-python-client>=2.0.0
 reportlab
+
+numpy
+ntscraper

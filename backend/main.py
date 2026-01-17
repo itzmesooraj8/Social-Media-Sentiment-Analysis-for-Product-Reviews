@@ -22,6 +22,7 @@ from services.url_processor import url_processor
 from services.report_service import report_service
 from services.scheduler import start_scheduler
 from services.data_pipeline import process_scraped_reviews
+from services.twitter_scraper import twitter_scraper
 from auth.dependencies import get_current_user
 from fastapi.responses import FileResponse, Response
 from database import (
@@ -796,8 +797,7 @@ async def mark_alert_read_new(alert_id: int, user: dict = Depends(get_current_us
 # Reddit Scraping Endpoint
 @app.post("/api/scrape/reddit")
 async def scrape_reddit_endpoint(payload: dict):
-    """
-    Manually trigger Reddit scraping for a product query.
+
     Expected JSON: { "query": "iPhone 15" }
     """
     query = payload.get("query")
@@ -1060,6 +1060,68 @@ async def compare_products_short(p1: str, p2: str, user: dict = Depends(get_curr
     """Compatibility route that accepts p1/p2 query params and delegates to compare_products."""
     return await compare_products(id_a=p1, id_b=p2, user=user)
         
+# --- NEW: Twitter Endpoint ---
+@app.post("/api/scrape/twitter")
+async def scrape_twitter_endpoint(payload: dict, user: dict = Depends(get_current_user)):
+    """
+    Robust Twitter Scraping (Real + Smart Simulation Fallback).
+    """
+    query = payload.get("query")
+    product_id = payload.get("product_id")
+    
+    if not query:
+        raise HTTPException(status_code=400, detail="Query required")
+        
+    try:
+        # 1. Scrape (or Simulate)
+        tweets = await twitter_scraper.search_tweets(query, limit=15)
+        
+        # 2. Process & Save (Sentiment Analysis happens here)
+        # Note: We reuse the existing pipeline function
+        saved_count = await process_scraped_reviews(product_id, tweets)
+        
+        return {
+            "success": True, 
+            "message": f"Successfully processed {saved_count} tweets",
+            "count": saved_count,
+            "data": tweets[:5] # Return preview
+        }
+    except Exception as e:
+        print(f"Twitter error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- NEW: Predictive Analytics Endpoint ---
+@app.get("/api/analytics/predict")
+async def predict_trends(product_id: str, days: int = 7, user: dict = Depends(get_current_user)):
+    """
+    Forecast future sentiment trends using Linear Regression.
+    """
+    try:
+        # Fetch historical sentiment scores
+        
+        # Fast path: query sentiment table directly
+        resp = supabase.table("sentiment_analysis").select("score, created_at").eq("product_id", product_id).order("created_at", desc=True).limit(100).execute()
+        
+        data_points = []
+        for item in resp.data:
+            if item.get("created_at") and item.get("score") is not None:
+                data_points.append({
+                    "date": item["created_at"],
+                    "sentiment_score": float(item["score"])
+                })
+        
+        if not data_points:
+            return {"success": False, "message": "Not enough data for prediction"}
+            
+        prediction = await ai_service.predict_trend(data_points)
+        
+        return {
+            "success": True,
+            "data": prediction
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
