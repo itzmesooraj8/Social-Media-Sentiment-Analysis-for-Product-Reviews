@@ -7,9 +7,12 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score
 
-# Directory for models
-MODEL_DIR = "models"
-os.makedirs(MODEL_DIR, exist_ok=True)
+from pathlib import Path
+
+# Directory for models (Absolute path relative to this script: backend/models)
+BASE_DIR = Path(__file__).resolve().parent.parent
+MODEL_DIR = BASE_DIR / "models"
+MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 def train_baseline_model():
     print("🚀 Starting Baseline Model Training...")
