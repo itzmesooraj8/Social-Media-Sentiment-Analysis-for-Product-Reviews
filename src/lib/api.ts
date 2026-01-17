@@ -13,24 +13,20 @@ api.interceptors.request.use(async (config) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) {
         config.headers.Authorization = `Bearer ${session.access_token}`;
-        console.log("Token attached:", session.access_token.substring(0, 10));
-    } else {
-        console.warn("No active session token available for API call.");
     }
     return config;
 });
 
-// 3. Response Interceptor (Error Handling)
+// 3. Response Interceptor
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        // Log error but don't crash unless necessary
         console.error('API Call Failed:', error.config?.url, error.response?.status);
         return Promise.reject(error);
     }
 );
 
-// --- API EXPORTS (Required for Build) ---
+// --- API EXPORTS ---
 
 // Products
 export const getProducts = async (): Promise<Product[]> => {
@@ -57,14 +53,28 @@ export const updateProduct = async (id: string, updates: Partial<Product>): Prom
     return data.data;
 };
 
-// Reviews & Scraping
+// --- NEW: Scraping & Analysis Features ---
+
 export const scrapeReddit = async (productName: string): Promise<any> => {
+    // Legacy endpoint, keeps compatibility
     const { data } = await api.post('/scrape/reddit', { query: productName });
+    return data;
+};
+
+export const scrapeTwitter = async (query: string, productId?: string): Promise<any> => {
+    const { data } = await api.post('/scrape/twitter', { query, product_id: productId });
     return data;
 };
 
 export const analyzeUrl = async (url: string): Promise<any> => {
     const { data } = await api.post('/analyze/url', { url });
+    return data;
+};
+
+// --- NEW: Predictive Analytics ---
+
+export const getPredictiveAnalytics = async (productId: string, days: number = 7): Promise<any> => {
+    const { data } = await api.get(`/analytics/predict?product_id=${productId}&days=${days}`);
     return data;
 };
 
@@ -79,15 +89,12 @@ export const getAnalytics = async (period: string = '7d'): Promise<any> => {
     return data.data;
 };
 
-// Executive Summary
 export const getExecutiveSummary = async () => {
     const { data } = await api.get('/reports/summary');
     return data;
 };
 
-// Competitors
 export const getCompare = async (productA: string, productB: string): Promise<any> => {
-    // Handle case where IDs might be undefined during initial load
     if (!productA || !productB) return { metrics: {}, aspects: [] };
     const { data } = await api.get(`/products/compare?id_a=${productA}&id_b=${productB}`);
     return data.data;

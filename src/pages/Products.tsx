@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getProducts, createProduct, deleteProduct, scrapeReddit } from '@/lib/api';
+import { getProducts, createProduct, deleteProduct, scrapeReddit, scrapeTwitter } from '@/lib/api';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Trash2, RefreshCw, ExternalLink, MoreVertical } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, ExternalLink, MoreVertical, Twitter } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -21,9 +21,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
 import { useNavigate } from 'react-router-dom';
-import { Product } from '@/types/sentinel'; // Import shared type
 
 export default function Products() {
   const { toast } = useToast();
@@ -36,7 +37,7 @@ export default function Products() {
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['products'],
     queryFn: getProducts,
-    refetchInterval: 5000, // Auto-refresh for status updates
+    refetchInterval: 5000,
   });
 
   // Create Product
@@ -60,12 +61,22 @@ export default function Products() {
     },
   });
 
-  // Scrape Request
-  const scrapeMutation = useMutation({
-    mutationFn: scrapeReddit,
-    onSuccess: () => {
-      toast({ title: 'Scraping Started', description: 'Checking Reddit for new reviews...' });
-    }
+  // Scrape Mutations
+  const redditMutation = useMutation({
+    mutationFn: ({ name }: { name: string }) => scrapeReddit(name),
+    onSuccess: () => toast({ title: 'Reddit Scraper', description: 'Job queued successfully.' })
+  });
+
+  const twitterMutation = useMutation({
+    mutationFn: ({ name, id }: { name: string, id: string }) => scrapeTwitter(name, id),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast({
+        title: 'Twitter Scrape Complete',
+        description: `Processed ${data.count || 0} tweets (Hybrid AI).`
+      });
+    },
+    onError: () => toast({ title: 'Scrape Failed', description: 'Could not fetch tweets.', variant: 'destructive' })
   });
 
   const handleCreate = (e: React.FormEvent) => {
@@ -73,7 +84,7 @@ export default function Products() {
     createMutation.mutate({
       name: newProduct.name,
       description: newProduct.description,
-      platform: 'generic', // Default
+      platform: 'generic',
       url: newProduct.url,
       status: 'active'
     });
@@ -106,10 +117,6 @@ export default function Products() {
                 <Label htmlFor="desc">Description</Label>
                 <Input id="desc" value={newProduct.description} onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} />
               </div>
-              <div>
-                <Label htmlFor="url">YouTube/Reddit URL (Optional)</Label>
-                <Input id="url" value={newProduct.url} onChange={(e) => setNewProduct({ ...newProduct, url: e.target.value })} />
-              </div>
               <Button type="submit" className="w-full" disabled={createMutation.isPending}>
                 {createMutation.isPending ? 'Adding...' : 'Start Tracking'}
               </Button>
@@ -120,7 +127,7 @@ export default function Products() {
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {products.map((product) => (
-          <Card key={product.id} className="hover:shadow-lg transition-shadow">
+          <Card key={product.id} className="hover:shadow-lg transition-shadow group">
             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
               <div className="space-y-1">
                 <CardTitle className="text-xl cursor-pointer hover:underline" onClick={() => navigate(`/products/${product.id}`)}>
@@ -133,12 +140,19 @@ export default function Products() {
                   <Button variant="ghost" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
                   <DropdownMenuItem onClick={() => navigate(`/products/${product.id}`)}>
                     <ExternalLink className="mr-2 h-4 w-4" /> View Dashboard
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => scrapeMutation.mutate(product.name)}>
-                    <RefreshCw className="mr-2 h-4 w-4" /> Scrape Now
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Live Data Sources</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => redditMutation.mutate({ name: product.name })}>
+                    <RefreshCw className="mr-2 h-4 w-4" /> Scrape Reddit
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => twitterMutation.mutate({ name: product.name, id: product.id })}>
+                    <Twitter className="mr-2 h-4 w-4 text-blue-400" /> Scrape Twitter (AI)
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem className="text-red-600" onClick={() => deleteMutation.mutate(product.id)}>
                     <Trash2 className="mr-2 h-4 w-4" /> Delete
                   </DropdownMenuItem>
@@ -150,16 +164,13 @@ export default function Products() {
                 <Badge variant={product.status === 'active' ? 'default' : 'secondary'}>
                   {product.status}
                 </Badge>
-                {product.last_updated && (
-                  <span className="text-xs text-muted-foreground">
-                    Updated: {new Date(product.last_updated).toLocaleDateString()}
+                {/* @ts-ignore */}
+                {product.review_count !== undefined && (
+                  <span className="text-xs font-medium bg-muted px-2 py-1 rounded">
+                    {/* @ts-ignore */}
+                    {product.review_count} reviews
                   </span>
                 )}
-              </div>
-              {/* Optional: Add review count here if backend sends it */}
-              <div className="mt-4 text-sm font-medium">
-                {/* @ts-ignore: review_count might be injected by backend runtime */}
-                {product.review_count !== undefined ? `${product.review_count} Reviews` : ''}
               </div>
             </CardContent>
           </Card>
