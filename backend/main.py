@@ -157,7 +157,6 @@ async def list_products(user: dict = Depends(get_current_user)):
                 p["review_count"] = count_res.count or 0
                 
                 # Get average sentiment if not stored
-                # (Optional: we rely on 'current_sentiment' stored on product if available, else 0)
                 if "current_sentiment" not in p:
                      p["current_sentiment"] = 0 # Placeholder
             except Exception:
@@ -198,7 +197,6 @@ async def create_product(product: ProductCreate, user: dict = Depends(get_curren
         }
     except Exception as e:
         print(f"Error creating product: {e}")
-        # raise HTTPException(status_code=500, detail=f"Failed to create product: {str(e)}")
         return {
             "success": False,
             "message": f"Database error: {str(e)}" 
@@ -209,11 +207,11 @@ async def create_product(product: ProductCreate, user: dict = Depends(get_curren
 async def delete_product(product_id: str, user: dict = Depends(get_current_user)):
     """Delete a product"""
     try:
-        # First delete associated reviews to respect FK constraints if not set to cascade
+        # First delete associated reviews to respect FK constraints
         try:
             supabase.table("reviews").delete().eq("product_id", product_id).execute()
         except Exception:
-            pass # Ignore if fails, maybe schema handles it
+            pass # Ignore if fails
 
         supabase.table("products").delete().eq("id", product_id).execute()
         return {
@@ -222,8 +220,6 @@ async def delete_product(product_id: str, user: dict = Depends(get_current_user)
         }
     except Exception as e:
         print(f"Delete failed: {e}")
-        # raise HTTPException(status_code=500, detail=f"Failed to delete product: {str(e)}")
-        # Return success false to frontend handled gracefully
         return {
             "success": False,
             "message": f"Could not delete product (check if it has reviews): {str(e)}"
@@ -255,7 +251,6 @@ async def update_product(product_id: str, updates: ProductUpdate, user: dict = D
 
 
 # Review Endpoints
-# Product Review Endpoint (Fixed for Frontend)
 @app.get("/api/products/{product_id}/reviews")
 async def get_product_reviews(product_id: str, user: dict = Depends(get_current_user)):
     try:
@@ -266,11 +261,8 @@ async def get_product_reviews(product_id: str, user: dict = Depends(get_current_
         for item in response.data:
             normalized_data.append({
                 **item,
-                # Ensure 'text' exists (use 'content' if 'text' is missing)
                 "text": item.get("text") or item.get("content", ""),
-                # Ensure 'username' exists (use 'author' if 'username' is missing)
                 "username": item.get("username") or item.get("author", "Anonymous"),
-                # Ensure scores are floats
                 "sentiment_score": float(item.get("sentiment_score") or 0.0),
                 "credibility_score": float(item.get("credibility_score") or 0.0)
             })
@@ -330,8 +322,7 @@ async def create_review(review: ReviewCreate, user: dict = Depends(get_current_u
             }
             await save_sentiment_analysis(analysis_data)
             
-            # Check for alerts based on the new review and analysis
-            # We combine review data and analysis data for the check
+            # Check for alerts
             full_review_data = {**review_data, "analysis": analysis_data}
             await ai_service.check_for_alerts(full_review_data)
         
@@ -379,11 +370,10 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
         
         metrics = {
              "totalReviews": metrics_raw.get("totalReviews", 0),
-             "sentimentDelta": metrics_raw.get("sentimentScore", 0), # Mapping score to delta for frontend compat
+             "sentimentDelta": metrics_raw.get("sentimentScore", 0),
              "botsDetected": 0,
              "averageCredibility": metrics_raw.get("averageCredibility", 0)
         }
-        print(f"DEBUG: Dashboard Metrics: {metrics}")
 
         # --- Inject Advanced Analytics (Real Math) ---
         adv_stats = await get_advanced_analytics()
@@ -392,7 +382,6 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
         metrics["processingSpeed"] = adv_stats["processing_speed_ms"]
         metrics["totalReach"] = adv_stats["total_reach"]
         
-        # Check if we have any data
         if metrics["totalReviews"] == 0:
             return {
                 "success": True,
@@ -404,8 +393,6 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
         formatted_reviews = []
         
         for r in raw_reviews:
-            # Extract sentiment data if available
-            # Supabase returns list for 1:Many, but here it's 1:1, usually data[0] if array
             sentiment_entry = {}
             if r.get("sentiment_analysis") and isinstance(r["sentiment_analysis"], list) and len(r["sentiment_analysis"]) > 0:
                 sentiment_entry = r["sentiment_analysis"][0]
@@ -414,7 +401,7 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
                 
             formatted_reviews.append({
                 "id": r.get("id"),
-                "platform": r.get("platform", "forums"), # Default to forums if missing
+                "platform": r.get("platform", "forums"),
                 "username": r.get("author") or r.get("username") or "Anonymous",
                 "text": r.get("text", ""),
                 "sentiment": (sentiment_entry.get("label") or "NEUTRAL").lower(),
@@ -428,41 +415,32 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
             })
 
         # --- Aggregate Real Data for Widgets ---
-        
-        # 1. Sentiment Trend (Daily)
-        # In a real app, use Supabase .rpc() or date_trunc. Here we aggregate in python for simplicity.
-        # Group by Date
         from collections import defaultdict
         trend_map = defaultdict(lambda: {"positive": 0, "neutral": 0, "negative": 0, "total": 0})
-        
-        # 2. Aspect Scores
         aspect_map = defaultdict(list)
-        
-        # 3. Emotions
         emotion_counts = defaultdict(int)
         
-        # Iterate over all recent reviews (or fetch more if needed) to build aggregates
         for r, fr in zip(raw_reviews, formatted_reviews):
             # Trends
-            date_key = r.get("created_at", "")[:10] # YYYY-MM-DD
+            date_key = r.get("created_at", "")[:10]
             sent = fr["sentiment"]
             trend_map[date_key][sent] += 1
             trend_map[date_key]["total"] += 1
             
             # Aspects
             for asp in fr["aspects"]:
-                score = 3 # neutral default
+                score = 3
                 if asp["sentiment"] == "positive": score = 5
                 elif asp["sentiment"] == "negative": score = 1
                 aspect_map[asp["name"]].append(score)
                 
-            # Emotions (Parsing from analysis)
+            # Emotions
             sentiment_entry = {}
             if r.get("sentiment_analysis") and isinstance(r["sentiment_analysis"], list) and len(r["sentiment_analysis"]) > 0:
                 sentiment_entry = r["sentiment_analysis"][0]
             emotions = sentiment_entry.get("emotions", [])
             for agg in emotions:
-                if agg.get("score", 0) > 0.3: # Threshold
+                if agg.get("score", 0) > 0.3:
                     emotion_counts[agg["name"]] += 1
 
         # Format Trends
@@ -487,25 +465,18 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
                 "reviewCount": len(scores)
             })
             
-        # Format Platforms (From RPC if available, or calc)
+        # Format Platforms
         platform_breakdown = []
         raw_platform_counts = metrics_raw.get("platformBreakdown", {})
         if raw_platform_counts:
              for plat, count in raw_platform_counts.items():
-                  # We don't have sentiment per platform from RPC yet, defaulting to 0 breakdown
-                  # Frontend Analytics chart handles 'total' correctly
                   platform_breakdown.append({
                       "platform": plat,
                       "total": count,
                       "positive": 0, "neutral": 0, "negative": 0
                   })
-        else:
-             # Fallback
-             pass
 
-            
-        # Format Keywords (Simple frequency from text)
-        # Real impl needs NLP keyword extraction
+        # Format Keywords
         from collections import Counter
         all_text = " ".join([r.get("text", "") for r in raw_reviews])
         words = [w.lower() for w in all_text.split() if len(w) > 4]
@@ -518,7 +489,7 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
                 "metrics": metrics,
                 "sentimentTrends": sentiment_trends, 
                 "aspectScores": aspect_scores,
-                "alerts": [], # Alerts still mock till we implement alert logic tab
+                "alerts": [],
                 "platformBreakdown": platform_breakdown,
                 "topKeywords": top_keywords,
                 "credibilityReport": {
@@ -535,17 +506,11 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
         }
     except Exception as e:
         print(f"Error fetching dashboard data: {e}")
-        import traceback
-        traceback.print_exc()
-        # Return empty data instead of crashing
         return {
             "success": True,
             "data": {
                 "metrics": {
-                    "totalReviews": 0,
-                    "sentimentDelta": 0,
-                    "botsDetected": 0,
-                    "averageCredibility": 0
+                    "totalReviews": 0, "sentimentDelta": 0, "botsDetected": 0, "averageCredibility": 0
                 },
                 "sentimentTrends": [],
                 "aspectScores": [],
@@ -553,12 +518,7 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
                 "platformBreakdown": [],
                 "topKeywords": [],
                 "credibilityReport": {
-                    "overallScore": 0,
-                    "botsDetected": 0,
-                    "spamClusters": 0,
-                    "suspiciousPatterns": 0,
-                    "verifiedReviews": 0,
-                    "totalAnalyzed": 0
+                    "overallScore": 0, "botsDetected": 0, "spamClusters": 0, "suspiciousPatterns": 0, "verifiedReviews": 0, "totalAnalyzed": 0
                 },
                 "lastUpdated": datetime.now().isoformat()
             }
@@ -570,30 +530,20 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
 async def get_analytics(user: dict = Depends(get_current_user)):
     """Get analytics data"""
     try:
-        # To avoid fetching full tables and causing slow responses, fetch only recent rows
-        # and return aggregates. This keeps the analytics endpoint responsive.
         from datetime import timedelta
         cutoff = datetime.utcnow() - timedelta(days=30)
 
-        # Fetch recent sentiment entries (last 30 days)
         sentiment_resp = supabase.table("sentiment_analysis").select("label, score, credibility, created_at").gte("created_at", cutoff.isoformat()).execute()
         sentiment_data = sentiment_resp.data or []
 
-        # Fetch recent review platform breakdown (last 30 days)
-        # Avoid selecting `username` column if it doesn't exist; use `author` instead
         reviews_resp = supabase.table("reviews").select("platform, author, created_at").gte("created_at", cutoff.isoformat()).execute()
         reviews = reviews_resp.data or []
 
         platform_counts = {}
-        authors = set()
         for review in reviews:
             platform = review.get("platform", "unknown")
             platform_counts[platform] = platform_counts.get(platform, 0) + 1
-            # prefer `username` when present, otherwise `author`
-            if review.get("username") or review.get("author"):
-                authors.add(review.get("username") or review.get("author"))
 
-        # Advanced analytics: engagement (reviews per hour) and reach (unique authors)
         adv = await get_advanced_analytics()
 
         return {
@@ -608,7 +558,6 @@ async def get_analytics(user: dict = Depends(get_current_user)):
         }
     except Exception as e:
         print(f"Error fetching analytics: {e}")
-        # Return empty structure instead of crashing
         return {
             "success": True, 
             "data": {
@@ -630,7 +579,6 @@ async def get_integrations(user: dict = Depends(get_current_user)):
             "data": response.data
         }
     except Exception as e:
-        # Return empty if table doesn't exist yet
         return {
             "success": True,
             "data": []
@@ -657,11 +605,9 @@ async def upsert_integration(item: IntegrationItem, user: dict = Depends(get_cur
             "last_sync": datetime.utcnow()
         }
 
-        # Upsert based on platform uniqueness
         try:
             supabase.table("integrations").upsert(payload, on_conflict=["platform"]).execute()
         except Exception:
-            # Fallback to delete/insert
             supabase.table("integrations").delete().eq("platform", item.platform).execute()
             supabase.table("integrations").insert(payload).execute()
 
@@ -723,7 +669,6 @@ async def get_settings(user: dict = Depends(get_current_user)):
     try:
         if not supabase:
             return {"success": True, "data": []}
-        # user may be an object with `id` or a dict
         uid = None
         try:
             uid = getattr(user, 'id', None) or user.get('id')
@@ -760,11 +705,9 @@ async def post_settings(item: SettingItem, user: dict = Depends(get_current_user
             raise HTTPException(status_code=401, detail="Could not determine user id")
 
         payload = {"user_id": uid, "setting_key": item.setting_key, "setting_value": item.setting_value}
-        # Upsert row
         try:
             supabase.table("user_settings").upsert(payload, on_conflict=["user_id", "setting_key"]).execute()
         except Exception:
-            # Fallback: delete existing then insert
             try:
                 supabase.table("user_settings").delete().eq("user_id", uid).eq("setting_key", item.setting_key).execute()
                 supabase.table("user_settings").insert(payload).execute()
@@ -797,7 +740,8 @@ async def mark_alert_read_new(alert_id: int, user: dict = Depends(get_current_us
 # Reddit Scraping Endpoint
 @app.post("/api/scrape/reddit")
 async def scrape_reddit_endpoint(payload: dict):
-
+    """
+    Scrape Reddit for product mentions.
     Expected JSON: { "query": "iPhone 15" }
     """
     query = payload.get("query")
@@ -805,65 +749,13 @@ async def scrape_reddit_endpoint(payload: dict):
         raise HTTPException(status_code=400, detail="Query required")
     
     try:
-        # Call the service (ensure services.reddit_scraper is imported)
-        # Note: Previous implementation used product_id, this one does not save to DB using process_scraped_reviews?
-        # The user's code just returns data.
-        # We will use the existing reddit_scraper service but adapt the call.
-        # services.reddit_scraper.reddit_scraper.search_product_mentions expects (product_name, subreddits, limit)
-        # But the USER provided code snippet says: reddit_scraper.search_product_reviews(query, limit=10)
-        # Assuming the user knows the service method name or I should stick to existing: search_product_mentions
-        
-        # Let's try to stick to the USER'S snippet as requested, but fall back ifmethod missing?
-        # "File: backend/main.py... search_product_reviews"
-        # I suspect the user might be referring to a method that doesn't exist or is named differently.
-        # In existing code line 19: from services.reddit_scraper import reddit_scraper
-        # In existing code line 725: reviews = await reddit_scraper.search_product_mentions(...)
-        
-        # I'll paste the user's code EXACTLY as requested for the route logic, assume they might have updated service or I should follow it.
-        # Wait, if I paste code calling `search_product_reviews` and it doesn't exist, it will crash at runtime.
-        # But `search_product_mentions` exists. I'll check `search_product_reviews`.
-        # Actually I can't check service file easily without reading it.
-        # I will use the user's snippet.
-        
-        from services.reddit_scraper import reddit_scraper
-        # The user's snippet calls synchronous? `results = reddit_scraper.search_product_reviews(query, limit=10)`
-        # Existing call was `await reddit_scraper.search_product_mentions(...)`
-        
-        # To be safe and functional, I will use the code that fits the existing service I SAW.
-        # Existing: await reddit_scraper.search_product_mentions(product_name, subreddits, limit=50)
-        
-        # User requested snippet:
-        # results = reddit_scraper.search_product_reviews(query, limit=10)
-        
-        # I'll allow the override but I'll add the compat.
-        
+        # Calls the service function compatible with your setup
         subreddits = ['all']
         results = await reddit_scraper.search_product_mentions(query, subreddits, limit=10)
         return {"success": True, "count": len(results), "data": results}
     except Exception as e:
         print(f"Reddit Scrape Error: {e}")
-        # Return mock data if credentials fail, to keep the client happy
         return {"success": True, "count": 0, "data": [], "message": "Scraping skipped (check credentials)"}
-
-@app.get("/api/products/compare")
-async def compare_products(id_a: str, id_b: str):
-    """
-    Compare two products by ID.
-    """
-    try:
-        # Simple comparison logic (can be expanded)
-        return {
-            "success": True,
-            "data": {
-                "metrics": {
-                    "productA": {"sentiment": 0.8, "credibility": 0.9, "reviewCount": 120},
-                    "productB": {"sentiment": 0.6, "credibility": 0.85, "reviewCount": 95}
-                },
-                "aspects": ["Camera", "Battery", "Price"]
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # YouTube Scraping Endpoint
@@ -889,7 +781,6 @@ from fastapi import UploadFile, File, Form
 async def get_executive_summary(product_id: Optional[str] = None, user: dict = Depends(get_current_user)):
     """Generate AI Executive Summary from recent negative feedback."""
     try:
-        # Use report_service to generate a frequency-based summary from recent negative reviews
         summary = await report_service.generate_summary(limit=50)
         return {"success": True, "summary": summary}
     except Exception as e:
@@ -924,11 +815,6 @@ class ReportRequest(BaseModel):
 async def generate_report_endpoint(req: ReportRequest, user: dict = Depends(get_current_user)):
     try:
          result = await report_service.generate_report(req.type, req.format)
-         # Return metadata, clean way is to return URL or ID. For simplicity, we return filename and content in a downloadable way?
-         # No, REST API usually returns URL or binary. 
-         # Let's save to disk temporarily and return link, OR return base64. 
-         # A simpler approach for this demo: Return params to trigger a GET download
-         # Actually, we can just return the content directly if it's a small file, or save to 'generated_reports'
          
          out_dir = "generated_reports"
          os.makedirs(out_dir, exist_ok=True)
@@ -957,23 +843,7 @@ async def download_report(filename: str):
 async def compare_products(id_a: str, id_b: str, user: dict = Depends(get_current_user)):
     """Compare two products head-to-head"""
     try:
-        # Helper to get stats
         async def get_product_stats(pid):
-            # Fetch reviews + sentiment
-            # This is heavy if many reviews, but okay for demo scale
-            # Ideally fetch aggregating SQL
-            reviews = await get_reviews(pid, limit=200) 
-            if not reviews: return {"sentiment": 0, "credibility": 0, "count": 0, "aspects": {}}
-            
-            total_sent = 0
-            total_cred = 0
-            aspect_map = defaultdict(list)
-            
-            # We need sentiment analysis entries. 
-            # get_reviews doesn't return analysis! `get_recent_reviews_with_sentiment` does but not filtered by ID.
-            # We need `get_reviews_with_sentiment(product_id)`.
-            # Let's adjust logic:
-            # Query supabase manually
             response = supabase.table("reviews")\
                 .select("*, sentiment_analysis(*)")\
                 .eq("product_id", pid)\
@@ -982,6 +852,10 @@ async def compare_products(id_a: str, id_b: str, user: dict = Depends(get_curren
             
             data = response.data
             if not data: return {"sentiment": 0, "credibility": 0, "count": 0, "aspects": {}}
+            
+            total_sent = 0
+            total_cred = 0
+            aspect_map = defaultdict(list)
             
             count = len(data)
             for r in data:
@@ -1003,7 +877,6 @@ async def compare_products(id_a: str, id_b: str, user: dict = Depends(get_curren
                     elif asp["sentiment"] == "negative": ascore = 1
                     aspect_map[asp["name"]].append(ascore)
             
-            # Avg Aspect Scores
             final_aspects = {}
             for k, v in aspect_map.items():
                 final_aspects[k] = sum(v)/len(v)
@@ -1018,18 +891,16 @@ async def compare_products(id_a: str, id_b: str, user: dict = Depends(get_curren
         stats_a = await get_product_stats(id_a)
         stats_b = await get_product_stats(id_b)
         
-        # Merge Aspects for Radar
         all_aspects = set(stats_a["aspects"].keys()) | set(stats_b["aspects"].keys())
         radar_data = []
         for aspect in all_aspects:
             radar_data.append({
                 "subject": aspect,
-                "A": stats_a["aspects"].get(aspect, 3), # Default neutral
+                "A": stats_a["aspects"].get(aspect, 3),
                 "B": stats_b["aspects"].get(aspect, 3),
                 "fullMark": 5
             })
             
-        # Sort by subject for consistency
         radar_data.sort(key=lambda x: x["subject"])
         
         return {
@@ -1077,7 +948,6 @@ async def scrape_twitter_endpoint(payload: dict, user: dict = Depends(get_curren
         tweets = await twitter_scraper.search_tweets(query, limit=15)
         
         # 2. Process & Save (Sentiment Analysis happens here)
-        # Note: We reuse the existing pipeline function
         saved_count = await process_scraped_reviews(product_id, tweets)
         
         return {
@@ -1097,8 +967,6 @@ async def predict_trends(product_id: str, days: int = 7, user: dict = Depends(ge
     Forecast future sentiment trends using Linear Regression.
     """
     try:
-        # Fetch historical sentiment scores
-        
         # Fast path: query sentiment table directly
         resp = supabase.table("sentiment_analysis").select("score, created_at").eq("product_id", product_id).order("created_at", desc=True).limit(100).execute()
         
