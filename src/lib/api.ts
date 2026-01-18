@@ -2,8 +2,7 @@
 import axios from 'axios';
 import { supabase } from './supabase';
 
-// Ensure this matches your backend URL
-const API_URL = 'http://localhost:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 const api = axios.create({
     baseURL: API_URL,
@@ -41,18 +40,14 @@ export const sentinelApi = {
     // (Assuming basic auth methods exist, preserving if any, otherwise minimal placeholder)
     // If you had previous methods, they should be preserved, but for this specific request:
 
-    // NEW: Strict YouTube Trigger
-    scrapeYoutube: async (query: string, productId?: string) => {
-        const response = await api.post('/scrape/youtube', {
-            query,
-            product_id: productId
-        });
+    // --- Core API methods ---
+    getDashboardStats: async (): Promise<any> => {
+        const response = await api.get('/dashboard');
         return response.data;
     },
 
-    // Ensure these exist for the dashboard to work
-    getDashboardStats: async () => {
-        const response = await api.get('/dashboard');
+    triggerScrape: async (productId: string) => {
+        const response = await api.post('/scrape/trigger', { product_id: productId });
         return response.data;
     },
 
@@ -129,6 +124,10 @@ export const scrapeReddit = async (query: string) => {
 export const scrapeTwitter = async (query: string, productId?: string) => {
     const response = await api.post('/scrape/twitter', { query, product_id: productId });
     return response.data;
+};
+
+export const triggerScrape = async (productId: string) => {
+    return sentinelApi.triggerScrape(productId);
 };
 
 
