@@ -109,4 +109,81 @@ class ReportService:
 
         doc.build(story)
 
+    def generate_pdf_report(self, product_id: str) -> str:
+        """Generate a PDF report for a product_id.
+
+        The PDF contains: Total Reviews, Avg Sentiment Score, Top 5 positive and top 5 negative reviews.
+        """
+        if not _REPORTLAB_AVAILABLE:
+            raise ImportError("PDF generation requires reportlab")
+
+        # Query Supabase for reviews
+        try:
+            from database import supabase
+            resp = supabase.table("reviews").select("*, sentiment_score, sentiment_label").eq("product_id", product_id).execute()
+            rows = resp.data or []
+        except Exception as e:
+            print(f"Failed to fetch reviews for report: {e}")
+            rows = []
+
+        total = len(rows)
+        avg_sent = 0.0
+        try:
+            scores = [float(r.get("sentiment_score") or 0) for r in rows]
+            if scores:
+                avg_sent = sum(scores) / len(scores)
+        except Exception:
+            avg_sent = 0.0
+
+        # Sort top positive and negative by sentiment_score
+        positives = sorted([r for r in rows if (r.get("sentiment_score") is not None)], key=lambda x: float(x.get("sentiment_score") or 0), reverse=True)[:5]
+        negatives = sorted([r for r in rows if (r.get("sentiment_score") is not None)], key=lambda x: float(x.get("sentiment_score") or 0))[:5]
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"report_{product_id}_{timestamp}.pdf"
+        filepath = os.path.join(self.reports_dir, filename)
+
+        doc = SimpleDocTemplate(filepath, pagesize=letter)
+        styles = getSampleStyleSheet()
+        story = []
+
+        story.append(Paragraph(f"Sentiment Report - Product {product_id}", styles['Title']))
+        story.append(Spacer(1, 12))
+
+        story.append(Paragraph("Overview", styles['Heading2']))
+        overview = [
+            ['Metric', 'Value'],
+            ['Total Reviews', str(total)],
+            ['Average Sentiment', f"{avg_sent:.3f}"],
+        ]
+        t = Table(overview)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 12))
+
+        def add_review_list(title, items):
+            story.append(Paragraph(title, styles['Heading3']))
+            for r in items:
+                text = r.get('content') or r.get('text') or ''
+                label = r.get('sentiment_label') or ''
+                score = r.get('sentiment_score')
+                src = r.get('source_url') or r.get('url') or ''
+                line = f"({label} - {score}) {text[:300]}"
+                story.append(Paragraph(line, styles['Normal']))
+                if src:
+                    story.append(Paragraph(f"Source: {src}", styles['Italic']))
+                story.append(Spacer(1, 6))
+
+        add_review_list('Top Positive Reviews', positives)
+        story.append(Spacer(1, 12))
+        add_review_list('Top Negative Reviews', negatives)
+
+        doc.build(story)
+        return filepath
+
 report_service = ReportService()

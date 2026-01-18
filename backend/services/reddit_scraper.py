@@ -1,10 +1,13 @@
-"""Minimal reddit_scraper placeholder using asyncpraw.
-Phase 1 focuses on YouTube; full Reddit implementation to follow.
+"""Reddit scraper using asyncpraw.
+
+Searches a small set of relevant subreddits and returns recent comments/posts
+matching `query`.
 """
 
 import os
 import asyncio
 from typing import List, Dict, Any
+from datetime import datetime
 
 try:
     import asyncpraw
@@ -17,120 +20,90 @@ class RedditScraperService:
     def __init__(self):
         self.client = None
         if not _PRAW_AVAILABLE:
-            print("asyncpraw not installed; Reddit scraping disabled for now.")
+            print("Warning: asyncpraw not installed; Reddit scraping disabled.")
             return
-        # Load creds from env if present
-        cid = os.environ.get("REDDIT_CLIENT_ID")
-        secret = os.environ.get("REDDIT_CLIENT_SECRET")
-        ua = os.environ.get("REDDIT_USER_AGENT", "SentimentBeacon/1.0")
-        if cid and secret:
-            self.client = asyncpraw.Reddit(client_id=cid, client_secret=secret, user_agent=ua)
-        else:
-            print("Reddit credentials missing; Reddit scraping disabled.")
 
-    async def search_product_mentions(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """Return list of dicts with keys: content, author, platform, source_url, created_at"""
+        client_id = os.environ.get("REDDIT_CLIENT_ID")
+        client_secret = os.environ.get("REDDIT_CLIENT_SECRET")
+        user_agent = os.environ.get("REDDIT_USER_AGENT", "SentimentBeacon/1.0")
+
+        if not client_id or not client_secret:
+            print("Warning: Reddit credentials missing; Reddit scraping disabled.")
+            return
+
+        try:
+            self.client = asyncpraw.Reddit(client_id=client_id, client_secret=client_secret, user_agent=user_agent)
+        except Exception as e:
+            print(f"Reddit client init failed: {e}")
+            self.client = None
+
+    async def search_product_mentions(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Search Reddit (selected subreddits) for product mentions and return list of dicts.
+
+        Each item: {"text": ..., "url": ..., "platform": "reddit", "posted_at": ISO timestamp}
+        """
         if not self.client:
             return []
-        results = []
+
+        subreddits = ["technology", "gadgets", "reviews"]
+        per_sub = max(1, limit // len(subreddits))
+        results: List[Dict[str, Any]] = []
+
         try:
-            # Search submissions
-            async for submission in self.client.subreddit("all").search(query, limit=limit):
-                results.append({
-                    "content": submission.title + "\n" + (submission.selftext or ""),
-                    "author": str(submission.author) if submission.author else "",
-                    "platform": "reddit",
-                    "source_url": f"https://reddit.com{submission.permalink}",
-                    "created_at": submission.created_utc,
-                })
-            return results
-        except Exception as e:
-            print(f"Reddit search error: {e}")
-            return []
+            for sub in subreddits:
+                try:
+                    subreddit = await self.client.subreddit(sub)
+                except Exception:
+                    # fallback to name-based access
+                    subreddit = self.client.subreddit(sub)
 
+                # Search recent posts
+                async for submission in subreddit.search(query, limit=per_sub, time_filter="month"):
+                    # Add submission as a mention
+                    posted = None
+                    try:
+                        posted = datetime.fromtimestamp(submission.created_utc).isoformat()
+                    except Exception:
+                        posted = None
 
-reddit_scraper = RedditScraperService()
-"""
-Reddit scraping service for collecting product reviews
-"""
-import os
-import asyncio
-from typing import List, Dict, Any
-from datetime import datetime
-
-try:
-    import praw
-    PRAW_AVAILABLE = True
-except ImportError:
-    PRAW_AVAILABLE = False
-    print("Warning: praw not installed. Install with: pip install praw")
-
-
-class RedditScraperService:
-    def __init__(self):
-        self.reddit = None
-        if PRAW_AVAILABLE:
-            try:
-                self.reddit = praw.Reddit(
-                    client_id=os.environ.get("REDDIT_CLIENT_ID", ""),
-                    client_secret=os.environ.get("REDDIT_CLIENT_SECRET", ""),
-                    user_agent=os.environ.get("REDDIT_USER_AGENT", "SentimentBeacon/1.0")
-                )
-                print("Reddit client initialized")
-            except Exception as e:
-                print(f"Reddit client initialization failed: {e}")
-    
-    async def search_product_mentions(self, product_name: str, subreddits: List[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        Search for product mentions across Reddit
-        """
-        if not self.reddit:
-            print("Reddit client not available")
-            return []
-        
-        if subreddits is None:
-            subreddits = ['all']
-        
-        reviews = []
-        
-        try:
-            for subreddit_name in subreddits:
-                subreddit = self.reddit.subreddit(subreddit_name)
-                
-                # Search for product mentions
-                for submission in subreddit.search(product_name, limit=limit, time_filter='month'):
-                    # Add submission
-                    reviews.append({
-                        'text': f"{submission.title}. {submission.selftext}",
-                        'author': str(submission.author),
-                        'platform': 'reddit',
-                        'source_url': f"https://reddit.com{submission.permalink}",
-                        'created_at': datetime.fromtimestamp(submission.created_utc).isoformat(),
-                        'score': submission.score,
-                        'subreddit': subreddit_name
+                    results.append({
+                        "text": (submission.title or "") + "\n" + (submission.selftext or ""),
+                        "url": f"https://reddit.com{submission.permalink}",
+                        "platform": "reddit",
+                        "posted_at": posted,
                     })
-                    
-                    # Add top comments
-                    submission.comments.replace_more(limit=0)
-                    for comment in submission.comments.list()[:10]:  # Top 10 comments
-                        if len(comment.body) > 20:  # Skip very short comments
-                            reviews.append({
-                                'text': comment.body,
-                                'author': str(comment.author),
-                                'platform': 'reddit',
-                                'source_url': f"https://reddit.com{comment.permalink}",
-                                'created_at': datetime.fromtimestamp(comment.created_utc).isoformat(),
-                                'score': comment.score,
-                                'subreddit': subreddit_name
+
+                    # Try to gather a few top-level comments
+                    try:
+                        await submission.comments.replace_more(limit=0)
+                        # `submission.comments.list()` may be large; take first few
+                        for comment in submission.comments.list()[:3]:
+                            try:
+                                posted_c = datetime.fromtimestamp(comment.created_utc).isoformat()
+                            except Exception:
+                                posted_c = None
+                            results.append({
+                                "text": comment.body,
+                                "url": f"https://reddit.com{comment.permalink}",
+                                "platform": "reddit",
+                                "posted_at": posted_c,
                             })
-            
-            print(f"Found {len(reviews)} Reddit mentions for '{product_name}'")
-            return reviews
-            
+                    except Exception:
+                        # Comments retrieval failed for this submission
+                        continue
+
+                    if len(results) >= limit:
+                        break
+
+                if len(results) >= limit:
+                    break
+
+            # Trim to requested limit
+            return results[:limit]
+
         except Exception as e:
-            print(f"Error scraping Reddit: {e}")
+            print(f"Reddit scraping error: {e}")
             return []
 
 
-# Global instance
 reddit_scraper = RedditScraperService()

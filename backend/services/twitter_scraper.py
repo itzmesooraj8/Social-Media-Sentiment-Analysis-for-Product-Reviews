@@ -1,12 +1,15 @@
-"""Minimal twitter_scraper placeholder using ntscraper (nitter/ntscraper).
-Full Twitter/X scraping will be implemented in later phases.
+"""Twitter scraper using ntscraper (Nitter) as a scraping fallback.
+
+If `ntscraper` is not available or an error occurs, the module logs a clear
+message and returns an empty list.
 """
 
 import os
+import asyncio
 from typing import List, Dict, Any
 
 try:
-    import ntscraper
+    from ntscraper import Nitter
     _NT_AVAILABLE = True
 except Exception:
     _NT_AVAILABLE = False
@@ -15,77 +18,45 @@ except Exception:
 class TwitterScraperService:
     def __init__(self):
         if not _NT_AVAILABLE:
-            print("ntscraper not available; Twitter scraping disabled for now.")
-            self.client = None
+            print("Warning: ntscraper not installed; Twitter scraping disabled.")
+            self._enabled = False
         else:
-            # ntscraper usage depends on library; keep simple
-            self.client = ntscraper
+            self._enabled = True
 
     async def search_tweets(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
-        if not self.client:
-            return []
-        try:
-            # This is a placeholder; actual implementation may call client.search or similar
-            tweets = []
-            return tweets
-        except Exception as e:
-            print(f"Twitter scrape error: {e}")
-            return []
+        """Search tweets using Nitter via `ntscraper`.
 
-
-twitter_scraper = TwitterScraperService()
-import asyncio
-from typing import List, Dict, Any
-
-class TwitterScraperService:
-    def __init__(self):
-        self.enabled = True
-
-    async def search_tweets(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        Returns list of {text, url, platform, posted_at}.
         """
-        Scrape REAL tweets only. No mocks allowed.
-        """
-        tweets = await self._try_real_scrape(query, limit)
-
-        if not tweets:
-            print(f"No real tweets found for '{query}'. Returning empty results (Mocking disabled).")
+        if not self._enabled:
             return []
-            
-        return tweets
 
-    async def _try_real_scrape(self, query: str, limit: int) -> List[Dict[str, Any]]:
         try:
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, self._run_ntscraper, query, limit)
         except Exception as e:
-            print(f"Twitter Scrape Error: {e}")
+            print(f"Twitter scrape dispatch error: {e}")
             return []
 
-    def _run_ntscraper(self, query: str, limit: int):
+    def _run_ntscraper(self, query: str, limit: int) -> List[Dict[str, Any]]:
         try:
-            from ntscraper import Nitter
-            # Note: Nitter instances can be flaky. If this fails, consider using the official Twitter API
-            # if the client provides keys. For now, this is the best 'free' real-time method.
-            scraper = Nitter(log_level=1, skip_instance_check=False)
-            results = scraper.get_tweets(query, mode='term', number=limit)
-
-            cleaned = []
-            for t in results.get('tweets', []):
-                cleaned.append({
-                    "text": t['text'],
-                    "author": t['user']['username'],
-                    "platform": "twitter",
-                    "source_url": t['link'],
-                    "created_at": t['date'],
-                    "likes": t['stats']['likes'],
-                    "retweets": t['stats']['retweets']
+            scraper = Nitter(log_level=0, skip_instance_check=False)
+            data = scraper.get_tweets(query, mode='term', number=limit)
+            tweets = []
+            for t in data.get('tweets', []):
+                tweets.append({
+                    'text': t.get('text'),
+                    'url': t.get('link'),
+                    'platform': 'twitter',
+                    'posted_at': t.get('date')
                 })
-            return cleaned
+            return tweets
         except ImportError:
-            print("'ntscraper' not installed. Run: pip install ntscraper")
+            print("ntscraper not installed. Install with: pip install ntscraper")
             return []
         except Exception as e:
             print(f"Nitter scrape failed: {e}")
             return []
+
 
 twitter_scraper = TwitterScraperService()
