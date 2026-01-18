@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getProducts, createProduct, deleteProduct, scrapeReddit, scrapeTwitter } from '@/lib/api';
+import { getProducts, createProduct, deleteProduct, scrapeReddit, scrapeTwitter, triggerScrape } from '@/lib/api';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,11 +46,22 @@ export default function Products() {
   // Create Product
   const createMutation = useMutation({
     mutationFn: createProduct,
-    onSuccess: () => {
+    onSuccess: async (data: any) => {
+      // data is expected to be the created product
       queryClient.invalidateQueries({ queryKey: ['products'] });
       setIsOpen(false);
       setNewProduct({ name: '', description: '', url: '' });
-      toast({ title: 'Success', description: 'Product added successfully' });
+      toast({ title: 'Product Added!', description: 'Initializing AI Agents to scrape Reddit & YouTube...' });
+
+      try {
+        if (data?.id) {
+          await triggerScrape(data.id);
+          queryClient.invalidateQueries({ queryKey: ['products'] });
+        }
+      } catch (e) {
+        console.error('triggerScrape failed', e);
+        toast({ title: 'Scrape Failed', description: 'Background scrape failed to start.', variant: 'destructive' });
+      }
     },
     onError: () => toast({ title: 'Error', description: 'Failed to create product', variant: 'destructive' })
   });

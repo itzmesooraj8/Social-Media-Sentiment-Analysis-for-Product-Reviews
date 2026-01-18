@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from "sonner";
 import { FileText, BarChart3, MessageSquare, Shield } from 'lucide-react';
-import { useDashboardData } from '@/hooks/useDashboardData';
+import { useRealtimeDashboard } from '@/hooks/useDashboardData';
+import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { SentimentTrendChart } from '@/components/dashboard/SentimentTrendChart';
@@ -21,36 +22,29 @@ import { DateRangePicker } from '@/components/dashboard/DateRangePicker';
 import { ExportButton } from '@/components/dashboard/ExportButton';
 
 const Index = () => {
-  const { metrics, analytics, alerts, refresh, loading } = useDashboardData();
+  const { data, isLoading, refetch } = useRealtimeDashboard();
 
-  // Debug: Log the raw metrics response
-  console.log('Raw metrics from hook:', metrics);
+  const apiMetrics = data?.metrics || {};
+  const recentReviews = data?.recentReviews || [];
+  const platformBreakdown = data?.platformBreakdown || {};
 
-  // The API returns: {success: true, data: {metrics: {...}, recentReviews: [...]}}
-  // getDashboardStats returns the full response, so we need to extract data.metrics
-  const rawData = (metrics as any) || {};
-  const apiMetrics = rawData.data?.metrics || rawData.metrics || {};
-  const recentReviews = rawData.data?.recentReviews || rawData.recentReviews || [];
-
-  console.log('Extracted apiMetrics:', apiMetrics);
-
-  const data = {
+  const assembled = {
     metrics: {
       totalReviews: apiMetrics.totalReviews ?? 0,
       sentimentDelta: apiMetrics.sentimentDelta ?? 0,
       botsDetected: apiMetrics.botsDetected ?? 0,
       averageCredibility: apiMetrics.averageCredibility ?? 0,
     },
-    recentReviews: recentReviews,
-    sentimentTrends: (analytics as any)?.data?.sentimentTrends || [],
-    aspectScores: (analytics as any)?.data?.aspectScores || [],
-    alerts: Array.isArray(alerts) ? alerts : [],
-    platformBreakdown: rawData.data?.platformBreakdown || rawData.platformBreakdown || {},
-    topKeywords: (analytics as any)?.data?.topKeywords || [],
-    credibilityReport: (analytics as any)?.data?.credibilityReport || {},
+    recentReviews,
+    sentimentTrends: [],
+    aspectScores: [],
+    alerts: [],
+    platformBreakdown,
+    topKeywords: [],
+    credibilityReport: {},
     lastUpdated: new Date()
   };
-  const isLoading = loading;
+  const isLoadingLocal = isLoading;
 
   const { data: summaryResp, isLoading: summaryLoading } = useQuery({
     queryKey: ['reportSummary'],
@@ -67,7 +61,7 @@ const Index = () => {
   });
 
   // Pulse Logic: If last 5 reviews are ALL negative, trigger crisis mode
-  const isCrisis = (data?.recentReviews || recentReviews || []).length >= 5 && (data?.recentReviews || recentReviews || []).slice(0, 5).every(r => r.sentiment === 'negative');
+  const isCrisis = (assembled?.recentReviews || []).length >= 5 && (assembled.recentReviews || []).slice(0, 5).every(r => (r.sentiment || r.sentiment_label || '').toLowerCase() === 'negative');
 
   useEffect(() => {
     if (isCrisis) {
@@ -78,8 +72,19 @@ const Index = () => {
     }
   }, [isCrisis]);
 
+  if (isLoadingLocal) {
+    return (
+      <DashboardLayout lastUpdated={new Date()} isCrisis={false}>
+        <div className="p-6">
+          <Skeleton className="h-6 w-48 mb-4" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
-    <DashboardLayout lastUpdated={data?.lastUpdated} isCrisis={isCrisis}>
+    <DashboardLayout lastUpdated={assembled?.lastUpdated} isCrisis={isCrisis}>
       <div className="space-y-6">
 
         {/* Controls Row */}
@@ -92,7 +97,7 @@ const Index = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Total Reviews Processed"
-            value={data?.metrics.totalReviews ?? 0}
+            value={assembled?.metrics.totalReviews ?? 0}
             icon={FileText}
             accentColor="positive"
             delay={0}
@@ -100,18 +105,18 @@ const Index = () => {
           />
           <MetricCard
             title="Sentiment Delta"
-            value={data?.metrics.sentimentDelta ?? 0}
-            change={data?.metrics.sentimentDelta}
-            changeType={data?.metrics.sentimentDelta && data.metrics.sentimentDelta > 0 ? 'positive' : 'negative'}
+            value={assembled?.metrics.sentimentDelta ?? 0}
+            change={assembled?.metrics.sentimentDelta}
+            changeType={assembled?.metrics.sentimentDelta && assembled.metrics.sentimentDelta > 0 ? 'positive' : 'negative'}
             icon={BarChart3}
-            accentColor={data?.metrics.sentimentDelta && data.metrics.sentimentDelta > 0 ? 'positive' : 'negative'}
+            accentColor={assembled?.metrics.sentimentDelta && assembled.metrics.sentimentDelta > 0 ? 'positive' : 'negative'}
             delay={1}
             suffix="%"
             subtitle="vs last week"
           />
           <MetricCard
             title="Bots Detected"
-            value={data?.metrics.botsDetected ?? 0}
+            value={assembled?.metrics.botsDetected ?? 0}
             icon={MessageSquare}
             accentColor="negative"
             delay={2}
@@ -119,7 +124,7 @@ const Index = () => {
           />
           <MetricCard
             title="Credibility Score"
-            value={data?.metrics.averageCredibility?.toFixed(1) ?? '0'}
+            value={assembled?.metrics.averageCredibility?.toFixed(1) ?? '0'}
             icon={Shield}
             accentColor="credibility"
             delay={3}
@@ -136,25 +141,25 @@ const Index = () => {
 
         {/* Sentiment Trend Chart */}
         <SentimentTrendChart
-          data={data?.sentimentTrends ?? []}
-          isLoading={isLoading}
+          data={assembled?.sentimentTrends ?? []}
+          isLoading={isLoadingLocal}
         />
 
         {/* Review Feed & Emotions */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ReviewFeed reviews={data?.recentReviews} />
+          <ReviewFeed reviews={assembled?.recentReviews ?? []} />
           <EmotionWheel isLoading={isLoading} />
         </div>
 
         {/* Aspect Analysis & Alerts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <AspectRadarChart
-            data={data?.aspectScores ?? []}
-            isLoading={isLoading}
+            data={assembled?.aspectScores ?? []}
+            isLoading={isLoadingLocal}
           />
           <AlertsPanel
-            alerts={data?.alerts ?? []}
-            isLoading={isLoading}
+            alerts={assembled?.alerts ?? []}
+            isLoading={isLoadingLocal}
           />
         </div>
 
@@ -162,21 +167,21 @@ const Index = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <TopicClusters isLoading={isLoading} />
           <PlatformChart
-            data={data?.platformBreakdown ?? []}
-            isLoading={isLoading}
+            data={assembled?.platformBreakdown ?? []}
+            isLoading={isLoadingLocal}
           />
         </div>
 
         {/* Keywords & Credibility Report */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <KeywordCloud
-            keywords={data?.topKeywords ?? []}
-            isLoading={isLoading}
+            keywords={assembled?.topKeywords ?? []}
+            isLoading={isLoadingLocal}
           />
 
 
           <CredibilityReport
-            report={data?.credibilityReport && Object.keys(data.credibilityReport || {}).length > 0 ? data.credibilityReport : {
+            report={assembled?.credibilityReport && Object.keys(assembled.credibilityReport || {}).length > 0 ? assembled.credibilityReport : {
               overallScore: 0,
               verifiedReviews: 0,
               botsDetected: 0,
@@ -184,7 +189,7 @@ const Index = () => {
               suspiciousPatterns: 0,
               totalAnalyzed: 0,
             }}
-            isLoading={isLoading}
+            isLoading={isLoadingLocal}
           />
         </div>
       </div>

@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageSquare, Twitter, Youtube, ExternalLink } from "lucide-react";
+import { MessageCircle, Twitter, Youtube, ExternalLink } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 
 // Define the Review type based on your DB schema
@@ -12,6 +12,7 @@ interface Review {
   platform: string;
   username: string;
   sentiment: 'positive' | 'neutral' | 'negative';
+  sentiment_label?: string;
   timestamp: string;
   sourceUrl?: string;
   credibility?: number;
@@ -31,7 +32,7 @@ export const ReviewFeed: React.FC<ReviewFeedProps> = ({ reviews }) => {
       case 'youtube':
         return <Youtube className="h-4 w-4 text-red-600" />;
       case 'reddit':
-        return <span className="text-orange-500 font-bold text-xs">r/</span>;
+        return <MessageCircle className="h-4 w-4 text-orange-500" />;
       default:
         return <MessageSquare className="h-4 w-4 text-gray-500" />;
     }
@@ -71,8 +72,8 @@ export const ReviewFeed: React.FC<ReviewFeedProps> = ({ reviews }) => {
                           {review.timestamp ? formatDistanceToNow(new Date(review.timestamp), { addSuffix: true }) : 'Just now'}
                         </span>
                       </div>
-                      <Badge variant="outline" className={getSentimentColor(review.sentiment)}>
-                        {review.sentiment?.toUpperCase() || 'NEUTRAL'}
+                      <Badge variant="outline" className={getSentimentColor(review.sentiment || review.sentiment_label || '')}>
+                        {(review.sentiment_label || review.sentiment || 'neutral').toString().toUpperCase()}
                       </Badge>
                     </div>
 
