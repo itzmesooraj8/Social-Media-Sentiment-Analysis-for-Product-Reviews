@@ -56,7 +56,7 @@ export const ReviewFeed: React.FC<ReviewFeedProps> = ({ reviews }) => {
           <div className="space-y-4">
             {reviews.length === 0 ? (
               <div className="text-center text-gray-500 py-10">
-                No reviews found. Try analyzing a YouTube URL above!
+                Waiting for live data... Add a product to start tracking.
               </div>
             ) : (
               reviews.map((review) => (

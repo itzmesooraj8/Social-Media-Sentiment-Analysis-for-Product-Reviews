@@ -51,7 +51,7 @@ export default function Products() {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       setIsOpen(false);
       setNewProduct({ name: '', description: '', url: '' });
-      toast({ title: 'Product Added!', description: 'Initializing AI Agents to scrape Reddit & YouTube...' });
+      toast({ title: 'Product Added! initializing AI Agents to scrape Reddit & YouTube...' });
 
       try {
         if (data?.id) {
