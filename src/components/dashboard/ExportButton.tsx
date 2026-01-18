@@ -10,6 +10,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useQuery } from '@tanstack/react-query';
+import { getProducts, downloadReport } from '@/lib/api';
 
 type ExportFormat = 'pdf' | 'excel' | 'csv' | 'png';
 
@@ -21,28 +24,36 @@ export function ExportButton({ className }: ExportButtonProps) {
   const [isExporting, setIsExporting] = useState<ExportFormat | null>(null);
   const [exportSuccess, setExportSuccess] = useState<ExportFormat | null>(null);
   const { toast } = useToast();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
 
   const handleExport = async (format: ExportFormat) => {
+    // If PDF, open selection dialog
+    if (format === 'pdf') {
+      setIsDialogOpen(true);
+      return;
+    }
+
     setIsExporting(format);
-    
-    // Simulate export process
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
+
+    // Simulate export process for other formats
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
     setIsExporting(null);
     setExportSuccess(format);
-    
+
     const formatNames = {
       pdf: 'PDF Report',
       excel: 'Excel Spreadsheet',
       csv: 'CSV Data',
       png: 'Dashboard Image',
     };
-    
+
     toast({
       title: 'Export Complete',
       description: `${formatNames[format]} has been downloaded successfully.`,
     });
-    
+
     setTimeout(() => setExportSuccess(null), 2000);
   };
 
@@ -74,9 +85,10 @@ export function ExportButton({ className }: ExportButtonProps) {
   ];
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" className={className}>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" className={className}>
           <AnimatePresence mode="wait">
             {isExporting ? (
               <motion.div
@@ -109,10 +121,10 @@ export function ExportButton({ className }: ExportButtonProps) {
           </AnimatePresence>
           Export
           <ChevronDown className="h-4 w-4 ml-2" />
-        </Button>
-      </DropdownMenuTrigger>
+          </Button>
+        </DropdownMenuTrigger>
       
-      <DropdownMenuContent align="end" className="w-56 glass-card border-border/50">
+        <DropdownMenuContent align="end" className="w-56 glass-card border-border/50">
         {exportOptions.map((option, index) => {
           const Icon = option.icon;
           const isLoading = isExporting === option.format;
@@ -145,7 +157,61 @@ export function ExportButton({ className }: ExportButtonProps) {
             </div>
           );
         })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Dialog for PDF export product selection */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export PDF Report</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <ProductSelector onSelect={(id: string) => setSelectedProduct(id)} />
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+              <Button
+                onClick={async () => {
+                  if (!selectedProduct) return toast({ title: 'Select a product first' });
+                  toast({ title: 'Generating Report...' });
+                  try {
+                    await downloadReport(selectedProduct);
+                    toast({ title: 'Report downloaded' });
+                    setIsDialogOpen(false);
+                  } catch (e) {
+                    toast({ title: 'Failed to generate report', variant: 'destructive' });
+                  }
+                }}
+              >
+                Export PDF
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function ProductSelector({ onSelect }: { onSelect: (id: string) => void }) {
+  const { data: products = [], isLoading } = useQuery({ queryKey: ['products'], queryFn: getProducts });
+
+  if (isLoading) return <div>Loading products...</div>;
+  if (!products || products.length === 0) return <div>No products found. Add a product first.</div>;
+
+  return (
+    <div className="space-y-2 max-h-64 overflow-y-auto">
+      {products.map((p: any) => (
+        <div key={p.id} className="flex items-center justify-between p-2 border rounded">
+          <div>
+            <div className="font-medium">{p.name}</div>
+            <div className="text-xs text-muted-foreground">{p.description}</div>
+          </div>
+          <div>
+            <Button size="sm" onClick={() => onSelect(p.id)}>Select</Button>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

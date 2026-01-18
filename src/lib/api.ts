@@ -105,6 +105,26 @@ export const createProduct = sentinelApi.createProduct;
 export const analyzeText = sentinelApi.analyzeText;
 export const scrapeYoutube = sentinelApi.scrapeYoutube;
 
+export const downloadReport = async (productId: string) => {
+    try {
+        const response = await api.get(`/reports/${productId}`, { responseType: 'blob' });
+        const contentType = response.headers['content-type'] || 'application/pdf';
+        const blob = new Blob([response.data], { type: contentType });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sentinel_report_${productId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        return { success: true };
+    } catch (e) {
+        console.error('downloadReport failed', e);
+        return { success: false, error: e };
+    }
+};
+
 
 
 
