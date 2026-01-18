@@ -70,17 +70,17 @@ const Analytics = () => {
   }
 
   const analyticsData = analyticsRes?.success ? analyticsRes.data : null;
-  const metrics = (dashboardData as any)?.metrics || {};
-  const sentimentTrends = (dashboardData as any)?.sentimentTrends || [];
+  const metrics = (dashboardData as any)?.data?.metrics || (dashboardData as any)?.metrics || {};
+  const sentimentTrends = (dashboardData as any)?.data?.sentimentTrends || (dashboardData as any)?.sentimentTrends || [];
   const forecastData = predictionRes?.success ? predictionRes.data?.forecast : [];
-  const trendDirection = predictionRes?.success ? predictionRes.data?.trend : 'stable';
+  const trendDirection = predictionRes?.success ? predictionRes.data?.trend : null;
 
-  // Stats Array
+  // Stats Array - NO HARDCODED FALLBACKS - show real data or "-"
   const stats = [
-    { label: 'Avg Response Time', value: metrics.processingSpeed ? `${metrics.processingSpeed}ms` : '120ms', change: 0, icon: Zap, color: 'text-sentinel-positive' },
-    { label: 'Engagement Rate', value: '4.2 r/h', change: 12, icon: Target, color: 'text-sentinel-credibility' },
-    { label: 'AI Accuracy', value: metrics.modelAccuracy ? `${(metrics.modelAccuracy * 100).toFixed(1)}%` : '94.2%', change: 2.1, icon: Activity, color: 'text-sentinel-positive' },
-    { label: 'Future Sentiment', value: trendDirection.toUpperCase(), change: 0, icon: LineChartIcon, color: trendDirection === 'improving' ? 'text-green-500' : 'text-yellow-500' },
+    { label: 'Total Reviews', value: metrics.totalReviews ?? '-', change: 0, icon: Zap, color: 'text-sentinel-positive' },
+    { label: 'Sentiment Score', value: metrics.sentimentDelta ? `${metrics.sentimentDelta.toFixed(1)}%` : '-', change: 0, icon: Target, color: 'text-sentinel-credibility' },
+    { label: 'Avg Credibility', value: metrics.averageCredibility ? `${metrics.averageCredibility.toFixed(1)}%` : '-', change: 0, icon: Activity, color: 'text-sentinel-positive' },
+    { label: 'Future Sentiment', value: trendDirection ? trendDirection.toUpperCase() : '-', change: 0, icon: LineChartIcon, color: trendDirection === 'improving' ? 'text-green-500' : 'text-yellow-500' },
   ];
 
   return (

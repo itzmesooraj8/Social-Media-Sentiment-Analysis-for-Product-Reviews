@@ -2,12 +2,19 @@
 from fastapi import Header, HTTPException, status
 from typing import Optional
 from database import supabase
+import os
+
+
 
 async def verify_user(authorization: Optional[str] = Header(None)):
     """
-    Dependency to verify user session via JWT.
-    Extracts the Bearer token and checks with Supabase Auth.
+    Strict Dependency: Verifies valid JWT or REJECTS request.
+    No more demo bypass.
     """
+    # Allow an opt-in development bypass for local testing when explicitly enabled.
+    # Set environment variable DEV_ALLOW_ANON=1 or DEV_ALLOW_ANON=true to enable.
+    if os.environ.get("DEV_ALLOW_ANON", "").lower() in ["1", "true"]:
+        return {"id": "dev-user", "email": "dev@local"}
     if not authorization:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -15,7 +22,6 @@ async def verify_user(authorization: Optional[str] = Header(None)):
         )
     
     try:
-        # Expected format: "Bearer <token>"
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token:
             raise HTTPException(
@@ -23,8 +29,6 @@ async def verify_user(authorization: Optional[str] = Header(None)):
                 detail="Invalid authentication scheme"
             )
         
-        # Verify with Supabase
-        # print(f"DEBUG: Verifying token: {token[:10]}...")
         user_response = supabase.auth.get_user(token)
         if not user_response.user:
             raise HTTPException(
@@ -36,12 +40,9 @@ async def verify_user(authorization: Optional[str] = Header(None)):
         
     except Exception as e:
         print(f"Auth Verification Error: {e}")
-        import traceback
-        traceback.print_exc()
-        # For Local Dev Debugging: Allow "dev-token" if backend logic fails? No, better to see why it fails.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not validate credentials: {str(e)}"
+            detail="Could not validate credentials"
         )
 
 

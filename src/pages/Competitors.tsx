@@ -24,7 +24,12 @@ const Competitors = () => {
     // Fetch Products List
     useEffect(() => {
         apiGetProducts().then(d => {
-            if (d.success) setProducts(d.data || []);
+            // getProducts returns array directly, not {success, data}
+            if (Array.isArray(d)) {
+                setProducts(d);
+            } else if (d.success && d.data) {
+                setProducts(d.data);
+            }
         }).catch(console.error);
     }, []);
 

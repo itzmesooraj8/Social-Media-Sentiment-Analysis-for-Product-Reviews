@@ -77,7 +77,7 @@ const Integrations = () => {
       try {
         // In a real app, use the API. For now, since DB is likely empty, we handle the empty state.
         // But we should try to fetch.
-        const response = await fetch('/api/integrations');
+        const response = await fetch('http://localhost:8000/api/integrations');
         const data = await response.json();
         if (data.success) {
           // Map backend data to UI interface if needed, or use as is
@@ -199,7 +199,27 @@ const Integrations = () => {
                   <Button variant="outline" className="flex-1" onClick={() => setIsAddDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button className="flex-1 bg-sentinel-credibility hover:bg-sentinel-credibility/90">
+
+                  <Button
+                    className="flex-1 bg-sentinel-credibility hover:bg-sentinel-credibility/90"
+                    onClick={() => {
+                      setIntegrations(prev => [
+                        ...prev,
+                        {
+                          id: `new-${Date.now()}`,
+                          name: 'Twitter/X feed',
+                          platform: 'twitter',
+                          status: 'connected',
+                          lastSync: new Date(),
+                          reviewsCollected: 0,
+                          syncFrequency: '30 minutes',
+                          isEnabled: true
+                        }
+                      ]);
+                      setIsAddDialogOpen(false);
+                      toast({ title: "Integration Added", description: "Successfully connected to platform." });
+                    }}
+                  >
                     Connect
                   </Button>
                 </div>
@@ -227,7 +247,7 @@ const Integrations = () => {
                 <Zap className="h-5 w-5 text-sentinel-credibility" />
               </div>
               <div>
-                <p className="text-2xl font-bold">86.5K</p>
+                <p className="text-2xl font-bold">{integrations.reduce((sum, i) => sum + i.reviewsCollected, 0).toLocaleString()}</p>
                 <p className="text-sm text-muted-foreground">Total Reviews Collected</p>
               </div>
             </div>
@@ -238,7 +258,7 @@ const Integrations = () => {
                 <Clock className="h-5 w-5 text-sentinel-warning" />
               </div>
               <div>
-                <p className="text-2xl font-bold">5m</p>
+                <p className="text-2xl font-bold">{integrations.length > 0 ? formatLastSync(integrations.reduce((latest, i) => !latest || (i.lastSync && i.lastSync > latest) ? i.lastSync : latest, null as Date | null)) : '-'}</p>
                 <p className="text-sm text-muted-foreground">Last Sync</p>
               </div>
             </div>

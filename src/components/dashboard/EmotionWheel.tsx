@@ -1,6 +1,4 @@
-import { motion } from 'framer-motion';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { cn } from '@/lib/utils';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 interface EmotionData {
   name: string;
@@ -8,22 +6,23 @@ interface EmotionData {
   color: string;
 }
 
-const emotionData: EmotionData[] = [
-  { name: 'Joy', value: 35, color: 'hsl(142, 71%, 45%)' },
-  { name: 'Trust', value: 25, color: 'hsl(199, 89%, 48%)' },
-  { name: 'Anticipation', value: 15, color: 'hsl(38, 92%, 50%)' },
-  { name: 'Surprise', value: 10, color: 'hsl(280, 70%, 50%)' },
-  { name: 'Sadness', value: 8, color: 'hsl(220, 70%, 50%)' },
-  { name: 'Anger', value: 4, color: 'hsl(0, 84%, 60%)' },
-  { name: 'Fear', value: 2, color: 'hsl(260, 50%, 40%)' },
-  { name: 'Disgust', value: 1, color: 'hsl(150, 30%, 40%)' },
-];
+const defaultColors: Record<string, string> = {
+  'Joy': 'hsl(142, 71%, 45%)',
+  'Trust': 'hsl(199, 89%, 48%)',
+  'Anticipation': 'hsl(38, 92%, 50%)',
+  'Surprise': 'hsl(280, 70%, 50%)',
+  'Sadness': 'hsl(220, 70%, 50%)',
+  'Anger': 'hsl(0, 84%, 60%)',
+  'Fear': 'hsl(260, 50%, 40%)',
+  'Disgust': 'hsl(150, 30%, 40%)',
+};
 
 interface EmotionWheelProps {
   isLoading?: boolean;
+  data?: EmotionData[];
 }
 
-export function EmotionWheel({ isLoading }: EmotionWheelProps) {
+export function EmotionWheel({ isLoading, data }: EmotionWheelProps) {
   if (isLoading) {
     return (
       <div className="glass-card p-6 animate-pulse">
@@ -35,13 +34,33 @@ export function EmotionWheel({ isLoading }: EmotionWheelProps) {
     );
   }
 
+  // Use props data or show empty state
+  const emotionData = data && data.length > 0
+    ? data.map(d => ({
+      ...d,
+      color: d.color || defaultColors[d.name] || 'hsl(0, 0%, 50%)'
+    }))
+    : [];
+
+  if (emotionData.length === 0) {
+    return (
+      <div className="glass-card p-6">
+        <h3 className="text-lg font-semibold mb-4">Emotion Detection</h3>
+        <p className="text-sm text-muted-foreground mb-4">Distribution of emotions across all reviews</p>
+        <div className="h-[280px] flex items-center justify-center bg-muted/20 rounded-lg">
+          <p className="text-muted-foreground">No emotion data available. Analyze reviews to detect emotions.</p>
+        </div>
+      </div>
+    );
+  }
+
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
-      const data = payload[0].payload;
+      const dataPoint = payload[0].payload;
       return (
         <div className="glass-card p-3 border border-border/50">
-          <p className="font-medium">{data.name}</p>
-          <p className="text-sm text-muted-foreground">{data.value}% of reviews</p>
+          <p className="font-medium">{dataPoint.name}</p>
+          <p className="text-sm text-muted-foreground">{dataPoint.value}% of reviews</p>
         </div>
       );
     }
@@ -49,12 +68,7 @@ export function EmotionWheel({ isLoading }: EmotionWheelProps) {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.3 }}
-      className="glass-card p-6"
-    >
+    <div className="glass-card p-6">
       <h3 className="text-lg font-semibold mb-4">Emotion Detection</h3>
       <p className="text-sm text-muted-foreground mb-4">Distribution of emotions across all reviews</p>
 
@@ -73,8 +87,8 @@ export function EmotionWheel({ isLoading }: EmotionWheelProps) {
               animationDuration={1000}
             >
               {emotionData.map((entry, index) => (
-                <Cell 
-                  key={`cell-${index}`} 
+                <Cell
+                  key={`cell-${index}`}
                   fill={entry.color}
                   stroke="hsl(0 0% 10%)"
                   strokeWidth={1}
@@ -90,7 +104,7 @@ export function EmotionWheel({ isLoading }: EmotionWheelProps) {
       <div className="grid grid-cols-4 gap-2 mt-4">
         {emotionData.map((emotion) => (
           <div key={emotion.name} className="flex items-center gap-1.5">
-            <div 
+            <div
               className="w-2.5 h-2.5 rounded-full flex-shrink-0"
               style={{ backgroundColor: emotion.color }}
             />
@@ -112,12 +126,9 @@ export function EmotionWheel({ isLoading }: EmotionWheelProps) {
                   <span className="text-sm font-medium">{emotion.value}%</span>
                 </div>
                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${emotion.value}%` }}
-                    transition={{ duration: 0.8, delay: 0.2 + index * 0.1 }}
-                    className="h-full rounded-full"
-                    style={{ backgroundColor: emotion.color }}
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{ backgroundColor: emotion.color, width: `${emotion.value}%` }}
                   />
                 </div>
               </div>
@@ -125,6 +136,6 @@ export function EmotionWheel({ isLoading }: EmotionWheelProps) {
           ))}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

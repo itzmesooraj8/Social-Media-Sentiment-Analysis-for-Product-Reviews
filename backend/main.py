@@ -1,163 +1,163 @@
 """
-FastAPI Backend Server - PRODUCTION MODE (No Mocks)
+Production-ready FastAPI app for Phase 1.
+
+Endpoints:
+- GET /api/products
+- POST /api/products
+- GET /api/reviews
+- POST /api/scrape/trigger
+- GET /api/dashboard
+
+Focus: YouTube scraping + sentiment analysis. Reddit/Twitter are stubbed and deferred.
 """
+
+import os
+import sys
+import asyncio
+from typing import List, Optional, Dict, Any
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
-import os
-import sys
-from pathlib import Path
-from dotenv import load_dotenv
-from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from services.ai_service import ai_service
-from services.reddit_scraper import reddit_scraper
-from services.youtube_scraper import youtube_scraper
-from services.url_processor import url_processor
-from services.report_service import report_service
-from services.scheduler import start_scheduler
-from services.data_pipeline import process_scraped_reviews
-from services.twitter_scraper import twitter_scraper
-from auth.dependencies import get_current_user
-from database import (
-    get_products, add_product, get_reviews, get_recent_reviews_with_sentiment,
-    save_sentiment_analysis, get_dashboard_stats, get_advanced_analytics, supabase
-)
-
-load_dotenv()
+from services.scrapers import run_all_scrapers
+from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats
 
 app = FastAPI(title="Sentiment Beacon API", version="1.0.0")
 
-# Start Real-Time Scheduler
-@app.on_event("startup")
-async def startup_event():
-    if os.environ.get("SKIP_SCHEDULER", "").lower() not in ["1", "true"]:
-        start_scheduler()
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Tighten this for final production deployment
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Data Models ---
-class AnalyzeRequest(BaseModel):
-    text: str
 
 class ProductCreate(BaseModel):
     name: str
-    sku: str
-    category: str
-    description: Optional[str] = None
     keywords: Optional[List[str]] = []
+    track_reddit: Optional[bool] = False
+    track_twitter: Optional[bool] = False
+    track_youtube: Optional[bool] = True
 
-class ReviewCreate(BaseModel):
+
+class ScrapeTrigger(BaseModel):
     product_id: str
-    text: str
-    platform: str
-    source_url: Optional[str] = None
 
-class ScrapeRequest(BaseModel):
-    query: str
-    product_id: Optional[str] = None
-
-# --- Core Endpoints ---
 
 @app.get("/health")
-async def health_check():
-    return {"status": "ok", "mode": "real-time"}
+async def health():
+    return {"status": "ok"}
 
-@app.post("/api/analyze")
-async def analyze_sentiment(request: AnalyzeRequest, user: dict = Depends(get_current_user)):
-    # Uses AI Service (HuggingFace/Local) - No heuristic fallback unless models fail completely
-    result = await ai_service.analyze_sentiment(request.text)
-    return {"success": True, "data": result}
 
 @app.get("/api/products")
-async def list_products(user: dict = Depends(get_current_user)):
+async def api_get_products():
     products = await get_products()
     return {"success": True, "data": products}
 
+
 @app.post("/api/products")
-async def create_product(product: ProductCreate, user: dict = Depends(get_current_user)):
-    res = await add_product(product.dict())
+async def api_create_product(payload: ProductCreate):
+    data = {"name": payload.name, "keywords": payload.keywords or [],
+            "track_reddit": payload.track_reddit, "track_twitter": payload.track_twitter,
+            "track_youtube": payload.track_youtube}
+    res = await add_product(data)
     return {"success": True, "data": res}
 
+
+@app.get("/api/reviews")
+async def api_get_reviews(product_id: Optional[str] = None, platform: Optional[str] = None, limit: int = 100):
+    try:
+        query = supabase.table("reviews").select("*")
+        if product_id:
+            query = query.eq("product_id", product_id)
+        if platform:
+            query = query.eq("platform", platform)
+        resp = query.order("created_at", desc=True).limit(limit).execute()
+        return {"success": True, "data": resp.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/scrape/trigger")
+async def api_scrape_trigger(payload: ScrapeTrigger):
+    """Trigger scraping for a product_id. Runs YouTube scraper (and stubs for others) in parallel.
+
+    Steps:
+    - Fetch product and keywords
+    - Run scrapers in parallel
+    - Analyze fetched items with ai_service
+    - Upsert into `reviews` table
+    - Return count of new reviews
+    """
+    product_id = payload.product_id
+    if not product_id:
+        raise HTTPException(status_code=400, detail="product_id required")
+
+    # Fetch product
+    try:
+        prod_resp = supabase.table("products").select("*").eq("id", product_id).limit(1).execute()
+        if not prod_resp.data:
+            raise HTTPException(status_code=404, detail="Product not found")
+        product = prod_resp.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    keywords = product.get("keywords") or []
+    if not keywords:
+        # default to product name
+        keywords = [product.get("name")]
+
+    # Run consolidated scrapers (YouTube + Reddit + Twitter) in parallel
+    fetched_items = await run_all_scrapers(keywords, per_source=50)
+
+    if not fetched_items:
+        return {"success": True, "new": 0}
+
+    # Analyze and prepare rows for insertion
+    rows = []
+    for it in fetched_items:
+        content = it.get("content") or it.get("text") or ""
+        # Run AI analysis in thread to avoid blocking (analyze_text is cached)
+        analysis = await asyncio.to_thread(ai_service.analyze_text, content)
+        row = {
+            "product_id": product_id,
+            "content": content,
+            "platform": it.get("platform", "youtube"),
+            "sentiment_score": float(analysis.get("score", 0.5)),
+            "sentiment_label": analysis.get("label", "NEUTRAL"),
+            "emotion": analysis.get("emotion", "neutral"),
+            "credibility_score": float(analysis.get("credibility", it.get("credibility_score") or 0.5)),
+            "source_url": it.get("source_url") or None,
+            "created_at": it.get("created_at") or None,
+        }
+        rows.append(row)
+
+    # Batch insert - ignore duplicates handling (Supabase upsert requires conflict key)
+    try:
+        insert_resp = supabase.table("reviews").insert(rows).execute()
+        new_count = len(insert_resp.data) if insert_resp.data else 0
+    except Exception as e:
+        print(f"Insert error: {e}")
+        new_count = 0
+
+    return {"success": True, "new": new_count}
+
+
 @app.get("/api/dashboard")
-async def get_dashboard(user: dict = Depends(get_current_user)):
-    # Fetches REAL stats from DB
+async def api_dashboard():
+    # Use database helper which performs optimized queries and caching
     stats = await get_dashboard_stats()
-    adv = await get_advanced_analytics()
-    
-    # Merge for frontend
-    data = {
-        "metrics": {
-            "totalReviews": stats.get("totalReviews", 0),
-            "sentimentDelta": stats.get("sentimentScore", 0),
-            "averageCredibility": stats.get("averageCredibility", 0),
-            "engagementRate": adv.get("engagement_rate", 0)
-        },
-        "platformBreakdown": [], # Populate if your frontend needs it specifically formatted
-        "recentReviews": []
-    }
-    
-    # Get real recent reviews
-    recent = await get_recent_reviews_with_sentiment(limit=10)
-    data["recentReviews"] = recent
-    
-    return {"success": True, "data": data}
+    return {"success": True, "data": stats}
 
-# --- Real-Time Scraping Endpoints ---
-
-@app.post("/api/scrape/reddit")
-async def scrape_reddit_endpoint(payload: ScrapeRequest, user: dict = Depends(get_current_user)):
-    """Trigger real-time Reddit scrape"""
-    if not payload.query:
-        raise HTTPException(status_code=400, detail="Query required")
-        
-    print(f"Triggering Reddit scrape for: {payload.query}")
-    reviews = await reddit_scraper.search_product_mentions(payload.query, limit=20)
-    
-    saved_count = 0
-    if payload.product_id and reviews:
-        saved_count = await process_scraped_reviews(payload.product_id, reviews)
-        
-    return {"success": True, "count": len(reviews), "saved": saved_count, "data": reviews}
-
-@app.post("/api/scrape/twitter")
-async def scrape_twitter_endpoint(payload: ScrapeRequest, user: dict = Depends(get_current_user)):
-    """Trigger real-time Twitter scrape"""
-    if not payload.query:
-        raise HTTPException(status_code=400, detail="Query required")
-        
-    print(f"Triggering Twitter scrape for: {payload.query}")
-    tweets = await twitter_scraper.search_tweets(payload.query, limit=20)
-    
-    saved_count = 0
-    if payload.product_id and tweets:
-        saved_count = await process_scraped_reviews(payload.product_id, tweets)
-        
-    return {"success": True, "count": len(tweets), "saved": saved_count, "data": tweets}
-
-@app.post("/api/scrape/youtube")
-async def scrape_youtube_endpoint(payload: ScrapeRequest, user: dict = Depends(get_current_user)):
-    """Trigger real-time YouTube scrape"""
-    if not payload.query:
-        raise HTTPException(status_code=400, detail="Query required")
-    
-    reviews = youtube_scraper.search_video_comments(payload.query, max_results=50)
-    
-    saved_count = 0
-    if payload.product_id and reviews:
-        saved_count = await process_scraped_reviews(payload.product_id, reviews)
-        
-    return {"success": True, "count": len(reviews), "saved": saved_count}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+

@@ -20,14 +20,14 @@ print(f"DEBUG: SUPABASE_URL Found? {bool(SUPABASE_URL)}")
 print(f"DEBUG: SUPABASE_KEY Found? {bool(SUPABASE_KEY)}")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    print("❌ CRITICAL: Supabase credentials not found in environment variables!")
+    print("CRITICAL: Supabase credentials not found in environment variables!")
     supabase: Client = None
 else:
     try:
         supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        print("✅ Supabase client initialized successfully")
+        print("Supabase client initialized successfully")
     except Exception as e:
-        print(f"❌ Error initializing Supabase client: {e}")
+        print(f"Error initializing Supabase client: {e}")
         supabase = None
 
 
@@ -122,36 +122,44 @@ async def save_sentiment_analysis(analysis_data: dict):
         raise
 
 
+# Cache for dashboard stats (30 second TTL)
+import time
+_dashboard_cache = {"data": None, "timestamp": 0}
+_CACHE_TTL = 30  # seconds
+
 async def get_dashboard_stats():
     """
-    Fetch aggregated dashboard stats using efficient Database RPC.
-    Falls back to Python calculation if RPC is not set up.
+    Fetch aggregated dashboard stats with caching.
     """
+    global _dashboard_cache
+    
+    # Check cache first
+    now = time.time()
+    if _dashboard_cache["data"] and (now - _dashboard_cache["timestamp"]) < _CACHE_TTL:
+        return _dashboard_cache["data"]
+    
+    # Fetch fresh data
     try:
-        # Try calling the RPC function
-        # response = supabase.rpc('get_dashboard_stats', {}).execute()
-        # if response.data:
-        #     return response.data
-            
-        raise Exception("RPC disabled to force fallback calculation")
+        data = await _get_dashboard_metrics_fallback()
+        _dashboard_cache = {"data": data, "timestamp": now}
+        return data
     except Exception as e:
-        print(f"RPC 'get_dashboard_stats' failed (User might need to run schema.sql): {e}")
-        # Fallback to Python-side aggregation (Optimized)
-        return await _get_dashboard_metrics_fallback()
+        print(f"Dashboard stats error: {e}")
+        return _dashboard_cache["data"] or {
+            "totalReviews": 0,
+            "sentimentScore": 0,
+            "averageCredibility": 0,
+            "platformBreakdown": {}
+        }
 
 async def _get_dashboard_metrics_fallback():
-    """Fallback aggregation if SQL function is missing."""
-    print("DEBUG: Entering _get_dashboard_metrics_fallback")
+    """Optimized aggregation for dashboard metrics."""
     try:
         # Get total reviews count (Lightweight)
-        print("DEBUG: Fetching count...")
-        # count="exact" with head=True might be better, but let's try standard count
         reviews_resp = supabase.table("reviews").select("id", count="exact").execute()
         total_reviews = reviews_resp.count if reviews_resp.count else 0
-        print(f"DEBUG: Count: {total_reviews}")
         
         # Get sentiment stats
-        print("DEBUG: Fetching sentiment stats...")
         sentiment_resp = supabase.table("sentiment_analysis").select("label, credibility").execute()
         sentiment_data = sentiment_resp.data
         
@@ -166,22 +174,14 @@ async def _get_dashboard_metrics_fallback():
             avg_sentiment = 0
             avg_credibility = 0
             
-        print("DEBUG: Fetching platform breakdown...")
         # Platform breakdown - aggregate manually
-        # Select current platforms from reviews
         platform_resp = supabase.table("reviews").select("platform").execute()
         platforms = {}
         if platform_resp.data:
              for r in platform_resp.data:
                  p = r.get("platform", "unknown")
                  platforms[p] = platforms.get(p, 0) + 1
-        return {
-            "totalReviews": total_reviews,
-            "sentimentScore": avg_sentiment,
-            "averageCredibility": avg_credibility,
-            "platformBreakdown": platforms
-        }
-
+                 
         return {
             "totalReviews": total_reviews,
             "sentimentScore": avg_sentiment,
@@ -190,8 +190,6 @@ async def _get_dashboard_metrics_fallback():
         }
     except Exception as e:
         print(f"Fallback metrics failed: {e}")
-        import traceback
-        traceback.print_exc()
         return {
             "totalReviews": 0,
             "sentimentScore": 0,

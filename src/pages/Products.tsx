@@ -25,6 +25,7 @@ import {
   DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
 import { useNavigate } from 'react-router-dom';
+import { UrlAnalyzer } from '@/components/dashboard/UrlAnalyzer';
 
 export default function Products() {
   const { toast } = useToast();
@@ -33,11 +34,13 @@ export default function Products() {
   const [isOpen, setIsOpen] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: '', description: '', url: '' });
 
+
   // Fetch Products
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['products'],
     queryFn: getProducts,
-    refetchInterval: 5000,
+    refetchInterval: 30000,
+    staleTime: 10000,
   });
 
   // Create Product
@@ -94,6 +97,10 @@ export default function Products() {
 
   return (
     <DashboardLayout>
+      <div className="space-y-6 mb-8">
+        <UrlAnalyzer onAnalysisComplete={() => queryClient.invalidateQueries({ queryKey: ['products'] })} />
+      </div>
+
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Products</h1>

@@ -1,6 +1,6 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from services.reddit_scraper import reddit_scraper
+# from services.reddit_scraper import reddit_scraper # Disabled per user request
 from services.data_pipeline import process_scraped_reviews
 from database import get_products
 import asyncio
@@ -22,31 +22,15 @@ async def run_automated_scraping_job():
 
         total_new_reviews = 0
         
-        for product in products:
-            try:
-                if not product.get('name'):
-                    continue
-                    
-                print(f"  🔍 Scraping real-time data for: {product['name']}...")
-                
-                # 1. Scrape Reddit (Real API)
-                # We limit to 20 per cycle to respect API rate limits while keeping data fresh
-                reviews = await reddit_scraper.search_product_mentions(
-                    product_name=product['name'],
-                    subreddits=['all'], 
-                    limit=20 
-                )
-                
-                if reviews:
-                    saved_count = await process_scraped_reviews(product['id'], reviews)
-                    total_new_reviews += saved_count
-                    print(f"    ✅ Saved {saved_count} new reviews from Reddit")
-                else:
-                    print(f"    ℹ️ No new content found on Reddit")
-
-            except Exception as e:
-                print(f"    ❌ Error scraping {product.get('name')}: {e}")
-                continue
+        # Youtube Logic only now? The user said "Active Youtube" but scheduler usually runs passively.
+        # Since youtube scraper needs a specific video URL or query usually, passive scraping is harder without a "keywords" list loop.
+        # But we will disable Reddit here explicitly.
+        
+        print("ℹ️ Reddit scheduler disabled by user request. Automated scraping currently paused to save resources until YouTube auto-search is implemented.")
+        
+        # Future: Iterate products and search youtube? 
+        # for product in products:
+             # search_youtube(product.name) ...
                 
         print(f"[{datetime.now()}] ✅ Automation finished. Total new real reviews: {total_new_reviews}")
         
@@ -72,4 +56,4 @@ def start_scheduler():
     )
     
     scheduler.start()
-    print("✓ Real-time background scheduler active (30 min interval)")
+    print("✓ Real-time background scheduler active (30 min interval) - REDDIT DISABLED")

@@ -19,23 +19,55 @@ import { InsightCard } from '@/components/dashboard/InsightCard';
 import { TopicClusters } from '@/components/dashboard/TopicClusters';
 import { DateRangePicker } from '@/components/dashboard/DateRangePicker';
 import { ExportButton } from '@/components/dashboard/ExportButton';
-import UrlAnalyzer from '@/components/dashboard/UrlAnalyzer';
 
 const Index = () => {
-  const { data, isLoading } = useDashboardData();
+  const { metrics, analytics, alerts, refresh, loading } = useDashboardData();
+
+  // Debug: Log the raw metrics response
+  console.log('Raw metrics from hook:', metrics);
+
+  // The API returns: {success: true, data: {metrics: {...}, recentReviews: [...]}}
+  // getDashboardStats returns the full response, so we need to extract data.metrics
+  const rawData = (metrics as any) || {};
+  const apiMetrics = rawData.data?.metrics || rawData.metrics || {};
+  const recentReviews = rawData.data?.recentReviews || rawData.recentReviews || [];
+
+  console.log('Extracted apiMetrics:', apiMetrics);
+
+  const data = {
+    metrics: {
+      totalReviews: apiMetrics.totalReviews ?? 0,
+      sentimentDelta: apiMetrics.sentimentDelta ?? 0,
+      botsDetected: apiMetrics.botsDetected ?? 0,
+      averageCredibility: apiMetrics.averageCredibility ?? 0,
+    },
+    recentReviews: recentReviews,
+    sentimentTrends: (analytics as any)?.data?.sentimentTrends || [],
+    aspectScores: (analytics as any)?.data?.aspectScores || [],
+    alerts: Array.isArray(alerts) ? alerts : [],
+    platformBreakdown: rawData.data?.platformBreakdown || rawData.platformBreakdown || {},
+    topKeywords: (analytics as any)?.data?.topKeywords || [],
+    credibilityReport: (analytics as any)?.data?.credibilityReport || {},
+    lastUpdated: new Date()
+  };
+  const isLoading = loading;
 
   const { data: summaryResp, isLoading: summaryLoading } = useQuery({
     queryKey: ['reportSummary'],
     queryFn: async () => {
-      const res = await fetch('/api/reports/summary');
-      const j = await res.json();
-      return j;
-    }
+      const response = await fetch('http://localhost:8000/api/dashboard');
+      if (!response.ok) throw new Error('Failed to fetch summary');
+      const json = await response.json();
+      // Only show real AI summary, no fallback text
+      return {
+        summary: json.data?.aiSummary || null
+      };
+    },
+    retry: false
   });
 
   // Pulse Logic: If last 5 reviews are ALL negative, trigger crisis mode
-  const recentReviews = data?.recentReviews || [];
-  const isCrisis = recentReviews.length >= 5 && recentReviews.slice(0, 5).every(r => r.sentiment === 'negative');
+  const isCrisis = (data?.recentReviews || recentReviews || []).length >= 5 && (data?.recentReviews || recentReviews || []).slice(0, 5).every(r => r.sentiment === 'negative');
 
   useEffect(() => {
     if (isCrisis) {
@@ -49,7 +81,6 @@ const Index = () => {
   return (
     <DashboardLayout lastUpdated={data?.lastUpdated} isCrisis={isCrisis}>
       <div className="space-y-6">
-        <UrlAnalyzer />
 
         {/* Controls Row */}
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -142,13 +173,15 @@ const Index = () => {
             keywords={data?.topKeywords ?? []}
             isLoading={isLoading}
           />
+
+
           <CredibilityReport
-            report={data?.credibilityReport ?? {
+            report={data?.credibilityReport && Object.keys(data.credibilityReport || {}).length > 0 ? data.credibilityReport : {
               overallScore: 0,
+              verifiedReviews: 0,
               botsDetected: 0,
               spamClusters: 0,
               suspiciousPatterns: 0,
-              verifiedReviews: 0,
               totalAnalyzed: 0,
             }}
             isLoading={isLoading}

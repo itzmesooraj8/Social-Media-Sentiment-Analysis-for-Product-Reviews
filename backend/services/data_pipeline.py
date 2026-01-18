@@ -32,9 +32,13 @@ class DataPipelineService:
             text_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
             
             # 2. Prepare Review Data
+            # 2. Prepare Review Data
+            # Map 'text' to 'content' if your DB schema uses 'content' instead of 'text'
+            # Based on the error "null value in column content", the DB column is named 'content'.
+            
             review_data = {
                 "product_id": product_id,
-                "text": content,
+                "content": content, # MAPPED FOR DB SCHEMA (was 'text')
                 "username": review.get("author") or review.get("username", "Anonymous"),
                 "platform": review.get("platform", "web_upload"),
                 "source_url": review.get("source_url", ""),

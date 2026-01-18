@@ -71,7 +71,7 @@ const Settings = () => {
     queryKey: ['settings', user?.id],
     queryFn: async () => {
       const uid = user?.id || 'default';
-      const res = await fetch(`/api/settings?user_id=${encodeURIComponent(uid)}`);
+      const res = await fetch(`http://localhost:8000/api/settings?user_id=${encodeURIComponent(uid)}`);
       const json = await res.json();
       return (json.data || []) as Array<{ key: string; value: string }>;
     },
@@ -106,7 +106,7 @@ const Settings = () => {
 
   const saveSettingsMutation = useMutation({
     mutationFn: async (payloads: Array<{ user_id: string; key: string; value: any }>) => {
-      await Promise.all(payloads.map(p => fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })));
+      await Promise.all(payloads.map(p => fetch('http://localhost:8000/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })));
     },
     onSuccess: () => {
       setSaved(true);

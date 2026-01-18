@@ -1,3 +1,55 @@
+"""Minimal reddit_scraper placeholder using asyncpraw.
+Phase 1 focuses on YouTube; full Reddit implementation to follow.
+"""
+
+import os
+import asyncio
+from typing import List, Dict, Any
+
+try:
+    import asyncpraw
+    _PRAW_AVAILABLE = True
+except Exception:
+    _PRAW_AVAILABLE = False
+
+
+class RedditScraperService:
+    def __init__(self):
+        self.client = None
+        if not _PRAW_AVAILABLE:
+            print("asyncpraw not installed; Reddit scraping disabled for now.")
+            return
+        # Load creds from env if present
+        cid = os.environ.get("REDDIT_CLIENT_ID")
+        secret = os.environ.get("REDDIT_CLIENT_SECRET")
+        ua = os.environ.get("REDDIT_USER_AGENT", "SentimentBeacon/1.0")
+        if cid and secret:
+            self.client = asyncpraw.Reddit(client_id=cid, client_secret=secret, user_agent=ua)
+        else:
+            print("Reddit credentials missing; Reddit scraping disabled.")
+
+    async def search_product_mentions(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Return list of dicts with keys: content, author, platform, source_url, created_at"""
+        if not self.client:
+            return []
+        results = []
+        try:
+            # Search submissions
+            async for submission in self.client.subreddit("all").search(query, limit=limit):
+                results.append({
+                    "content": submission.title + "\n" + (submission.selftext or ""),
+                    "author": str(submission.author) if submission.author else "",
+                    "platform": "reddit",
+                    "source_url": f"https://reddit.com{submission.permalink}",
+                    "created_at": submission.created_utc,
+                })
+            return results
+        except Exception as e:
+            print(f"Reddit search error: {e}")
+            return []
+
+
+reddit_scraper = RedditScraperService()
 """
 Reddit scraping service for collecting product reviews
 """

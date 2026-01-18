@@ -39,3 +39,12 @@ export interface DashboardMetrics {
 
 export type AlertSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type AlertType = 'bot_detected' | 'spam_cluster' | 'sentiment_shift' | 'review_surge' | 'fake_review';
+
+export interface CredibilityReport {
+  overallScore: number;
+  verifiedReviews: number;
+  botsDetected: number;
+  spamClusters: number;
+  suspiciousPatterns: number;
+  totalAnalyzed: number;
+}

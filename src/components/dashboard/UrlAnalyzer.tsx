@@ -1,52 +1,94 @@
-﻿import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { useToast } from '@/hooks/use-toast';
-import { Search, Loader2, Link as LinkIcon } from 'lucide-react';
-import api from '@/lib/api';
+﻿import React, { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Loader2, Youtube, Search } from "lucide-react";
+import { sentinelApi } from '@/lib/api';
+import { useToast } from "@/hooks/use-toast";
 
-export default function UrlAnalyzer() {
+interface UrlAnalyzerProps {
+  onAnalysisComplete?: () => void;
+  selectedProductId?: string; // Optional: Link to a specific product
+}
+
+export const UrlAnalyzer: React.FC<UrlAnalyzerProps> = ({ onAnalysisComplete, selectedProductId }) => {
   const [url, setUrl] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
   const handleAnalyze = async () => {
-    if (!url) {
-      toast({ title: "Error", description: "Please paste a valid URL", variant: "destructive" });
-      return;
-    }
-    setLoading(true);
+    if (!url.trim()) return;
+
+    setIsLoading(true);
     try {
-      const res = await api.post('/api/analyze/url', { url });
-      toast({ 
-        title: "Analysis Complete", 
-        description: `Successfully ingested ${res.count} reviews from ${res.platform}.` 
+      // 1. Send URL/Query to Backend
+      const result = await sentinelApi.scrapeYoutube(url, selectedProductId);
+
+      // 2. Success Feedback
+      toast({
+        title: "Analysis Complete",
+        description: `Successfully analyzed ${result.saved || result.count} comments from YouTube.`,
+        variant: "default",
       });
-      setTimeout(() => window.location.reload(), 1500); // Auto-refresh data
-    } catch (e) {
-      toast({ title: "Analysis Failed", description: "Could not scrape URL.", variant: "destructive" });
+
+      setUrl('');
+
+      // 3. Refresh Dashboard Data
+      if (onAnalysisComplete) {
+        onAnalysisComplete();
+      }
+
+    } catch (error: any) {
+      console.error(error);
+      toast({
+        title: "Analysis Failed",
+        description: error.response?.data?.detail || "Could not fetch YouTube data. Check API Key.",
+        variant: "destructive",
+      });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="w-full p-6 bg-card border rounded-xl shadow-sm mb-8">
-      <div className="flex items-center gap-2 mb-4">
-        <LinkIcon className="h-5 w-5 text-primary" />
-        <h3 className="font-semibold text-lg">Real-Time URL Intelligence</h3>
-      </div>
-      <div className="flex gap-3">
-        <Input 
-          placeholder="Paste YouTube or Reddit Link..." 
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          className="h-12"
-        />
-        <Button onClick={handleAnalyze} disabled={loading} size="lg" className="h-12">
-          {loading ? <Loader2 className="animate-spin" /> : <Search />} Analyze
-        </Button>
-      </div>
-    </div>
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Youtube className="h-5 w-5 text-red-600" />
+          Live YouTube Analyzer
+        </CardTitle>
+        <CardDescription>
+          Paste a video URL or search query to analyze real-time comments.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex gap-2">
+          <Input
+            placeholder="https://youtube.com/watch?v=... or 'iPhone 15 Review'"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            disabled={isLoading}
+            onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
+          />
+          <Button
+            onClick={handleAnalyze}
+            disabled={isLoading || !url}
+            className="bg-red-600 hover:bg-red-700 text-white"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <Search className="mr-2 h-4 w-4" />
+                Analyze
+              </>
+            )}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
-}
+};

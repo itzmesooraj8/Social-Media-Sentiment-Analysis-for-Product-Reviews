@@ -1,8 +1,4 @@
-import { motion } from 'framer-motion';
 import { Treemap, ResponsiveContainer, Tooltip } from 'recharts';
-import { useQuery } from '@tanstack/react-query';
-import { cn } from '@/lib/utils';
-
 
 const sentimentColors = {
   positive: 'hsl(142, 71%, 45%)',
@@ -98,18 +94,23 @@ export function TopicClusters(props: TopicClustersProps) {
     return null;
   };
 
-  // Support prop-driven data or fetch from API
-  const { data: topicsFromApi } = useQuery({
-    queryKey: ['topics'],
-    queryFn: async () => {
-      const res = await fetch('/api/analytics/topics');
-      const json = await res.json();
-      return json.data || [];
-    },
-    enabled: !props.data
-  });
+  // Use ONLY prop-driven data - NO mock data
+  const activeData: TopicData[] = props.data || [];
 
-  const activeData: TopicData[] = (props as TopicClustersProps).data || topicsFromApi || [];
+  // Show empty state when no data
+  if (activeData.length === 0) {
+    return (
+      <div className="glass-card p-6">
+        <h3 className="text-lg font-semibold mb-2">Topic Clusters</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Key discussion topics sized by mention volume
+        </p>
+        <div className="h-[300px] flex items-center justify-center bg-muted/20 rounded-lg">
+          <p className="text-muted-foreground">No topic data available. Analyze reviews to generate topics.</p>
+        </div>
+      </div>
+    );
+  }
 
   const treemapData = activeData.map(topic => ({
     ...topic,
@@ -117,12 +118,7 @@ export function TopicClusters(props: TopicClustersProps) {
   }));
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.5 }}
-      className="glass-card p-6"
-    >
+    <div className="glass-card p-6">
       <h3 className="text-lg font-semibold mb-2">Topic Clusters</h3>
       <p className="text-sm text-muted-foreground mb-4">
         Key discussion topics sized by mention volume
@@ -159,7 +155,7 @@ export function TopicClusters(props: TopicClustersProps) {
       <div className="mt-4 pt-4 border-t border-border/50">
         <h4 className="text-sm font-medium mb-3">Top Discussion Topics</h4>
         <div className="grid grid-cols-2 gap-2">
-          {(activeData || []).slice(0, 4).map((topic, index) => (
+          {activeData.slice(0, 4).map((topic, index) => (
             <div
               key={topic.name}
               className="flex items-center gap-2 p-2 rounded-lg bg-background/50"
@@ -177,6 +173,6 @@ export function TopicClusters(props: TopicClustersProps) {
           ))}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

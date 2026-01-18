@@ -9,11 +9,14 @@ APScheduler==3.10.4
 spacy>=3.7.2
 openpyxl
 pandas
-praw
+asyncpraw
 scikit-learn
 nltk
 google-api-python-client>=2.0.0
 reportlab
 
-numpy
+# AI & scraping
+transformers>=4.30.0
+torch>=2.0.0
 ntscraper
+numpy

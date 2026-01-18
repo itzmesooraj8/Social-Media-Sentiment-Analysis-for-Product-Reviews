@@ -33,61 +33,67 @@ export function LiveReviewAnalyzer() {
 
     setIsAnalyzing(true);
 
-    // Simulate API call with realistic delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      // Call the real backend AI analysis API
+      const response = await fetch('http://localhost:8000/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: reviewText }),
+      });
 
-    // Generate mock analysis based on text content
-    const positiveWords = ['great', 'excellent', 'amazing', 'love', 'fantastic', 'best', 'perfect', 'wonderful'];
-    const negativeWords = ['bad', 'terrible', 'awful', 'hate', 'worst', 'poor', 'disappointing', 'broken'];
+      if (!response.ok) {
+        throw new Error('Analysis failed');
+      }
 
-    const lowerText = reviewText.toLowerCase();
-    const positiveCount = positiveWords.filter(w => lowerText.includes(w)).length;
-    const negativeCount = negativeWords.filter(w => lowerText.includes(w)).length;
+      const json = await response.json();
+      const analysisData = json.data || {};
 
-    let sentiment: 'positive' | 'neutral' | 'negative' = 'neutral';
-    let confidence = 65 + Math.random() * 20;
+      // Map backend response to our result format
+      const sentiment = (analysisData.label?.toLowerCase() || 'neutral') as 'positive' | 'neutral' | 'negative';
+      const confidence = (analysisData.score || 0.65) * 100;
 
-    if (positiveCount > negativeCount) {
-      sentiment = 'positive';
-      confidence = 75 + Math.random() * 20;
-    } else if (negativeCount > positiveCount) {
-      sentiment = 'negative';
-      confidence = 70 + Math.random() * 25;
+      // Extract key phrases from the text
+      const keyPhrases = reviewText
+        .split(/[.,!?]/)
+        .filter(p => p.trim().length > 10)
+        .slice(0, 4)
+        .map(p => p.trim().substring(0, 40));
+
+      // Use backend emotions if available, otherwise derive from sentiment
+      const emotions = analysisData.emotions || [
+        { name: 'Joy', score: sentiment === 'positive' ? 70 : 20 },
+        { name: 'Trust', score: sentiment === 'positive' ? 65 : 30 },
+        { name: 'Anticipation', score: 40 },
+        { name: 'Anger', score: sentiment === 'negative' ? 60 : 10 },
+        { name: 'Fear', score: sentiment === 'negative' ? 30 : 5 },
+        { name: 'Surprise', score: 25 },
+      ];
+
+      // Use backend aspects if available
+      const aspects = analysisData.aspects || [
+        { name: 'Quality', sentiment },
+        { name: 'Value', sentiment: 'neutral' as const },
+        { name: 'Service', sentiment: 'neutral' as const },
+      ];
+
+      setResult({
+        sentiment,
+        confidence,
+        emotions: emotions.sort((a: any, b: any) => b.score - a.score),
+        keyPhrases: keyPhrases.length ? keyPhrases : ['No distinct phrases detected'],
+        credibilityScore: (analysisData.credibility || 0.75) * 100,
+        credibilityReasons: analysisData.credibilityReasons || ['AI Model Analysis', 'Pattern Detection', 'Language Verification'],
+        aspects,
+      });
+    } catch (error) {
+      console.error('Analysis error:', error);
+      // Show error state but don't use mock data
+      setResult(null);
+    } finally {
+      setIsAnalyzing(false);
     }
-
-    const emotions = [
-      { name: 'Joy', score: sentiment === 'positive' ? 60 + Math.random() * 30 : 10 + Math.random() * 20 },
-      { name: 'Trust', score: 40 + Math.random() * 40 },
-      { name: 'Anticipation', score: 30 + Math.random() * 30 },
-      { name: 'Anger', score: sentiment === 'negative' ? 40 + Math.random() * 40 : 5 + Math.random() * 15 },
-      { name: 'Fear', score: 5 + Math.random() * 20 },
-      { name: 'Surprise', score: 20 + Math.random() * 30 },
-    ].sort((a, b) => b.score - a.score);
-
-    const keyPhrases = reviewText
-      .split(/[.,!?]/)
-      .filter(p => p.trim().length > 10)
-      .slice(0, 4)
-      .map(p => p.trim().substring(0, 40));
-
-    const aspects = [
-      { name: 'Quality', sentiment: sentiment },
-      { name: 'Value', sentiment: Math.random() > 0.5 ? sentiment : 'neutral' as const },
-      { name: 'Service', sentiment: Math.random() > 0.6 ? sentiment : 'neutral' as const },
-      { name: 'Shipping', sentiment: Math.random() > 0.7 ? 'positive' as const : 'neutral' as const },
-    ];
-
-    setResult({
-      sentiment,
-      confidence,
-      emotions,
-      keyPhrases: keyPhrases.length ? keyPhrases : ['No distinct phrases detected'],
-      credibilityScore: 70 + Math.random() * 25,
-      credibilityReasons: ['Consistent sentiment', 'Contextual depth', 'Verified language patterns'],
-      aspects,
-    });
-
-    setIsAnalyzing(false);
   };
 
   const sentimentConfig = {
