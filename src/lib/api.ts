@@ -173,5 +173,15 @@ export const getAlerts = async () => {
     }
 };
 
+export const getReviews = async (productId: string, limit = 500) => {
+    try {
+        const response = await api.get('/reviews', { params: { product_id: productId, limit } });
+        return response.data?.data || [];
+    } catch (e) {
+        console.error('getReviews failed', e);
+        return [];
+    }
+};
+
 export default sentinelApi;
 

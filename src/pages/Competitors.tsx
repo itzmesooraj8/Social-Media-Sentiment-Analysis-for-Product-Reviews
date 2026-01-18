@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
-import { getCompare, getProducts as apiGetProducts } from '@/lib/api';
+import { useState, useEffect, useMemo } from 'react';
+import { getCompare, getProducts as apiGetProducts, getReviews } from '@/lib/api';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend, Tooltip } from 'recharts';
 import { Swords, TrendingUp } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { SentimentDistribution } from '@/components/dashboard/SentimentDistribution';
 
 interface ComparisonData {
     aspects: { subject: string; A: number; B: number; fullMark: number }[];
@@ -19,34 +21,62 @@ const Competitors = () => {
     const [selectedA, setSelectedA] = useState<string>('');
     const [selectedB, setSelectedB] = useState<string>('');
     const [data, setData] = useState<ComparisonData | null>(null);
-    const [loading, setLoading] = useState(false);
 
-    // Fetch Products List
+    // Fetch Products List via React Query
+    const { data: productList = [], isLoading: productsLoading } = useQuery({ queryKey: ['products'], queryFn: apiGetProducts });
+
     useEffect(() => {
-        apiGetProducts().then(d => {
-            // getProducts returns array directly, not {success, data}
-            if (Array.isArray(d)) {
-                setProducts(d);
-            } else if (d.success && d.data) {
-                setProducts(d.data);
+        if (Array.isArray(productList)) setProducts(productList as any[]);
+    }, [productList]);
+
+    // Fetch reviews for selected products and compute comparison locally
+    const { data: reviewsA = [] } = useQuery({ queryKey: ['reviews', selectedA], queryFn: () => selectedA ? getReviews(selectedA) : Promise.resolve([]), enabled: !!selectedA });
+    const { data: reviewsB = [] } = useQuery({ queryKey: ['reviews', selectedB], queryFn: () => selectedB ? getReviews(selectedB) : Promise.resolve([]), enabled: !!selectedB });
+
+    useEffect(() => {
+        if (!selectedA || !selectedB) return;
+
+        // Compute metrics from reviewsA and reviewsB
+        const computeMetrics = (reviews: any[]) => {
+            const total = reviews.length || 0;
+            const counts = { positive: 0, neutral: 0, negative: 0 };
+            let credibilitySum = 0;
+            reviews.forEach(r => {
+                const label = (r.sentiment_label || r.sentiment || '').toString().toLowerCase();
+                if (label.includes('pos')) counts.positive++;
+                else if (label.includes('neg')) counts.negative++;
+                else counts.neutral++;
+                credibilitySum += Number(r.credibility_score || r.credibility || 0);
+            });
+            const sentimentPercent = total ? (counts.positive / total) * 100 : 0;
+            const avgCred = total ? (credibilitySum / total) * 100 : 0;
+            return { counts, sentimentPercent, avgCred, total };
+        };
+
+        const a = computeMetrics(reviewsA as any[]);
+        const b = computeMetrics(reviewsB as any[]);
+
+        // Mock aspects (Price, Quality, Battery) using sentimentPercent scaled to 0-5
+        const aspects = ['Price', 'Quality', 'Battery'].map((subject) => ({
+            subject,
+            A: Math.round((a.sentimentPercent / 100) * 5 * 10) / 10,
+            B: Math.round((b.sentimentPercent / 100) * 5 * 10) / 10,
+            fullMark: 5
+        }));
+
+        const comp: ComparisonData = {
+            aspects,
+            metrics: {
+                productA: { sentiment: a.sentimentPercent, credibility: a.avgCred, reviewCount: a.total },
+                productB: { sentiment: b.sentimentPercent, credibility: b.avgCred, reviewCount: b.total },
             }
-        }).catch(console.error);
-    }, []);
+        };
 
-    // Fetch Comparison Data
-    useEffect(() => {
-        if (selectedA && selectedB) {
-            setLoading(true);
-            getCompare(selectedA, selectedB)
-                .then(d => {
-                    if (d.success) setData(d.data);
-                    setLoading(false);
-                })
-                .catch(() => setLoading(false));
-        }
-    }, [selectedA, selectedB]);
+        setData(comp);
 
-    const getName = (id: string) => products.find(p => p.id === id)?.name || 'Product';
+    }, [selectedA, selectedB, reviewsA, reviewsB]);
+
+    const getName = (id: string) => products.find(p => p.id === id)?.name || productList.find((p:any)=>p.id===id)?.name || 'Product';
 
     return (
         <DashboardLayout>
@@ -99,6 +129,9 @@ const Competitors = () => {
                 </div>
 
                 {/* Comparison Viz */}
+                {(!selectedA || !selectedB) && (
+                    <div className="text-sm text-muted-foreground">Select two products to compare.</div>
+                )}
                 {data && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
 
@@ -148,13 +181,15 @@ const Competitors = () => {
                                         <div className="text-muted-foreground text-sm">VS</div>
                                         <div className="text-sentinel-negative">{data.metrics.productB.sentiment.toFixed(0)}%</div>
                                     </div>
-                                    <div className="h-4 bg-muted rounded-full overflow-hidden flex">
-                                        <div className="bg-sentinel-positive h-full" style={{ width: `${data.metrics.productA.sentiment}%` }} />
-                                        <div className="bg-sentinel-negative h-full" style={{ width: `${data.metrics.productB.sentiment}%` }} />
-                                    </div>
-                                    <div className="flex justify-between text-sm text-muted-foreground mt-2">
-                                        <span>{getName(selectedA)}</span>
-                                        <span>{getName(selectedB)}</span>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <div className="text-sm text-muted-foreground">{getName(selectedA)}</div>
+                                            <SentimentDistribution data={[{ name: 'Positive', value: Math.round(data.metrics.productA.sentiment) }, { name: 'Neutral', value: Math.round(100 - data.metrics.productA.sentiment - 0) }, { name: 'Negative', value: Math.round(0) }]} height={120} />
+                                        </div>
+                                        <div>
+                                            <div className="text-sm text-muted-foreground">{getName(selectedB)}</div>
+                                            <SentimentDistribution data={[{ name: 'Positive', value: Math.round(data.metrics.productB.sentiment) }, { name: 'Neutral', value: Math.round(100 - data.metrics.productB.sentiment - 0) }, { name: 'Negative', value: Math.round(0) }]} height={120} />
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>
