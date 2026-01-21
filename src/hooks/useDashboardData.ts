@@ -2,37 +2,43 @@ import { useQuery } from '@tanstack/react-query';
 import { getDashboardStats } from '@/lib/api';
 
 export type DashboardStats = {
-  totalReviews: number;
-  sentimentScore: number;
-  averageCredibility: number;
-  platformBreakdown: Record<string, number>;
+  metrics?: {
+    totalReviews?: number;
+    sentimentDelta?: number;
+    averageCredibility?: number | null;
+    botsDetected?: number;
+  };
+  recentReviews?: any[];
+  platformBreakdown?: Record<string, any> | any[];
+  alerts?: any[];
+  aiSummary?: string | null;
 };
 
-// Heartbeat hook: polls dashboard stats every 5 seconds
+// Heartbeat hook: polls dashboard stats every 3 seconds to provide a "real-time" feel
 export function useRealtimeDashboard() {
-  const {
-    data,
-    isLoading,
-    refetch,
-  } = useQuery<DashboardStats | null>({
-    queryKey: ['dashboard-stats'],
-    queryFn: async () => {
-      const res = await getDashboardStats();
-      // getDashboardStats is expected to return the payload directly
-      return (res as DashboardStats) ?? null;
+  const query = useQuery<DashboardStats | null>(
+    ['dashboard-stats'],
+    async () => {
+      try {
+        const res = await getDashboardStats();
+        return (res as any)?.data ?? (res as any) ?? null;
+      } catch (e) {
+        return null;
+      }
     },
-    refetchInterval: 5000,
-    refetchIntervalInBackground: true,
-    staleTime: 0,
-  });
+    {
+      refetchInterval: 3000, // CRITICAL: 3 seconds heartbeat
+      refetchIntervalInBackground: true,
+      staleTime: 0,
+      retry: false,
+    }
+  );
 
-  return { data, isLoading, refetch };
+  return { data: query.data, isLoading: query.isLoading, refetch: query.refetch };
 }
 
-// Backwards-compatible export: some pages import `useDashboardData`
+// Backwards-compatible alias
 export function useDashboardData() {
   const { data, isLoading, refetch } = useRealtimeDashboard();
-
-  // Normalize shape expected by older consumers: { metrics, loading, refetch }
   return { metrics: data, loading: isLoading, refetch };
 }

@@ -90,6 +90,18 @@ const Index = () => {
     <DashboardLayout lastUpdated={assembled?.lastUpdated} isCrisis={isCrisis}>
       <div className="space-y-6">
 
+        {/* Page Title + Live Indicator */}
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-semibold">Dashboard</h2>
+          <div className="flex items-center gap-2 glass-card px-2 py-1 rounded-full">
+            <div className="relative flex items-center justify-center">
+              <span className="absolute h-2.5 w-2.5 rounded-full bg-sentinel-positive animate-ping opacity-70" />
+              <span className="relative h-2 w-2 rounded-full bg-sentinel-positive" />
+            </div>
+            <span className="text-sm font-medium text-sentinel-positive">Live Data Feed</span>
+          </div>
+        </div>
+
         {/* Controls Row */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <DateRangePicker />

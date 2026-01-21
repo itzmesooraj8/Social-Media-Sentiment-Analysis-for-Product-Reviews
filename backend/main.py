@@ -16,7 +16,7 @@ import sys
 import asyncio
 from typing import List, Optional, Dict, Any
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
@@ -92,15 +92,9 @@ async def api_get_reviews(product_id: Optional[str] = None, platform: Optional[s
 
 
 @app.post("/api/scrape/trigger")
-async def api_scrape_trigger(payload: ScrapeTrigger):
-    """Trigger scraping for a product_id. Runs YouTube scraper (and stubs for others) in parallel.
-
-    Steps:
-    - Fetch product and keywords
-    - Run scrapers in parallel
-    - Analyze fetched items with ai_service
-    - Upsert into `reviews` table
-    - Return count of new reviews
+async def api_scrape_trigger(payload: ScrapeTrigger, background_tasks: BackgroundTasks):
+    """Trigger scraping for a product_id. The heavy work is scheduled in the
+    background so the API can return immediately and keep the frontend snappy.
     """
     product_id = payload.product_id
     if not product_id:
@@ -113,43 +107,55 @@ async def api_scrape_trigger(payload: ScrapeTrigger):
 
     keywords = product.get("keywords") or []
     if not keywords:
-        # default to product name
         keywords = [product.get("name")]
 
-    # Run consolidated scrapers (YouTube + Reddit + Twitter) in parallel
-    fetched_items = await run_all_scrapers(keywords, per_source=50)
+    # Schedule background task to perform scraping + analysis + DB insert
+    background_tasks.add_task(run_all_scrapers_background, keywords, product_id)
+    return {"status": "accepted", "message": "Scraping started in background"}
+
+
+async def run_all_scrapers_background(keywords: list, product_id: str):
+    """Background worker that runs scrapers, analyzes results and inserts
+    reviews into the database. Errors are caught and logged but do not crash.
+    """
+    try:
+        fetched_items = await run_all_scrapers(keywords, per_source=50)
+    except Exception as e:
+        print(f"Background: run_all_scrapers failed: {e}")
+        return
 
     if not fetched_items:
-        return {"success": True, "new": 0}
+        return
 
-    # Analyze and prepare rows for insertion
     rows = []
     for it in fetched_items:
-        content = it.get("content") or it.get("text") or ""
-        # Run AI analysis in thread to avoid blocking (analyze_text is cached)
-        analysis = await asyncio.to_thread(ai_service.analyze_text, content)
-        row = {
-            "product_id": product_id,
-            "content": content,
-            "platform": it.get("platform", "youtube"),
-            "sentiment_score": float(analysis.get("score", 0.5)),
-            "sentiment_label": analysis.get("label", "NEUTRAL"),
-            "emotion": analysis.get("emotion", "neutral"),
-            "credibility_score": float(analysis.get("credibility", it.get("credibility_score") or 0.5)),
-            "source_url": it.get("source_url") or None,
-            "created_at": it.get("created_at") or None,
-        }
-        rows.append(row)
+        try:
+            content = it.get("content") or it.get("text") or ""
+            analysis = await asyncio.to_thread(ai_service.analyze_text, content)
+            row = {
+                "product_id": product_id,
+                "content": content,
+                "platform": it.get("platform", "youtube"),
+                "sentiment_score": float(analysis.get("score", 0.5)),
+                "sentiment_label": analysis.get("label", "NEUTRAL"),
+                "emotion": analysis.get("emotion", "neutral"),
+                "credibility_score": float(analysis.get("credibility", it.get("credibility_score") or 0.5)),
+                "source_url": it.get("source_url") or None,
+                "created_at": it.get("created_at") or None,
+            }
+            rows.append(row)
+        except Exception as e:
+            print(f"Background: item prepare error: {e}")
+            continue
 
-    # Batch insert - ignore duplicates handling (Supabase upsert requires conflict key)
+    if not rows:
+        return
+
     try:
         insert_resp = supabase.table("reviews").insert(rows).execute()
-        new_count = len(insert_resp.data) if insert_resp.data else 0
+        print(f"Background: inserted {len(insert_resp.data) if insert_resp.data else 0} reviews for product {product_id}")
     except Exception as e:
-        print(f"Insert error: {e}")
-        new_count = 0
-
-    return {"success": True, "new": new_count}
+        print(f"Background: insert error: {e}")
 
 
 @app.post("/api/scrape/youtube")
