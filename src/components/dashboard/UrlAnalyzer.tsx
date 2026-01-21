@@ -16,7 +16,6 @@ export const UrlAnalyzer: React.FC<UrlAnalyzerProps> = ({ onAnalysisComplete, se
   const [isLoading, setIsLoading] = useState(false);
   const [showProductForm, setShowProductForm] = useState(false);
   const [productName, setProductName] = useState('');
-  const [productCategory, setProductCategory] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const { toast } = useToast();
 
@@ -35,7 +34,7 @@ export const UrlAnalyzer: React.FC<UrlAnalyzerProps> = ({ onAnalysisComplete, se
     setIsLoading(true);
     try {
       // 1. Create product in Supabase
-      const createResp = await sentinelApi.createProduct({ name: productName, category: productCategory, keywords: [], track_youtube: true });
+      const createResp = await sentinelApi.createProduct({ name: productName, keywords: [], track_youtube: true });
       let product: any = null;
       if (createResp?.data) {
         product = Array.isArray(createResp.data) ? createResp.data[0] : createResp.data;
@@ -68,7 +67,6 @@ export const UrlAnalyzer: React.FC<UrlAnalyzerProps> = ({ onAnalysisComplete, se
         setIsLoading(false);
         setShowProductForm(false);
         setProductName('');
-        setProductCategory('');
         if (onAnalysisComplete) onAnalysisComplete();
       });
       es.onerror = (err) => {
@@ -129,7 +127,6 @@ export const UrlAnalyzer: React.FC<UrlAnalyzerProps> = ({ onAnalysisComplete, se
             <h3 className="text-sm font-semibold mb-2">Product details</h3>
             <div className="flex gap-2">
               <Input placeholder="Product name" value={productName} onChange={(e) => setProductName(e.target.value)} />
-              <Input placeholder="Category (e.g. Electronics)" value={productCategory} onChange={(e) => setProductCategory(e.target.value)} />
               <Button onClick={handleSubmitProduct} disabled={isLoading || !productName} className="bg-green-600 hover:bg-green-700 text-white">Create & Analyze</Button>
               <Button onClick={() => setShowProductForm(false)} variant="ghost">Cancel</Button>
             </div>

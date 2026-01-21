@@ -60,7 +60,7 @@ async def get_products():
     """Fetch all products from the database."""
     try:
         if supabase is not None:
-            response = supabase.table("products").select("*").execute()
+            response = supabase.table("products").select("*").limit(50).execute()
             return response.data
         # Fallback to local JSON
         db = _read_local_db()

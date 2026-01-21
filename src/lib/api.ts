@@ -60,7 +60,7 @@ export const sentinelApi = {
 
     getProducts: async () => {
         try {
-            const response = await api.get('/products', { timeout: 8000 });
+            const response = await api.get('/products', { timeout: 30000 });
             return response.data.data || [];
         } catch (e) {
             console.error("API /products failed", e);

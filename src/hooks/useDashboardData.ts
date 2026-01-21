@@ -16,9 +16,9 @@ export type DashboardStats = {
 
 // Heartbeat hook: polls dashboard stats every 3 seconds to provide a "real-time" feel
 export function useRealtimeDashboard() {
-  const query = useQuery<DashboardStats | null>(
-    ['dashboard-stats'],
-    async () => {
+  const query = useQuery<DashboardStats | null>({
+    queryKey: ['dashboard-stats'],
+    queryFn: async () => {
       try {
         const res = await getDashboardStats();
         return (res as any)?.data ?? (res as any) ?? null;
@@ -26,13 +26,11 @@ export function useRealtimeDashboard() {
         return null;
       }
     },
-    {
-      refetchInterval: 3000, // CRITICAL: 3 seconds heartbeat
-      refetchIntervalInBackground: true,
-      staleTime: 0,
-      retry: false,
-    }
-  );
+    refetchInterval: 3000, // CRITICAL: 3 seconds heartbeat
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+    retry: false,
+  });
 
   return { data: query.data, isLoading: query.isLoading, refetch: query.refetch };
 }
