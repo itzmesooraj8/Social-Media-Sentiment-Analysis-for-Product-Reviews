@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { supabase } from './supabase';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
 
 const api = axios.create({
     baseURL: API_URL,
@@ -72,6 +72,16 @@ export const sentinelApi = {
         const response = await api.post('/products', productData);
         return response.data;
     }
+    ,
+    scrapeYoutube: async (url: string, productId?: string) => {
+        try {
+            const response = await api.post('/scrape/youtube', { url, product_id: productId });
+            return response.data || {};
+        } catch (e) {
+            console.error('scrapeYoutube failed', e);
+            throw e;
+        }
+    }
 };
 
 
@@ -104,6 +114,15 @@ export const getProducts = sentinelApi.getProducts;
 export const createProduct = sentinelApi.createProduct;
 export const analyzeText = sentinelApi.analyzeText;
 export const scrapeYoutube = sentinelApi.scrapeYoutube;
+
+export const getYoutubeStreamUrl = (url: string, productId?: string, max_results = 50) => {
+    const base = API_URL.replace(/\/+$/,'');
+    const params = new URLSearchParams();
+    params.set('url', url);
+    if (productId) params.set('product_id', productId);
+    params.set('max_results', String(max_results));
+    return `${base}/scrape/youtube/stream?${params.toString()}`;
+};
 
 export const downloadReport = async (productId: string) => {
     try {

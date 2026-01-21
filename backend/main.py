@@ -19,12 +19,14 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
+from fastapi import Query
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from services.ai_service import ai_service
-from services.scrapers import run_all_scrapers
-from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats
+from services.scrapers import run_all_scrapers, search_youtube_comments, stream_youtube_comments
+from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats, get_product_by_id, delete_product
 
 app = FastAPI(title="Sentiment Beacon API", version="1.0.0")
 
@@ -47,6 +49,12 @@ class ProductCreate(BaseModel):
 
 class ScrapeTrigger(BaseModel):
     product_id: str
+
+
+class YoutubeScrapeRequest(BaseModel):
+    url: str
+    product_id: Optional[str] = None
+    max_results: Optional[int] = 50
 
 
 @app.get("/health")
@@ -99,15 +107,9 @@ async def api_scrape_trigger(payload: ScrapeTrigger):
         raise HTTPException(status_code=400, detail="product_id required")
 
     # Fetch product
-    try:
-        prod_resp = supabase.table("products").select("*").eq("id", product_id).limit(1).execute()
-        if not prod_resp.data:
-            raise HTTPException(status_code=404, detail="Product not found")
-        product = prod_resp.data[0]
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    product = await get_product_by_id(product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
 
     keywords = product.get("keywords") or []
     if not keywords:
@@ -150,11 +152,162 @@ async def api_scrape_trigger(payload: ScrapeTrigger):
     return {"success": True, "new": new_count}
 
 
+@app.post("/api/scrape/youtube")
+async def api_scrape_youtube(payload: YoutubeScrapeRequest):
+    url = (payload.url or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="url is required")
+
+    max_results = payload.max_results or 50
+    try:
+        items = await search_youtube_comments(url, max_results=max_results)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if not items:
+        return {"success": True, "saved": 0, "count": 0}
+
+    saved_count = 0
+    # If product_id provided, save to DB after analysis
+    if payload.product_id:
+        rows = []
+        for it in items:
+            content = it.get("content") or ""
+            analysis = await asyncio.to_thread(ai_service.analyze_text, content)
+            row = {
+                "product_id": payload.product_id,
+                "content": content,
+                "platform": it.get("platform", "youtube"),
+                "sentiment_score": float(analysis.get("score", 0.5)),
+                "sentiment_label": analysis.get("label", "NEUTRAL"),
+                "emotion": analysis.get("emotion", "neutral"),
+                "credibility_score": float(analysis.get("credibility", it.get("credibility_score") or 0.5)),
+                "source_url": it.get("source_url") or None,
+                "created_at": it.get("created_at") or None,
+            }
+            rows.append(row)
+
+        try:
+            insert_resp = supabase.table("reviews").insert(rows).execute()
+            saved_count = len(insert_resp.data) if insert_resp.data else 0
+        except Exception as e:
+            print(f"Insert error (youtube scrape): {e}")
+            saved_count = 0
+
+    return {"success": True, "saved": saved_count, "count": len(items)}
+
+
+@app.get("/api/scrape/youtube/stream")
+async def api_scrape_youtube_stream(url: str = Query(...), product_id: Optional[str] = Query(None), max_results: int = Query(50)):
+    """Stream YouTube comments as Server-Sent Events (SSE).
+
+    Each comment is yielded as a JSON `data` event. When complete, a final `done` event is sent.
+    If `product_id` is provided, comments are inserted into `reviews` as they arrive and analyzed.
+    """
+
+    def event_generator():
+        # Run the synchronous streamer in this thread
+        for comment in stream_youtube_comments(url, max_results=max_results) or []:
+            # Insert review if product_id provided
+            if product_id:
+                row = {
+                    "product_id": product_id,
+                    "content": comment.get("content") or "",
+                    "platform": comment.get("platform", "youtube"),
+                    "sentiment_score": None,
+                    "sentiment_label": None,
+                    "emotion": None,
+                    "credibility_score": None,
+                    "source_url": comment.get("source_url"),
+                    "created_at": comment.get("created_at"),
+                }
+                try:
+                    resp = supabase.table("reviews").insert(row).execute()
+                    # Try to run analysis and save sentiment row as background
+                    try:
+                        analysis = ai_service.analyze_text(comment.get("content") or "")
+                        # insert sentiment_analysis row
+                        sent = {
+                            "review_id": resp.data[0]["id"] if resp.data else None,
+                            "product_id": product_id,
+                            "label": analysis.get("label"),
+                            "score": analysis.get("score"),
+                            "emotions": analysis.get("emotion"),
+                            "credibility": analysis.get("credibility"),
+                            "aspects": analysis.get("aspects") or None,
+                        }
+                        if sent.get("review_id"):
+                            supabase.table("sentiment_analysis").insert(sent).execute()
+                    except Exception as e:
+                        print(f"Background analysis error: {e}")
+                except Exception as e:
+                    print(f"Insert review error: {e}")
+
+            # yield SSE formatted event
+            try:
+                import json
+                payload = {"type": "comment", "comment": comment}
+                yield "data: " + json.dumps(payload) + "\n\n"
+            except Exception:
+                continue
+
+        # final done event
+        yield "event: done\ndata: {}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 @app.get("/api/dashboard")
 async def api_dashboard():
     # Use database helper which performs optimized queries and caching
     stats = await get_dashboard_stats()
     return {"success": True, "data": stats}
+
+
+def _ensure_supabase_available():
+    if supabase is None:
+        raise HTTPException(status_code=500, detail="Supabase client not initialized. Check backend .env for SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY")
+
+
+class AnalyzeRequest(BaseModel):
+    text: Optional[str]
+
+
+@app.post("/api/analyze")
+async def api_analyze(payload: AnalyzeRequest):
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    try:
+        # Run analysis in thread (model is CPU-bound)
+        result = await asyncio.to_thread(ai_service.analyze_text, text)
+        return {"success": True, "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/products/{product_id}")
+async def api_delete_product(product_id: str):
+    try:
+        resp = await delete_product(product_id)
+        return {"success": True, "data": resp}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"api_delete_product error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/integrations")
+async def api_get_integrations():
+    # Simple stub for frontend: try to read 'integrations' table if present, otherwise return empty
+    try:
+        resp = supabase.table("integrations").select("*").execute()
+        data = resp.data or []
+    except Exception:
+        data = []
+    return {"success": True, "data": data}
 
 
 if __name__ == "__main__":

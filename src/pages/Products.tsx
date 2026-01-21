@@ -73,6 +73,11 @@ export default function Products() {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast({ title: 'Deleted', description: 'Product removed' });
     },
+    onError: (err: any) => {
+      console.error('Delete failed', err);
+      const msg = err?.response?.data?.detail || err?.message || 'Failed to delete product';
+      toast({ title: 'Delete failed', description: String(msg), variant: 'destructive' });
+    },
   });
 
   // Scrape Mutations

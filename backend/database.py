@@ -35,13 +35,36 @@ def get_supabase_client() -> Client:
     """Get the Supabase client instance."""
     return supabase
 
+# Local fallback DB (JSON) for development when Supabase is not configured
+_LOCAL_DB_PATH = Path(__file__).parent / "local_db.json"
+
+def _read_local_db() -> dict:
+    if not _LOCAL_DB_PATH.exists():
+        return {"products": [], "reviews": []}
+    try:
+        import json
+        return json.loads(_LOCAL_DB_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {"products": [], "reviews": []}
+
+def _write_local_db(data: dict):
+    try:
+        import json
+        _LOCAL_DB_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception as e:
+        print(f"Failed to write local DB: {e}")
+
 
 # Database helper functions
 async def get_products():
     """Fetch all products from the database."""
     try:
-        response = supabase.table("products").select("*").execute()
-        return response.data
+        if supabase is not None:
+            response = supabase.table("products").select("*").execute()
+            return response.data
+        # Fallback to local JSON
+        db = _read_local_db()
+        return db.get("products", [])
     except Exception as e:
         print(f"Error fetching products: {e}")
         return []
@@ -50,8 +73,18 @@ async def get_products():
 async def add_product(product_data: dict):
     """Add a new product to the database."""
     try:
-        response = supabase.table("products").insert(product_data).execute()
-        return response.data
+        if supabase is not None:
+            response = supabase.table("products").insert(product_data).execute()
+            return response.data
+        # local fallback - ensure id exists
+        import uuid
+        db = _read_local_db()
+        prod = {**product_data}
+        if not prod.get("id"):
+            prod["id"] = str(uuid.uuid4())
+        db.setdefault("products", []).append(prod)
+        _write_local_db(db)
+        return prod
     except Exception as e:
         print(f"Error adding product: {e}")
         raise
@@ -68,6 +101,55 @@ async def get_reviews(product_id: str = None, limit: int = 100):
     except Exception as e:
         print(f"Error fetching reviews: {e}")
         return []
+
+
+async def get_product_by_id(product_id: str):
+    """Return a single product by id using Supabase if available, otherwise local JSON."""
+    try:
+        if supabase is not None:
+            resp = supabase.table("products").select("*").eq("id", product_id).limit(1).execute()
+            if resp.data:
+                return resp.data[0]
+            return None
+
+        db = _read_local_db()
+        for p in db.get("products", []):
+            if str(p.get("id")) == str(product_id):
+                return p
+        return None
+    except Exception as e:
+        print(f"Error get_product_by_id: {e}")
+        return None
+
+
+async def delete_product(product_id: str):
+    """Delete a product by id. Uses Supabase if available, otherwise local JSON fallback."""
+    try:
+        if supabase is not None:
+            # First delete any reviews that reference the product to avoid FK constraint errors
+            try:
+                _ = supabase.table("reviews").delete().eq("product_id", product_id).execute()
+            except Exception as e:
+                print(f"Warning: failed to delete reviews for product {product_id}: {e}")
+
+            # Now delete the product itself
+            resp = supabase.table("products").delete().eq("id", product_id).execute()
+            if hasattr(resp, "error") and resp.error:
+                raise Exception(resp.error)
+            return {"success": True, "deleted_id": product_id}
+
+        # Local JSON fallback: remove reviews and product
+        db = _read_local_db()
+        prods = db.get("products", [])
+        new_prods = [p for p in prods if str(p.get("id")) != str(product_id)]
+        db["products"] = new_prods
+        reviews = db.get("reviews", [])
+        db["reviews"] = [r for r in reviews if str(r.get("product_id")) != str(product_id)]
+        _write_local_db(db)
+        return {"success": True, "deleted_id": product_id}
+    except Exception as e:
+        print(f"Error deleting product: {e}")
+        raise
 
 
 async def get_recent_reviews_with_sentiment(limit: int = 50):
