@@ -69,6 +69,10 @@ const platformColors = {
 const Integrations = () => {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState('');
+  const [apiSecret, setApiSecret] = useState('');
+  const [selectedFrequency, setSelectedFrequency] = useState<string>('30');
   const [testingConnection, setTestingConnection] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -160,7 +164,7 @@ const Integrations = () => {
               <div className="space-y-4 pt-4">
                 <div className="space-y-2">
                   <Label>Platform</Label>
-                  <Select>
+                  <Select value={selectedPlatform || undefined} onValueChange={(v) => setSelectedPlatform(v)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select platform" />
                     </SelectTrigger>
@@ -174,15 +178,15 @@ const Integrations = () => {
                 </div>
                 <div className="space-y-2">
                   <Label>API Key</Label>
-                  <Input type="password" placeholder="Enter your API key" />
+                  <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Enter your API key" />
                 </div>
                 <div className="space-y-2">
                   <Label>API Secret (if required)</Label>
-                  <Input type="password" placeholder="Enter your API secret" />
+                  <Input type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder="Enter your API secret" />
                 </div>
                 <div className="space-y-2">
                   <Label>Sync Frequency</Label>
-                  <Select defaultValue="30">
+                  <Select value={selectedFrequency} onValueChange={(v) => setSelectedFrequency(v)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -203,16 +207,20 @@ const Integrations = () => {
                   <Button
                     className="flex-1 bg-sentinel-credibility hover:bg-sentinel-credibility/90"
                     onClick={() => {
+                      const platform = (selectedPlatform || 'twitter') as 'twitter' | 'reddit' | 'youtube' | 'forums';
+                      const nameMap: Record<string, string> = { twitter: 'Twitter/X feed', reddit: 'Reddit feed', youtube: 'YouTube feed', forums: 'Custom Forum' };
+                      const freqMap: Record<string, string> = { '15': '15 minutes', '30': '30 minutes', '60': '1 hour', '360': '6 hours', '1440': 'Daily' };
+
                       setIntegrations(prev => [
                         ...prev,
                         {
                           id: `new-${Date.now()}`,
-                          name: 'Twitter/X feed',
-                          platform: 'twitter',
+                          name: nameMap[platform] || `${platform} feed`,
+                          platform: platform,
                           status: 'connected',
                           lastSync: new Date(),
                           reviewsCollected: 0,
-                          syncFrequency: '30 minutes',
+                          syncFrequency: freqMap[selectedFrequency] || '30 minutes',
                           isEnabled: true
                         }
                       ]);

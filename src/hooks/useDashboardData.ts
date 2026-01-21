@@ -28,3 +28,11 @@ export function useRealtimeDashboard() {
 
   return { data, isLoading, refetch };
 }
+
+// Backwards-compatible export: some pages import `useDashboardData`
+export function useDashboardData() {
+  const { data, isLoading, refetch } = useRealtimeDashboard();
+
+  // Normalize shape expected by older consumers: { metrics, loading, refetch }
+  return { metrics: data, loading: isLoading, refetch };
+}

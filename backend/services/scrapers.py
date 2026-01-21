@@ -92,6 +92,67 @@ async def search_youtube_comments(query: str, max_results: int = 50) -> List[Dic
     return await asyncio.to_thread(_sync, query, max_results)
 
 
+def stream_youtube_comments(query: str, max_results: int = 50):
+    """Synchronous generator that yields comment dicts as they are fetched.
+
+    This is intended to be run in a thread and streamed via SSE.
+    """
+    if not _YOUTUBE_AVAILABLE:
+        return
+
+    api_key = os.environ.get("YOUTUBE_API_KEY")
+    if not api_key:
+        return
+
+    try:
+        client = build("youtube", "v3", developerKey=api_key)
+        # extract video id if provided
+        video_id = None
+        if "youtube.com" in query or "youtu.be" in query:
+            m = re.search(r"(?:v=|/)([0-9A-Za-z_-]{11})", query)
+            if m:
+                video_id = m.group(1)
+
+        if not video_id:
+            resp = client.search().list(q=query, part="id", type="video", maxResults=1).execute()
+            items = resp.get("items") or []
+            if not items:
+                return
+            video_id = items[0]["id"]["videoId"]
+
+        fetched = 0
+        page_token = None
+        while fetched < max_results:
+            params = {"part": "snippet", "videoId": video_id, "maxResults": min(100, max_results - fetched), "textFormat": "plainText"}
+            if page_token:
+                params["pageToken"] = page_token
+
+            resp = client.commentThreads().list(**params).execute()
+            for item in resp.get("items", []):
+                top = item["snippet"]["topLevelComment"]["snippet"]
+                comment = {
+                    "content": top.get("textDisplay"),
+                    "author": top.get("authorDisplayName"),
+                    "platform": "youtube",
+                    "source_url": f"https://youtu.be/{video_id}",
+                    "created_at": top.get("publishedAt"),
+                }
+                yield comment
+                fetched += 1
+                if fetched >= max_results:
+                    break
+
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+    except HttpError as he:
+        print(f"YouTube HttpError (stream): {he}")
+        return
+    except Exception as e:
+        print(f"YouTube streaming error: {e}")
+        return
+
+
 async def search_reddit(query: str, limit: int = 20) -> List[Dict[str, Any]]:
     if not _REDDIT_AVAILABLE:
         print("asyncpraw missing; skipping reddit scraping")

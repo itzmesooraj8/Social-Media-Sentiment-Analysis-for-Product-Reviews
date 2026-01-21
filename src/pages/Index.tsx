@@ -26,7 +26,10 @@ const Index = () => {
 
   const apiMetrics = data?.metrics || {};
   const recentReviews = data?.recentReviews || [];
-  const platformBreakdown = data?.platformBreakdown || {};
+  const rawPlatformBreakdown = data?.platformBreakdown || {};
+  const platformBreakdown = Array.isArray(rawPlatformBreakdown)
+    ? rawPlatformBreakdown
+    : Object.entries(rawPlatformBreakdown || {}).map(([platform, vals]) => ({ platform, ...(vals as any) }));
 
   const assembled = {
     metrics: {
