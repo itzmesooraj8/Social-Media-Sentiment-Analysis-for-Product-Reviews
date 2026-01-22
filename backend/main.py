@@ -25,7 +25,8 @@ from fastapi import Query
 sys.path.insert(0, str(Path(__file__).parent))
 
 from services.ai_service import ai_service
-from services.scrapers import run_all_scrapers, search_youtube_comments, stream_youtube_comments
+from services import scrapers
+from routers import reports
 from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats, get_product_by_id, delete_product
 
 app = FastAPI(title="Sentiment Beacon API", version="1.0.0")
@@ -38,6 +39,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(reports.router)
+
 
 class ProductCreate(BaseModel):
     name: str
@@ -47,7 +50,7 @@ class ProductCreate(BaseModel):
     track_youtube: Optional[bool] = True
 
 
-class ScrapeTrigger(BaseModel):
+class ScrapeRequest(BaseModel):
     product_id: str
 
 
@@ -80,7 +83,8 @@ async def api_create_product(payload: ProductCreate):
 @app.get("/api/reviews")
 async def api_get_reviews(product_id: Optional[str] = None, platform: Optional[str] = None, limit: int = 100):
     try:
-        query = supabase.table("reviews").select("*")
+        # Join with sentiment_analysis to get scores/labels
+        query = supabase.table("reviews").select("*, sentiment_analysis(*)")
         if product_id:
             query = query.eq("product_id", product_id)
         if platform:
@@ -92,70 +96,24 @@ async def api_get_reviews(product_id: Optional[str] = None, platform: Optional[s
 
 
 @app.post("/api/scrape/trigger")
-async def api_scrape_trigger(payload: ScrapeTrigger, background_tasks: BackgroundTasks):
-    """Trigger scraping for a product_id. The heavy work is scheduled in the
-    background so the API can return immediately and keep the frontend snappy.
+async def trigger_scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
     """
-    product_id = payload.product_id
+    Non-blocking API Trigger.
+    """
+    product_id = request.product_id
     if not product_id:
-        raise HTTPException(status_code=400, detail="product_id required")
+        raise HTTPException(status_code=400, detail="product_id is required")
 
-    # Fetch product
     product = await get_product_by_id(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    keywords = product.get("keywords") or []
-    if not keywords:
-        keywords = [product.get("name")]
+    keywords = product.get("keywords") or [product.get("name")]
 
-    # Schedule background task to perform scraping + analysis + DB insert
-    background_tasks.add_task(run_all_scrapers_background, keywords, product_id)
-    return {"status": "accepted", "message": "Scraping started in background"}
+    # Deploy agents in background
+    background_tasks.add_task(scrapers.scrape_all, keywords, product_id)
 
-
-async def run_all_scrapers_background(keywords: list, product_id: str):
-    """Background worker that runs scrapers, analyzes results and inserts
-    reviews into the database. Errors are caught and logged but do not crash.
-    """
-    try:
-        fetched_items = await run_all_scrapers(keywords, per_source=50)
-    except Exception as e:
-        print(f"Background: run_all_scrapers failed: {e}")
-        return
-
-    if not fetched_items:
-        return
-
-    rows = []
-    for it in fetched_items:
-        try:
-            content = it.get("content") or it.get("text") or ""
-            analysis = await asyncio.to_thread(ai_service.analyze_text, content)
-            row = {
-                "product_id": product_id,
-                "content": content,
-                "platform": it.get("platform", "youtube"),
-                "sentiment_score": float(analysis.get("score", 0.5)),
-                "sentiment_label": analysis.get("label", "NEUTRAL"),
-                "emotion": analysis.get("emotion", "neutral"),
-                "credibility_score": float(analysis.get("credibility", it.get("credibility_score") or 0.5)),
-                "source_url": it.get("source_url") or None,
-                "created_at": it.get("created_at") or None,
-            }
-            rows.append(row)
-        except Exception as e:
-            print(f"Background: item prepare error: {e}")
-            continue
-
-    if not rows:
-        return
-
-    try:
-        insert_resp = supabase.table("reviews").insert(rows).execute()
-        print(f"Background: inserted {len(insert_resp.data) if insert_resp.data else 0} reviews for product {product_id}")
-    except Exception as e:
-        print(f"Background: insert error: {e}")
+    return {"status": "accepted", "message": "Agents deployed in background"}
 
 
 @app.post("/api/scrape/youtube")
@@ -166,7 +124,9 @@ async def api_scrape_youtube(payload: YoutubeScrapeRequest):
 
     max_results = payload.max_results or 50
     try:
-        items = await search_youtube_comments(url, max_results=max_results)
+        # Assuming search_youtube_comments is still needed for direct URL scrapes
+        from services.youtube_scraper import youtube_scraper
+        items = await youtube_scraper.search_video_comments(url, max_results=max_results)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -174,31 +134,11 @@ async def api_scrape_youtube(payload: YoutubeScrapeRequest):
         return {"success": True, "saved": 0, "count": 0}
 
     saved_count = 0
-    # If product_id provided, save to DB after analysis
     if payload.product_id:
-        rows = []
-        for it in items:
-            content = it.get("content") or ""
-            analysis = await asyncio.to_thread(ai_service.analyze_text, content)
-            row = {
-                "product_id": payload.product_id,
-                "content": content,
-                "platform": it.get("platform", "youtube"),
-                "sentiment_score": float(analysis.get("score", 0.5)),
-                "sentiment_label": analysis.get("label", "NEUTRAL"),
-                "emotion": analysis.get("emotion", "neutral"),
-                "credibility_score": float(analysis.get("credibility", it.get("credibility_score") or 0.5)),
-                "source_url": it.get("source_url") or None,
-                "created_at": it.get("created_at") or None,
-            }
-            rows.append(row)
-
-        try:
-            insert_resp = supabase.table("reviews").insert(rows).execute()
-            saved_count = len(insert_resp.data) if insert_resp.data else 0
-        except Exception as e:
-            print(f"Insert error (youtube scrape): {e}")
-            saved_count = 0
+        # Re-using the data pipeline for consistency
+        from services.data_pipeline import data_pipeline
+        processed = await data_pipeline.process_reviews(items, payload.product_id)
+        saved_count = len(processed)
 
     return {"success": True, "saved": saved_count, "count": len(items)}
 
@@ -211,56 +151,51 @@ async def api_scrape_youtube_stream(url: str = Query(...), product_id: Optional[
     If `product_id` is provided, comments are inserted into `reviews` as they arrive and analyzed.
     """
 
-    def event_generator():
-        # Run the synchronous streamer in this thread
-        for comment in stream_youtube_comments(url, max_results=max_results) or []:
-            # Insert review if product_id provided
-            if product_id:
-                row = {
-                    "product_id": product_id,
-                    "content": comment.get("content") or "",
-                    "platform": comment.get("platform", "youtube"),
-                    "sentiment_score": None,
-                    "sentiment_label": None,
-                    "emotion": None,
-                    "credibility_score": None,
-                    "source_url": comment.get("source_url"),
-                    "created_at": comment.get("created_at"),
-                }
+    # Use an async generator to stream Server-Sent Events (SSE) reliably.
+    from services.youtube_scraper import youtube_scraper
+    from services.data_pipeline import data_pipeline
+    import json
+
+    async def event_generator():
+        try:
+            # Stream comments using the async generator
+            async for comment in youtube_scraper.search_video_comments_stream(url, max_results=max_results):
                 try:
-                    resp = supabase.table("reviews").insert(row).execute()
-                    # Try to run analysis and save sentiment row as background
-                    try:
-                        analysis = ai_service.analyze_text(comment.get("content") or "")
-                        # insert sentiment_analysis row
-                        sent = {
-                            "review_id": resp.data[0]["id"] if resp.data else None,
-                            "product_id": product_id,
-                            "label": analysis.get("label"),
-                            "score": analysis.get("score"),
-                            "emotions": analysis.get("emotion"),
-                            "credibility": analysis.get("credibility"),
-                            "aspects": analysis.get("aspects") or None,
-                        }
-                        if sent.get("review_id"):
-                            supabase.table("sentiment_analysis").insert(sent).execute()
-                    except Exception as e:
-                        print(f"Background analysis error: {e}")
-                except Exception as e:
-                    print(f"Insert review error: {e}")
+                    payload = {"type": "comment", "comment": comment}
+                    yield "data: " + json.dumps(payload) + "\n\n"
 
-            # yield SSE formatted event
+                    # If a product_id is provided, process/save asynchronously
+                    if product_id:
+                        # fire-and-forget processing so streaming isn't blocked
+                        asyncio.create_task(data_pipeline.process_reviews([comment], product_id))
+
+                    # small pause to allow client-side rendering to stay responsive
+                    await asyncio.sleep(0.01)
+                except Exception:
+                    # skip problematic comment but keep stream alive
+                    continue
+
+        except Exception as e:
+            # stream an error event so client can surface it
             try:
-                import json
-                payload = {"type": "comment", "comment": comment}
-                yield "data: " + json.dumps(payload) + "\n\n"
+                error_payload = {"error": str(e), "message": "An error occurred during the stream."}
+                yield "event: error\ndata: " + json.dumps(error_payload) + "\n\n"
             except Exception:
-                continue
+                pass
+        finally:
+            # signal completion
+            try:
+                yield "event: done\ndata: {}\n\n"
+            except Exception:
+                return
 
-        # final done event
-        yield "event: done\ndata: {}\n\n"
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    }
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
 
 @app.get("/api/dashboard")

@@ -4,31 +4,41 @@ AIService
 Provides a cached `analyze_text(text)` function that returns a dict:
   { label: "POSITIVE", score: 0.98, emotion: "joy", credibility: 0.12 }
 
-Credibility: simple heuristic based on text length and duplication in DB.
+Uses 'distilbert-base-uncased-finetuned-sst-2-english' for sentiment
+and 'j-hartmann/emotion-english-distilroberta-base' for emotion detection.
 """
 
 from functools import lru_cache
-from typing import Dict
+from typing import Dict, List
 import os
+import asyncio
 
 try:
     from transformers import pipeline
     _TRANSFORMERS_AVAILABLE = True
-except Exception:
+except ImportError:
     _TRANSFORMERS_AVAILABLE = False
+    print("⚠️ Transformers not found. AI features will be limited.")
 
 from database import supabase
 
 
 class AIService:
-    def __init__(self, model_name: str = "distilbert-base-uncased-finetuned-sst-2-english"):
-        self.model_name = model_name
-        self._pipe = None
+    def __init__(self):
+        self.sentiment_model = "distilbert-base-uncased-finetuned-sst-2-english"
+        self.emotion_model = "j-hartmann/emotion-english-distilroberta-base"
+        self._sentiment_pipe = None
+        self._emotion_pipe = None
+
         if _TRANSFORMERS_AVAILABLE:
             try:
-                self._pipe = pipeline("sentiment-analysis", model=self.model_name)
+                print("[Loading] Sentiment Model...")
+                self._sentiment_pipe = pipeline("sentiment-analysis", model=self.sentiment_model)
+                print("[Loading] Emotion Model...")
+                self._emotion_pipe = pipeline("text-classification", model=self.emotion_model, top_k=1)
+                print("[OK] AI Models Loaded.")
             except Exception as e:
-                print(f"Warning: transformers pipeline init failed: {e}")
+                print(f"[ERROR] AI Init Error: {e}")
 
     def _normalize_label(self, raw_label: str) -> str:
         lbl = (raw_label or "").upper()
@@ -41,12 +51,7 @@ class AIService:
         return "NEUTRAL"
 
     def _compute_credibility(self, text: str) -> float:
-        """Simple credibility heuristic:
-        - Very short texts (<10) -> low
-        - Duplicate content already in DB -> low
-        - Longer texts -> higher
-        Returns value between 0.0 and 1.0
-        """
+        """Simple credibility heuristic."""
         try:
             length = len(text.strip())
             if length < 10:
@@ -56,62 +61,68 @@ class AIService:
             else:
                 base = 0.75
 
-            # Duplicate check
-            try:
-                q = supabase.table("reviews").select("id").eq("content", text).limit(1).execute()
-                if q.data:
-                    # duplicate -> low credibility
-                    return 0.1
-            except Exception:
-                # ignore DB errors
-                pass
-
+            # Duplicate check (simple cache check could go here, but DB check is expensive in loop)
+            # For high-performance, we skip the DB check in this synchronous part or use a local bloom filter.
+            # We will stick to length-based for now to ensure speed.
             return float(min(1.0, max(0.0, base)))
         except Exception:
             return 0.5
 
     @lru_cache(maxsize=2048)
     def analyze_text(self, text: str) -> Dict[str, any]:
-        """Synchronous analyze. Cached to avoid repeated work.
-
-        Returns: { label, score, emotion, credibility }
-        """
+        """Synchronous analyze. Cached to avoid repeated work."""
         if not text or not text.strip():
             return {"label": "NEUTRAL", "score": 0.5, "emotion": "neutral", "credibility": 0.1}
 
-        # Try transformers pipeline first
-        try:
-            if self._pipe:
-                out = self._pipe(text[:512])
-                if isinstance(out, list) and out:
+        label = "NEUTRAL"
+        score = 0.5
+        emotion = "neutral"
+
+        # 1. Sentiment Analysis
+        if self._sentiment_pipe:
+            try:
+                out = self._sentiment_pipe(text[:512])
+                if out and isinstance(out, list):
                     top = out[0]
                     label = self._normalize_label(top.get("label"))
                     score = float(top.get("score", 0.5))
-                    emotion = "joy" if label == "POSITIVE" else ("anger" if label == "NEGATIVE" else "neutral")
-                    credibility = self._compute_credibility(text)
-                    return {"label": label, "score": round(score, 4), "emotion": emotion, "credibility": round(credibility, 3)}
-        except Exception as e:
-            print(f"AI pipeline error: {e}")
+            except Exception as e:
+                print(f"Sentiment error: {e}")
 
-        # Heuristic fallback
-        text_l = text.lower()
-        pos = any(w in text_l for w in ["good", "great", "love", "excellent", "best", "awesome"])
-        neg = any(w in text_l for w in ["bad", "terrible", "worst", "hate", "awful", "broken"])
-        if pos and not neg:
-            label = "POSITIVE"
-            score = 0.65
-            emotion = "joy"
-        elif neg and not pos:
-            label = "NEGATIVE"
-            score = 0.65
-            emotion = "anger"
+        # 2. Emotion Analysis (Real Model)
+        if self._emotion_pipe:
+            try:
+                e_out = self._emotion_pipe(text[:512])
+                # e_out structure with top_k=1: [{'label': 'joy', 'score': 0.9}]
+                if e_out and isinstance(e_out, list):
+                    if isinstance(e_out[0], list): # Handle batch output edge case
+                        top_e = e_out[0][0]
+                    else:
+                        top_e = e_out[0]
+                    
+                    emotion = top_e.get("label", "neutral")
+            except Exception as e:
+                print(f"Emotion error: {e}")
         else:
-            label = "NEUTRAL"
-            score = 0.5
-            emotion = "neutral"
+            # Fallback heuristic if model failed to load
+            text_l = text.lower()
+            if label == "POSITIVE":
+                emotion = "joy"
+            elif label == "NEGATIVE":
+                emotion = "anger"
 
         credibility = self._compute_credibility(text)
-        return {"label": label, "score": round(score, 4), "emotion": emotion, "credibility": round(credibility, 3)}
+        
+        return {
+            "label": label,
+            "score": round(score, 4),
+            "emotion": emotion,
+            "credibility": round(credibility, 3)
+        }
+    
+    async def analyze_sentiment(self, text: str):
+        """Async wrapper for the sync lru_cache method"""
+        return await asyncio.to_thread(self.analyze_text, text)
 
 
 ai_service = AIService()

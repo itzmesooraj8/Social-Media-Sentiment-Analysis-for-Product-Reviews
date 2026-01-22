@@ -30,31 +30,60 @@ const Competitors = () => {
     }, [productList]);
 
     // Fetch reviews for selected products and compute comparison locally
-    const { data: reviewsA = [] } = useQuery({ queryKey: ['reviews', selectedA], queryFn: () => selectedA ? getReviews(selectedA) : Promise.resolve([]), enabled: !!selectedA });
-    const { data: reviewsB = [] } = useQuery({ queryKey: ['reviews', selectedB], queryFn: () => selectedB ? getReviews(selectedB) : Promise.resolve([]), enabled: !!selectedB });
+    const { data: reviewsAData = {} } = useQuery({ 
+        queryKey: ['reviews', selectedA], 
+        queryFn: () => selectedA ? getReviews(selectedA) : Promise.resolve([]), 
+        enabled: !!selectedA 
+    });
+    const { data: reviewsBData = {} } = useQuery({ 
+        queryKey: ['reviews', selectedB], 
+        queryFn: () => selectedB ? getReviews(selectedB) : Promise.resolve([]), 
+        enabled: !!selectedB 
+    });
+
+    // Safely extract arrays from potential wrapper objects
+    // @ts-ignore
+    const reviewsA = Array.isArray(reviewsAData) ? reviewsAData : (Array.isArray(reviewsAData?.data) ? reviewsAData.data : []);
+    // @ts-ignore
+    const reviewsB = Array.isArray(reviewsBData) ? reviewsBData : (Array.isArray(reviewsBData?.data) ? reviewsBData.data : []);
 
     useEffect(() => {
         if (!selectedA || !selectedB) return;
 
         // Compute metrics from reviewsA and reviewsB
         const computeMetrics = (reviews: any[]) => {
+            if (!Array.isArray(reviews)) return { counts: { positive: 0, neutral: 0, negative: 0 }, sentimentPercent: 0, avgCred: 0, total: 0 };
+            
             const total = reviews.length || 0;
             const counts = { positive: 0, neutral: 0, negative: 0 };
             let credibilitySum = 0;
+            
             reviews.forEach(r => {
-                const label = (r.sentiment_label || r.sentiment || '').toString().toLowerCase();
+                // Try to find label in top-level or nested sentiment_analysis
+                let label = (r.sentiment_label || r.sentiment || '').toString().toLowerCase();
+                let cred = Number(r.credibility_score || r.credibility || 0);
+
+                // Handle nested structure from new AI service
+                if (r.sentiment_analysis && Array.isArray(r.sentiment_analysis) && r.sentiment_analysis.length > 0) {
+                    const analysis = r.sentiment_analysis[0];
+                    if (analysis.label) label = analysis.label.toLowerCase();
+                    if (analysis.credibility) cred = Number(analysis.credibility);
+                }
+
                 if (label.includes('pos')) counts.positive++;
                 else if (label.includes('neg')) counts.negative++;
                 else counts.neutral++;
-                credibilitySum += Number(r.credibility_score || r.credibility || 0);
+                
+                credibilitySum += cred;
             });
+            
             const sentimentPercent = total ? (counts.positive / total) * 100 : 0;
             const avgCred = total ? (credibilitySum / total) * 100 : 0;
             return { counts, sentimentPercent, avgCred, total };
         };
 
-        const a = computeMetrics(reviewsA as any[]);
-        const b = computeMetrics(reviewsB as any[]);
+        const a = computeMetrics(reviewsA);
+        const b = computeMetrics(reviewsB);
 
         // Mock aspects (Price, Quality, Battery) using sentimentPercent scaled to 0-5
         const aspects = ['Price', 'Quality', 'Battery'].map((subject) => ({
@@ -145,7 +174,7 @@ const Competitors = () => {
                                     <ResponsiveContainer width="100%" height="100%">
                                         <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data.aspects}>
                                             <PolarGrid stroke="hsl(var(--border))" />
-                                            <PolarAngleAxis dataKey="subject" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                                            <PolarAngleAxis dataKey="subject" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />        
                                             <PolarRadiusAxis angle={30} domain={[0, 5]} stroke="hsl(var(--border))" />
                                             <Radar
                                                 name={getName(selectedA)}
@@ -157,7 +186,7 @@ const Competitors = () => {
                                             <Radar
                                                 name={getName(selectedB)}
                                                 dataKey="B"
-                                                stroke="hsl(var(--sentinel-negative))" // Using distinct color (red vs green usually works for contrast)
+                                                stroke="hsl(var(--sentinel-negative))"
                                                 fill="hsl(var(--sentinel-negative))"
                                                 fillOpacity={0.3}
                                             />

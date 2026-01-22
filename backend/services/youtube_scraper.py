@@ -35,6 +35,99 @@ class YouTubeScraperService:
         # Run blocking requests in threadpool
         return await asyncio.to_thread(self._sync_search_comments, query, max_results)
 
+    def _get_video_id_sync(self, query: str) -> Optional[str]:
+        video_id = None
+        if "youtube.com" in query or "youtu.be" in query:
+            m = re.search(r"(?:v=|/)([0-9A-Za-z_-]{11})", query)
+            if m:
+                video_id = m.group(1)
+
+        if not video_id:
+            try:
+                resp = self._client.search().list(q=query, part="id,snippet", type="video", maxResults=1).execute()
+                items = resp.get("items") or []
+                if not items:
+                    return None
+                video_id = items[0]["id"]["videoId"]
+            except HttpError as he:
+                print(f"YouTube API HttpError during search: {he}")
+                return None
+            except Exception as e:
+                print(f"YouTube search error: {e}")
+                return None
+        return video_id
+
+    async def search_video_comments_stream(self, query: str, max_results: int = 50):
+        if not self._client:
+            return
+
+        loop = asyncio.get_running_loop()
+        try:
+            video_id = await loop.run_in_executor(None, self._get_video_id_sync, query)
+        except Exception as e:
+            print(f"Error getting video ID: {e}")
+            video_id = None
+
+        if not video_id:
+            return
+
+        fetched = 0
+        page_token = None
+        while fetched < max_results:
+            def get_page(token):
+                params = {
+                    "part": "snippet",
+                    "videoId": video_id,
+                    "maxResults": min(100, max_results - fetched),
+                    "textFormat": "plainText",
+                }
+                if token:
+                    params["pageToken"] = token
+                try:
+                    return self._client.commentThreads().list(**params).execute()
+                except HttpError as he:
+                    # Log but don't crash the stream
+                    print(f"YouTube API HttpError during comment fetch: {he}")
+                    return None
+                except Exception as e:
+                    print(f"Error fetching comment page: {e}")
+                    return None
+            
+            try:
+                resp = await loop.run_in_executor(None, get_page, page_token)
+            except Exception as e:
+                print(f"Executor error fetching comment page: {e}")
+                break # Stop streaming
+
+            if not resp:
+                break
+
+            items = resp.get("items", [])
+            for item in items:
+                try:
+                    top = item["snippet"]["topLevelComment"]["snippet"]
+                    comment = {
+                        "content": top.get("textDisplay"),
+                        "author": top.get("authorDisplayName"),
+                        "platform": "youtube",
+                        "source_url": f"https://youtu.be/{video_id}",
+                        "created_at": top.get("publishedAt"),
+                    }
+                    yield comment
+                    fetched += 1
+                    if fetched >= max_results:
+                        break
+                except KeyError:
+                    # Malformed item, skip it
+                    continue
+            
+            if fetched >= max_results:
+                break
+
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+
     def _sync_search_comments(self, query: str, max_results: int) -> List[Dict[str, Any]]:
         comments: List[Dict[str, Any]] = []
         try:

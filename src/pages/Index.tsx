@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from "sonner";
 import { FileText, BarChart3, MessageSquare, Shield } from 'lucide-react';
-import { useRealtimeDashboard } from '@/hooks/useDashboardData';
+import { useDashboardData } from '@/hooks/useDashboardData';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MetricCard } from '@/components/dashboard/MetricCard';
@@ -22,7 +22,7 @@ import { DateRangePicker } from '@/components/dashboard/DateRangePicker';
 import { ExportButton } from '@/components/dashboard/ExportButton';
 
 const Index = () => {
-  const { data, isLoading, refetch } = useRealtimeDashboard();
+  const { data, isLoading } = useDashboardData();
 
   const apiMetrics = data?.metrics || {};
   const recentReviews = data?.recentReviews || [];
