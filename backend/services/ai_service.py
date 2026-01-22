@@ -1,13 +1,5 @@
-"""
-AIService
-
-Provides a cached `analyze_text(text)` function that returns a dict:
-  { label: "POSITIVE", score: 0.98, emotion: "joy", credibility: 0.12 }
-
-Uses 'distilbert-base-uncased-finetuned-sst-2-english' for sentiment
-and 'j-hartmann/emotion-english-distilroberta-base' for emotion detection.
-"""
-
+import re
+from collections import Counter
 from functools import lru_cache
 from typing import Dict, List
 import os
@@ -123,6 +115,45 @@ class AIService:
     async def analyze_sentiment(self, text: str):
         """Async wrapper for the sync lru_cache method"""
         return await asyncio.to_thread(self.analyze_text, text)
+
+    def extract_topics(self, texts: List[str], top_k: int = 5) -> List[Dict[str, any]]:
+        """
+        Extract top topics (bigrams) from a list of texts using frequency analysis.
+        Simulates TextRank/LDA without heavy dependencies.
+        """
+        if not texts:
+            return []
+
+        stopwords = {
+            "the", "is", "and", "to", "a", "of", "in", "it", "for", "on", "that", "this", "with", "i", "you",
+            "but", "was", "my", "have", "as", "are", "not", "be", "so", "at", "if", "or", "just", "very", "can",
+            "product", "item", "one", "get", "me", "all", "about", "out", "has", "more", "like", "when", "up",
+            "what", "time", "would", "they", "from", "do", "will", "really", "good", "great"
+        }
+
+        all_bigrams = []
+
+        for text in texts:
+            if not text:
+                continue
+            # Simple tokenization
+            words = re.findall(r'\b[a-z]{3,}\b', text.lower())
+            # Filter stopwords
+            words = [w for w in words if w not in stopwords]
+            
+            # Create bigrams
+            if len(words) >= 2:
+                for i in range(len(words) - 1):
+                    bigram = f"{words[i]} {words[i+1]}"
+                    all_bigrams.append(bigram)
+
+        # Count frequencies
+        counter = Counter(all_bigrams)
+        common = counter.most_common(top_k)
+
+        # Format for frontend { "text": "battery life", "value": 42 }
+        topics = [{"text": phrase, "value": count, "sentiment": "neutral"} for phrase, count in common]
+        return topics
 
 
 ai_service = AIService()

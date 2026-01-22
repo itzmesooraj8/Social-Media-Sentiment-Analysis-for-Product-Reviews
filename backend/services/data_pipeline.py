@@ -82,6 +82,33 @@ class DataPipelineService:
             except Exception as e:
                 print(f"Failed to save review: {e}")
 
+        # --- Topic Extraction Integration ---
+        try:
+            # Gather all text from this batch
+            all_texts = [r.get("content") or r.get("text") or "" for r in processed_reviews]
+            if all_texts:
+                topics = await asyncio.to_thread(ai_service.extract_topics, all_texts)
+                
+                # Save topics to 'topic_analysis' table
+                # We treat each bigram as a "topic" for now
+                for t in topics:
+                    topic_data = {
+                        "topic_name": t["text"], # e.g. "battery life"
+                        "sentiment": 0, # Neutral default, could refine later
+                        "size": t["value"],
+                        "keywords": t["text"].split(),
+                        "created_at": datetime.now().isoformat()
+                    }
+                    try:
+                         # Insert or ignore (if we had a unique constraint, but we don't, so just insert)
+                         # Real app would upsert or aggregate.
+                         supabase.table("topic_analysis").insert(topic_data).execute()
+                    except Exception as e:
+                        print(f"Failed to save topic {t['text']}: {e}")
+                        
+        except Exception as e:
+             print(f"Topic Extraction failed: {e}")
+
         print(f"Data Pipeline: Successfully processed and saved {saved_count}/{len(reviews)} reviews.")
         return processed_reviews
 

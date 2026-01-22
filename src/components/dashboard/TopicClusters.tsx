@@ -1,178 +1,74 @@
-import { Treemap, ResponsiveContainer, Tooltip } from 'recharts';
 
-const sentimentColors = {
-  positive: 'hsl(142, 71%, 45%)',
-  neutral: 'hsl(0, 0%, 50%)',
-  negative: 'hsl(0, 84%, 60%)',
-};
+import { useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Hash, TrendingUp } from 'lucide-react';
+import { useDashboardData } from '@/hooks/useDashboardData';
 
-interface TopicData {
-  name: string;
-  size: number;
-  sentiment: 'positive' | 'neutral' | 'negative';
-  keywords: string[];
+interface Topic {
+  text: string;
+  value: number;
 }
 
 interface TopicClustersProps {
   isLoading?: boolean;
-  data?: TopicData[];
 }
 
-const CustomContent = (props: any) => {
-  const { x, y, width, height, name, sentiment } = props;
+export const TopicClusters = ({ isLoading }: TopicClustersProps) => {
+  const { data } = useDashboardData();
+  const keywords = data?.topKeywords || [];
 
-  // Safety checks
-  if (!name || width < 40 || height < 30) return null;
-
-  return (
-    <g>
-      <rect
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        fill={sentimentColors[sentiment as keyof typeof sentimentColors] || sentimentColors.neutral}
-        stroke="hsl(0, 0%, 10%)"
-        strokeWidth={2}
-        rx={4}
-        style={{ transition: 'all 0.3s ease' }}
-      />
-      {width > 60 && height > 40 && (
-        <text
-          x={x + width / 2}
-          y={y + height / 2}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          fill="white"
-          fontSize={Math.min(12, width / 8)}
-          fontWeight={500}
-          style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}
-        >
-          {name && name.length > 15 ? name.substring(0, 15) + '...' : name}
-        </text>
-      )}
-    </g>
-  );
-};
-
-export function TopicClusters(props: TopicClustersProps) {
-  if (props.isLoading) {
-    return (
-      <div className="glass-card p-6 animate-pulse">
-        <div className="h-6 w-40 bg-muted rounded mb-4" />
-        <div className="h-[300px] bg-muted/50 rounded-lg" />
-      </div>
-    );
-  }
-
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length && payload[0]?.payload) {
-      const data = payload[0].payload;
-      return (
-        <div className="glass-card p-3 border border-border/50 max-w-xs">
-          <p className="font-medium mb-1">{data.name || 'Unknown'}</p>
-          <p className="text-sm text-muted-foreground mb-2">{data.size || 0} mentions</p>
-          <div className="flex items-center gap-2 mb-2">
-            <div
-              className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: sentimentColors[data.sentiment as keyof typeof sentimentColors] || sentimentColors.neutral }}
-            />
-            <span className="text-sm capitalize">{data.sentiment || 'neutral'} sentiment</span>
-          </div>
-          {data.keywords && data.keywords.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {data.keywords.map((keyword: string, idx: number) => (
-                <span key={`${keyword}-${idx}`} className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                  {keyword}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      );
-    }
-    return null;
+  // Determine size classes based on value (frequency)
+  const getSizeClass = (value: number, max: number) => {
+    const ratio = value / (max || 1);
+    if (ratio > 0.8) return 'text-xl px-4 py-2';
+    if (ratio > 0.5) return 'text-lg px-3 py-1.5';
+    return 'text-sm px-2 py-1';
   };
 
-  // Use ONLY prop-driven data - NO mock data
-  const activeData: TopicData[] = props.data || [];
-
-  // Show empty state when no data
-  if (activeData.length === 0) {
-    return (
-      <div className="glass-card p-6">
-        <h3 className="text-lg font-semibold mb-2">Topic Clusters</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Key discussion topics sized by mention volume
-        </p>
-        <div className="h-[300px] flex items-center justify-center bg-muted/20 rounded-lg">
-          <p className="text-muted-foreground">No topic data available. Analyze reviews to generate topics.</p>
-        </div>
-      </div>
-    );
-  }
-
-  const treemapData = activeData.map(topic => ({
-    ...topic,
-    children: [{ name: topic.name, size: topic.size, sentiment: topic.sentiment, keywords: topic.keywords }],
-  }));
+  const maxVal = Math.max(...keywords.map((k: any) => k.value), 1);
 
   return (
-    <div className="glass-card p-6">
-      <h3 className="text-lg font-semibold mb-2">Topic Clusters</h3>
-      <p className="text-sm text-muted-foreground mb-4">
-        Key discussion topics sized by mention volume
-      </p>
-
-      <div className="h-[300px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <Treemap
-            data={treemapData}
-            dataKey="size"
-            aspectRatio={4 / 3}
-            stroke="hsl(0, 0%, 10%)"
-            content={<CustomContent />}
-          >
-            <Tooltip content={<CustomTooltip />} />
-          </Treemap>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Legend */}
-      <div className="flex items-center justify-center gap-6 mt-4 pt-4 border-t border-border/50">
-        {Object.entries(sentimentColors).map(([sentiment, color]) => (
-          <div key={sentiment} className="flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: color }}
-            />
-            <span className="text-sm text-muted-foreground capitalize">{sentiment}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Top Topics List */}
-      <div className="mt-4 pt-4 border-t border-border/50">
-        <h4 className="text-sm font-medium mb-3">Top Discussion Topics</h4>
-        <div className="grid grid-cols-2 gap-2">
-          {activeData.slice(0, 4).map((topic, index) => (
-            <div
-              key={topic.name}
-              className="flex items-center gap-2 p-2 rounded-lg bg-background/50"
-            >
-              <span className="text-xs font-medium text-muted-foreground w-4">
-                {index + 1}
-              </span>
-              <div
-                className="w-2 h-2 rounded-full flex-shrink-0"
-                style={{ backgroundColor: sentimentColors[topic.sentiment] }}
-              />
-              <span className="text-sm truncate">{topic.name}</span>
-              <span className="text-xs text-muted-foreground ml-auto">{topic.size}</span>
-            </div>
-          ))}
+    <Card className="glass-card border-border/50 h-full">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Hash className="h-5 w-5 text-sentinel-highlight" />
+            Emerging Topics (AI)
+          </CardTitle>
+          <Badge variant="outline" className="text-xs font-mono">
+            Live Analysis
+          </Badge>
         </div>
-      </div>
-    </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex flex-wrap gap-2 animate-pulse">
+             {[1,2,3,4,5].map(i => (
+               <div key={i} className="h-8 w-24 bg-muted rounded-full" />
+             ))}
+          </div>
+        ) : keywords.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+            <TrendingUp className="h-8 w-8 mb-2 opacity-50" />
+            <p>No topics extracted yet.</p>
+            <p className="text-xs">Analyze reviews to generate topics.</p>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-3 items-center justify-center min-h-[200px] content-center">
+            {keywords.map((topic: any, idx: number) => (
+              <Badge
+                key={idx}
+                variant="secondary"
+                className={`cursor-default transition-all hover:scale-110 hover:bg-sentinel-highlight hover:text-white ${getSizeClass(topic.value, maxVal)}`}
+                title={`${topic.value} mentions`}
+              >
+                {topic.text}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
-}
+};

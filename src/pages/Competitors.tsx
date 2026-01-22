@@ -3,10 +3,12 @@ import { getCompare, getProducts as apiGetProducts, getReviews } from '@/lib/api
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend, Tooltip } from 'recharts';
-import { Swords, TrendingUp } from 'lucide-react';
+import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { Swords, TrendingUp, Trophy, AlertTriangle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { SentimentDistribution } from '@/components/dashboard/SentimentDistribution';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 
 interface ComparisonData {
     aspects: { subject: string; A: number; B: number; fullMark: number }[];
@@ -14,6 +16,7 @@ interface ComparisonData {
         productA: { sentiment: number; credibility: number; reviewCount: number };
         productB: { sentiment: number; credibility: number; reviewCount: number };
     };
+    barData: { name: string; Positive: number; Negative: number; Neutral: number }[];
 }
 
 const Competitors = () => {
@@ -93,12 +96,18 @@ const Competitors = () => {
             fullMark: 5
         }));
 
+        const barData = [
+            { name: getName(selectedA), Positive: a.counts.positive, Negative: a.counts.negative, Neutral: a.counts.neutral },
+            { name: getName(selectedB), Positive: b.counts.positive, Negative: b.counts.negative, Neutral: b.counts.neutral },
+        ];
+
         const comp: ComparisonData = {
             aspects,
             metrics: {
                 productA: { sentiment: a.sentimentPercent, credibility: a.avgCred, reviewCount: a.total },
                 productB: { sentiment: b.sentimentPercent, credibility: b.avgCred, reviewCount: b.total },
-            }
+            },
+            barData
         };
 
         setData(comp);
@@ -106,6 +115,13 @@ const Competitors = () => {
     }, [selectedA, selectedB, reviewsA, reviewsB]);
 
     const getName = (id: string) => products.find(p => p.id === id)?.name || productList.find((p:any)=>p.id===id)?.name || 'Product';
+
+    const getWinner = () => {
+        if (!data) return null;
+        if (data.metrics.productA.sentiment > data.metrics.productB.sentiment) return selectedA;
+        if (data.metrics.productB.sentiment > data.metrics.productA.sentiment) return selectedB;
+        return null;
+    };
 
     return (
         <DashboardLayout>
@@ -120,9 +136,10 @@ const Competitors = () => {
 
                 {/* Selection Controls */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Card className="glass-card border-sentinel-positive/30">
-                        <CardHeader>
+                    <Card className={`glass-card ${getWinner() === selectedA ? 'border-sentinel-positive' : 'border-sentinel-positive/30'}`}>
+                        <CardHeader className="flex flex-row items-center justify-between">
                             <CardTitle className="text-sentinel-positive">Contender A</CardTitle>
+                            {getWinner() === selectedA && <Badge className="bg-sentinel-positive text-white"><Trophy className="w-3 h-3 mr-1" /> Winner</Badge>}
                         </CardHeader>
                         <CardContent>
                             <Select value={selectedA} onValueChange={setSelectedA}>
@@ -138,9 +155,10 @@ const Competitors = () => {
                         </CardContent>
                     </Card>
 
-                    <Card className="glass-card border-sentinel-negative/30">
-                        <CardHeader>
+                    <Card className={`glass-card ${getWinner() === selectedB ? 'border-sentinel-positive' : 'border-sentinel-negative/30'}`}>
+                        <CardHeader className="flex flex-row items-center justify-between">
                             <CardTitle className="text-sentinel-negative">Contender B</CardTitle>
+                             {getWinner() === selectedB && <Badge className="bg-sentinel-positive text-white"><Trophy className="w-3 h-3 mr-1" /> Winner</Badge>}
                         </CardHeader>
                         <CardContent>
                             <Select value={selectedB} onValueChange={setSelectedB}>
@@ -159,85 +177,118 @@ const Competitors = () => {
 
                 {/* Comparison Viz */}
                 {(!selectedA || !selectedB) && (
-                    <div className="text-sm text-muted-foreground">Select two products to compare.</div>
+                    <div className="text-sm text-muted-foreground flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4" /> Select two products to unlock comparison.
+                    </div>
                 )}
                 {data && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
 
-                        {/* Radar Chart */}
-                        <Card className="glass-card border-border/50">
-                            <CardHeader>
-                                <CardTitle>Aspect Battle</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="h-[400px]">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data.aspects}>
-                                            <PolarGrid stroke="hsl(var(--border))" />
-                                            <PolarAngleAxis dataKey="subject" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />        
-                                            <PolarRadiusAxis angle={30} domain={[0, 5]} stroke="hsl(var(--border))" />
-                                            <Radar
-                                                name={getName(selectedA)}
-                                                dataKey="A"
-                                                stroke="hsl(var(--sentinel-positive))"
-                                                fill="hsl(var(--sentinel-positive))"
-                                                fillOpacity={0.3}
-                                            />
-                                            <Radar
-                                                name={getName(selectedB)}
-                                                dataKey="B"
-                                                stroke="hsl(var(--sentinel-negative))"
-                                                fill="hsl(var(--sentinel-negative))"
-                                                fillOpacity={0.3}
-                                            />
-                                            <Legend />
-                                            <Tooltip
-                                                contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}
-                                            />
-                                        </RadarChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        {/* Metrics Head-to-Head */}
-                        <div className="space-y-6">
+                        {/* Top Row: Radar & Metrics */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            
+                            {/* Radar Chart */}
                             <Card className="glass-card border-border/50">
-                                <CardHeader><CardTitle>Sentiment Score</CardTitle></CardHeader>
+                                <CardHeader>
+                                    <CardTitle>Aspect Battle</CardTitle>
+                                </CardHeader>
                                 <CardContent>
-                                    <div className="flex items-center justify-between text-4xl font-bold mb-2">
-                                        <div className="text-sentinel-positive">{data.metrics.productA.sentiment.toFixed(0)}%</div>
-                                        <div className="text-muted-foreground text-sm">VS</div>
-                                        <div className="text-sentinel-negative">{data.metrics.productB.sentiment.toFixed(0)}%</div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <div className="text-sm text-muted-foreground">{getName(selectedA)}</div>
-                                            <SentimentDistribution data={[{ name: 'Positive', value: Math.round(data.metrics.productA.sentiment) }, { name: 'Neutral', value: Math.round(100 - data.metrics.productA.sentiment - 0) }, { name: 'Negative', value: Math.round(0) }]} height={120} />
-                                        </div>
-                                        <div>
-                                            <div className="text-sm text-muted-foreground">{getName(selectedB)}</div>
-                                            <SentimentDistribution data={[{ name: 'Positive', value: Math.round(data.metrics.productB.sentiment) }, { name: 'Neutral', value: Math.round(100 - data.metrics.productB.sentiment - 0) }, { name: 'Negative', value: Math.round(0) }]} height={120} />
-                                        </div>
+                                    <div className="h-[300px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data.aspects}>
+                                                <PolarGrid stroke="hsl(var(--border))" />
+                                                <PolarAngleAxis dataKey="subject" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />        
+                                                <PolarRadiusAxis angle={30} domain={[0, 5]} stroke="hsl(var(--border))" />
+                                                <Radar
+                                                    name={getName(selectedA)}
+                                                    dataKey="A"
+                                                    stroke="hsl(var(--sentinel-positive))"
+                                                    fill="hsl(var(--sentinel-positive))"
+                                                    fillOpacity={0.3}
+                                                />
+                                                <Radar
+                                                    name={getName(selectedB)}
+                                                    dataKey="B"
+                                                    stroke="hsl(var(--sentinel-negative))"
+                                                    fill="hsl(var(--sentinel-negative))"
+                                                    fillOpacity={0.3}
+                                                />
+                                                <Legend />
+                                                <Tooltip
+                                                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}
+                                                />
+                                            </RadarChart>
+                                        </ResponsiveContainer>
                                     </div>
                                 </CardContent>
                             </Card>
 
+                             {/* Bar Chart: Counts */}
                             <Card className="glass-card border-border/50">
-                                <CardHeader><CardTitle>Review Volume</CardTitle></CardHeader>
-                                <CardContent className="flex items-center justify-around text-center">
-                                    <div>
-                                        <div className="text-2xl font-bold">{data.metrics.productA.reviewCount}</div>
-                                        <div className="text-sm text-muted-foreground">Reviews</div>
-                                    </div>
-                                    <TrendingUp className="text-muted-foreground h-6 w-6" />
-                                    <div>
-                                        <div className="text-2xl font-bold">{data.metrics.productB.reviewCount}</div>
-                                        <div className="text-sm text-muted-foreground">Reviews</div>
+                                <CardHeader><CardTitle>Sentiment Volume Comparison</CardTitle></CardHeader>
+                                <CardContent>
+                                    <div className="h-[300px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={data.barData}>
+                                                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                                                <XAxis dataKey="name" />
+                                                <YAxis />
+                                                <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ backgroundColor: 'hsl(var(--card))' }} />
+                                                <Legend />
+                                                <Bar dataKey="Positive" fill="hsl(var(--sentinel-positive))" />
+                                                <Bar dataKey="Neutral" fill="hsl(var(--muted))" />
+                                                <Bar dataKey="Negative" fill="hsl(var(--sentinel-negative))" />
+                                            </BarChart>
+                                        </ResponsiveContainer>
                                     </div>
                                 </CardContent>
                             </Card>
                         </div>
+
+                        {/* Detailed Comparison Table */}
+                        <Card className="glass-card border-border/50">
+                            <CardHeader>
+                                <CardTitle>Head-to-Head Stats</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="w-[200px]">Metric</TableHead>
+                                            <TableHead className="text-center text-sentinel-positive font-bold">{getName(selectedA)}</TableHead>
+                                            <TableHead className="text-center text-sentinel-negative font-bold">{getName(selectedB)}</TableHead>
+                                            <TableHead className="text-right">Difference</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        <TableRow>
+                                            <TableCell className="font-medium">Sentiment Score</TableCell>
+                                            <TableCell className="text-center text-xl">{data.metrics.productA.sentiment.toFixed(1)}%</TableCell>
+                                            <TableCell className="text-center text-xl">{data.metrics.productB.sentiment.toFixed(1)}%</TableCell>
+                                            <TableCell className="text-right font-mono">
+                                                {Math.abs(data.metrics.productA.sentiment - data.metrics.productB.sentiment).toFixed(1)}%
+                                            </TableCell>
+                                        </TableRow>
+                                        <TableRow>
+                                            <TableCell className="font-medium">Review Volume</TableCell>
+                                            <TableCell className="text-center">{data.metrics.productA.reviewCount}</TableCell>
+                                            <TableCell className="text-center">{data.metrics.productB.reviewCount}</TableCell>
+                                            <TableCell className="text-right font-mono">
+                                                {Math.abs(data.metrics.productA.reviewCount - data.metrics.productB.reviewCount)}
+                                            </TableCell>
+                                        </TableRow>
+                                        <TableRow>
+                                            <TableCell className="font-medium">Credibility Score</TableCell>
+                                            <TableCell className="text-center">{data.metrics.productA.credibility.toFixed(1)}%</TableCell>
+                                            <TableCell className="text-center">{data.metrics.productB.credibility.toFixed(1)}%</TableCell>
+                                            <TableCell className="text-right font-mono">
+                                                {Math.abs(data.metrics.productA.credibility - data.metrics.productB.credibility).toFixed(1)}%
+                                            </TableCell>
+                                        </TableRow>
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
                     </div>
                 )}
             </div>

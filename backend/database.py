@@ -263,12 +263,23 @@ async def _get_dashboard_metrics_fallback():
              for r in platform_resp.data:
                  p = r.get("platform", "unknown")
                  platforms[p] = platforms.get(p, 0) + 1
-                 
+        
+        # Top Keywords / Topics
+        topics = []
+        try:
+            # Fetch recent top topics by size
+            topic_resp = supabase.table("topic_analysis").select("topic_name, size").order("size", desc=True).limit(10).execute()
+            if topic_resp.data:
+                topics = [{"text": t["topic_name"], "value": t["size"]} for t in topic_resp.data]
+        except Exception:
+            pass
+
         return {
             "totalReviews": total_reviews,
             "sentimentScore": avg_sentiment,
             "averageCredibility": avg_credibility,
-            "platformBreakdown": platforms
+            "platformBreakdown": platforms,
+            "topKeywords": topics
         }
     except Exception as e:
         print(f"Fallback metrics failed: {e}")
