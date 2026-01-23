@@ -118,11 +118,65 @@ class AIService:
 
     def extract_topics(self, texts: List[str], top_k: int = 5) -> List[Dict[str, any]]:
         """
-        Extract top topics (bigrams) from a list of texts using frequency analysis.
-        Simulates TextRank/LDA without heavy dependencies.
+        Extract top topics using LDA (Latent Dirichlet Allocation) if possible,
+        otherwise fall back to frequency analysis.
         """
         if not texts:
             return []
+        
+        # Simple cleaning for topic extraction specifically
+        clean_texts = [re.sub(r'http\S+', '', t).lower() for t in texts if t]
+        clean_texts = [re.sub(r'[^\w\s]', '', t) for t in clean_texts if t.strip()]
+
+        # Try LDA if we have enough data (at least 10 documents) and sklearn is available
+        if len(clean_texts) >= 10:
+            try:
+                from sklearn.feature_extraction.text import CountVectorizer
+                from sklearn.decomposition import LatentDirichletAllocation
+                import numpy as np
+                
+                # Stop words extended
+                stopwords = [
+                    "the", "is", "and", "to", "a", "of", "in", "it", "for", "on", "that", "this", "with", "i", "you",
+                    "but", "was", "my", "have", "as", "are", "not", "be", "so", "at", "if", "or", "just", "very", "can",
+                    "product", "item", "one", "get", "me", "all", "about", "out", "has", "more", "like", "when", "up",
+                    "what", "time", "would", "they", "from", "do", "will", "really", "good", "great", "review", "video"
+                ]
+
+                # Vectorize
+                tf_vectorizer = CountVectorizer(max_df=0.95, min_df=2, stop_words=stopwords)
+                tf = tf_vectorizer.fit_transform(clean_texts)
+                
+                # Fit LDA
+                n_topics = min(top_k, 5) # Discover 5 topics internally
+                lda = LatentDirichletAllocation(n_components=n_topics, max_iter=5, learning_method='online', learning_offset=50., random_state=0)
+                lda.fit(tf)
+                
+                # Extract top words per topic
+                feature_names = tf_vectorizer.get_feature_names_out()
+                topics = []
+                
+                for topic_idx, topic in enumerate(lda.components_):
+                    # Get top 3 words for this topic
+                    top_indices = topic.argsort()[:-4:-1]
+                    top_words = [feature_names[i] for i in top_indices]
+                    topic_label = " ".join(top_words)
+                    
+                    # Estimate "size" or importance based on sum of weights
+                    importance = float(topic.sum())
+                    
+                    topics.append({"text": topic_label, "value": int(importance * 10), "sentiment": "neutral"})
+                
+                # Sort by importance
+                topics.sort(key=lambda x: x["value"], reverse=True)
+                return topics[:top_k]
+
+            except ImportError:
+                print("⚠️ Scikit-learn not found. Falling back to simple frequency analysis.")
+            except Exception as e:
+                print(f"LDA Topic Extraction failed: {e}. Falling back to simple frequency analysis.")
+
+        # --- Fallback: Frequency Analysis ---
 
         stopwords = {
             "the", "is", "and", "to", "a", "of", "in", "it", "for", "on", "that", "this", "with", "i", "you",

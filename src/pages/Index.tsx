@@ -9,7 +9,6 @@ import { MetricCard } from '@/components/dashboard/MetricCard';
 import { SentimentTrendChart } from '@/components/dashboard/SentimentTrendChart';
 import { AspectRadarChart } from '@/components/dashboard/AspectRadarChart';
 import { AlertsPanel } from '@/components/dashboard/AlertsPanel';
-import { SentimentDistribution } from '@/components/dashboard/SentimentDistribution';
 import { PlatformChart } from '@/components/dashboard/PlatformChart';
 import { KeywordCloud } from '@/components/dashboard/KeywordCloud';
 import { CredibilityReport } from '@/components/dashboard/CredibilityReport';
@@ -24,9 +23,9 @@ import { ExportButton } from '@/components/dashboard/ExportButton';
 const Index = () => {
   const { data, isLoading } = useDashboardData();
 
-  const apiMetrics = data?.metrics || {};
-  const recentReviews = data?.recentReviews || [];
-  const rawPlatformBreakdown = data?.platformBreakdown || {};
+  const apiMetrics = data?.data?.metrics || {};
+  const recentReviews = data?.data?.recentReviews || [];
+  const rawPlatformBreakdown = data?.data?.platformBreakdown || {};
   const platformBreakdown = Array.isArray(rawPlatformBreakdown)
     ? rawPlatformBreakdown
     : Object.entries(rawPlatformBreakdown || {}).map(([platform, vals]) => ({ platform, ...(vals as any) }));
@@ -44,7 +43,14 @@ const Index = () => {
     alerts: [],
     platformBreakdown,
     topKeywords: [],
-    credibilityReport: {},
+    credibilityReport: {
+      overallScore: 0,
+      verifiedReviews: 0,
+      botsDetected: 0,
+      spamClusters: 0,
+      suspiciousPatterns: 0,
+      totalAnalyzed: 0,
+    },
     lastUpdated: new Date()
   };
   const isLoadingLocal = isLoading;
@@ -196,14 +202,7 @@ const Index = () => {
 
 
           <CredibilityReport
-            report={assembled?.credibilityReport && Object.keys(assembled.credibilityReport || {}).length > 0 ? assembled.credibilityReport : {
-              overallScore: 0,
-              verifiedReviews: 0,
-              botsDetected: 0,
-              spamClusters: 0,
-              suspiciousPatterns: 0,
-              totalAnalyzed: 0,
-            }}
+            report={assembled.credibilityReport}
             isLoading={isLoadingLocal}
           />
         </div>

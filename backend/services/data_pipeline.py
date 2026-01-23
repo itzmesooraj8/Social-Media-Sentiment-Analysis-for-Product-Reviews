@@ -1,11 +1,31 @@
 import hashlib
 import json
+import re
 from typing import List, Dict, Any
 from datetime import datetime
 from database import supabase, save_sentiment_analysis
 from services.ai_service import ai_service
 
 class DataPipelineService:
+    def _clean_text(self, text: str) -> str:
+        """
+        Aggressively clean text: remove URLs, hashtags, special chars, emojis.
+        """
+        if not text:
+            return ""
+        
+        # Remove URLs
+        text = re.sub(r'http\S+', '', text)
+        # Remove hashtags
+        text = re.sub(r'#\w+', '', text)
+        # Remove emojis/special chars (keep alphanumeric and basic punctuation)
+        # This regex keeps letters, numbers, spaces, and .,!?'-
+        text = re.sub(r'[^\w\s.,!?\'-]', '', text)
+        # Collapse whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        return text
+
     async def process_reviews(self, reviews: List[Dict[str, Any]], product_id: str) -> List[Dict[str, Any]]:
         """
         Cleaning, Sentiment Analysis (via AI Service), and Saving to DB.
@@ -17,7 +37,12 @@ class DataPipelineService:
         saved_count = 0
         
         for review in reviews:
-            content = review.get("text") or review.get("content", "")
+            raw_content = review.get("text") or review.get("content", "")
+            if not raw_content:
+                continue
+            
+            # Aggressive Cleaning
+            content = self._clean_text(raw_content)
             if not content:
                 continue
                 

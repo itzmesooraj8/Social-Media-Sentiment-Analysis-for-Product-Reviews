@@ -205,6 +205,25 @@ async def api_dashboard():
     return {"success": True, "data": stats}
 
 
+@app.get("/api/topics")
+async def api_get_topics(limit: int = 10):
+    """
+    Get top topics for visualization.
+    """
+    try:
+        if supabase:
+            resp = supabase.table("topic_analysis").select("*").order("size", desc=True).limit(limit).execute()
+            data = resp.data or []
+            # format for frontend
+            formatted = [{"text": d["topic_name"], "value": d["size"], "sentiment": d.get("sentiment", 0)} for d in data]
+            return {"success": True, "data": formatted}
+        else:
+            return {"success": True, "data": []}
+    except Exception as e:
+        print(f"Error fetching topics: {e}")
+        return {"success": False, "detail": str(e)}
+
+
 def _ensure_supabase_available():
     if supabase is None:
         raise HTTPException(status_code=500, detail="Supabase client not initialized. Check backend .env for SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY")
@@ -238,6 +257,48 @@ async def api_delete_product(product_id: str):
     except Exception as e:
         print(f"api_delete_product error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/products/{product_id}/stats")
+async def api_product_stats(product_id: str):
+    """
+    Get stats for a specific product (for comparison/War Room).
+    """
+    try:
+        if not supabase: 
+            return {"success": False, "detail": "DB unavailable"}
+        
+        # Calc stats for specific product
+        # 1. Count reviews
+        reviews = supabase.table("reviews").select("id", count="exact").eq("product_id", product_id).execute()
+        total = reviews.count or 0
+        
+        # 2. Aggregated sentiment
+        # We assume sentiment_analysis is linked. 
+        # A join would be better but simple separate queries are safer for now.
+        sentiments = supabase.table("sentiment_analysis").select("score, label").eq("product_id", product_id).execute()
+        data = sentiments.data or []
+        
+        avg_score = 0
+        positive_count = 0
+        if data:
+            scores = [float(d.get("score", 0.5)) for d in data]
+            avg_score = sum(scores) / len(scores)
+            positive_count = sum(1 for d in data if d.get("label") == "POSITIVE")
+            
+        pos_percent = (positive_count / len(data)) * 100 if data else 0
+        
+        return {
+            "success": True, 
+            "data": {
+                "total_reviews": total,
+                "average_sentiment": avg_score,
+                "positive_percent": round(pos_percent, 1)
+            }
+        }
+    except Exception as e:
+        print(f"Product stats error: {e}")
+        return {"success": False, "detail": str(e)}
 
 
 @app.get("/api/integrations")
