@@ -36,7 +36,7 @@ export function DashboardHeader({ lastUpdated, isCrisis = false }: DashboardHead
               <span className={`relative h-2 w-2 rounded-full ${isCrisis ? 'bg-sentinel-negative' : 'bg-sentinel-positive'}`} />
             </div>
             <span className={`text-xs font-semibold uppercase tracking-wider ${isCrisis ? 'text-sentinel-negative' : 'text-sentinel-positive'}`}>
-              {isCrisis ? 'CRISIS DETECTED' : 'Live'}
+              {isCrisis ? 'CRISIS DETECTED' : 'LIVE SYSTEM'}
             </span>
           </motion.div>
         </div>

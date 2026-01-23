@@ -252,9 +252,14 @@ async def _get_dashboard_metrics_fallback():
             avg_sentiment = total_score / len(sentiment_data)
             
             avg_credibility = sum(s.get("credibility", 0) for s in sentiment_data) / len(sentiment_data)
+            
+            # Calculate positive percent for recommendations
+            pos_count = sum(1 for s in sentiment_data if s.get("label", "").upper() == "POSITIVE")
+            pos_percent = (pos_count / len(sentiment_data)) * 100
         else:
             avg_sentiment = 0
             avg_credibility = 0
+            pos_percent = 0
             
         # Platform breakdown - aggregate manually
         platform_resp = supabase.table("reviews").select("platform").execute()
@@ -266,20 +271,36 @@ async def _get_dashboard_metrics_fallback():
         
         # Top Keywords / Topics
         topics = []
+        negative_topics = []
         try:
             # Fetch recent top topics by size
-            topic_resp = supabase.table("topic_analysis").select("topic_name, size").order("size", desc=True).limit(10).execute()
+            topic_resp = supabase.table("topic_analysis").select("topic_name, size, sentiment").order("size", desc=True).limit(10).execute()
             if topic_resp.data:
-                topics = [{"text": t["topic_name"], "value": t["size"]} for t in topic_resp.data]
+                topics = [{"text": t["topic_name"], "value": t["size"], "sentiment": t.get("sentiment")} for t in topic_resp.data]
+                negative_topics = [t["topic_name"] for t in topic_resp.data if t.get("sentiment") == "negative"]
         except Exception:
             pass
+
+        # Generate Recommendations
+        try:
+            from services.report_service import report_service
+            recommendations = report_service.generate_recommendations({
+                "positive_percent": pos_percent,
+                "negative_topics": negative_topics
+            })
+        except ImportError:
+            recommendations = []
+        except Exception as e:
+            print(f"Error generating recommendations: {e}")
+            recommendations = []
 
         return {
             "totalReviews": total_reviews,
             "sentimentScore": avg_sentiment,
             "averageCredibility": avg_credibility,
             "platformBreakdown": platforms,
-            "topKeywords": topics
+            "topKeywords": topics,
+            "recommendations": recommendations
         }
     except Exception as e:
         print(f"Fallback metrics failed: {e}")

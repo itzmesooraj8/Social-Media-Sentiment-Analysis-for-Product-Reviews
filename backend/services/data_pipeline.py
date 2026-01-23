@@ -118,10 +118,10 @@ class DataPipelineService:
                 # We treat each bigram as a "topic" for now
                 for t in topics:
                     topic_data = {
-                        "topic_name": t["text"], # e.g. "battery life"
-                        "sentiment": 0, # Neutral default, could refine later
-                        "size": t["value"],
-                        "keywords": t["text"].split(),
+                        "topic_name": t["topic"], # Corrected key
+                        "sentiment": 0, # Placeholder
+                        "size": t["count"],       # Corrected key
+                        "keywords": t["topic"].split(),
                         "created_at": datetime.now().isoformat()
                     }
                     try:

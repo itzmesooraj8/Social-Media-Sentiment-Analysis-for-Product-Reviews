@@ -63,7 +63,8 @@ const Index = () => {
       const json = await response.json();
       // Only show real AI summary, no fallback text
       return {
-        summary: json.data?.aiSummary || null
+        summary: json.data?.aiSummary || null,
+        recommendations: json.data?.recommendations || []
       };
     },
     retry: false
@@ -157,7 +158,7 @@ const Index = () => {
         {/* Live Analyzer & Insights */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <LiveReviewAnalyzer />
-          <InsightCard isLoading={isLoading || summaryLoading} summary={summaryResp?.summary} />
+          <InsightCard isLoading={isLoading || summaryLoading} summary={summaryResp?.summary} recommendations={summaryResp?.recommendations} />
         </div>
 
         {/* Sentiment Trend Chart */}

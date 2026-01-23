@@ -4,6 +4,7 @@ import csv
 import io
 from datetime import datetime
 from typing import Dict, Any, List
+from services.ai_service import ai_service
 
 # --- SAFETY UPDATE: Graceful imports for ReportLab ---
 try:
@@ -21,6 +22,33 @@ class ReportService:
     def __init__(self):
         self.reports_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports")
         os.makedirs(self.reports_dir, exist_ok=True)
+
+    def generate_recommendations(self, stats: dict) -> List[str]:
+        """
+        Generate business recommendations based on statistics.
+        """
+        recommendations = []
+        
+        # Rule 1: Low Positive Sentiment
+        pos_percent = stats.get("positive_percent", 0)
+        if pos_percent < 40:
+            recommendations.append("CRITICAL: Immediate PR intervention required.")
+
+        # Rule 2: Price Sensitivity
+        # Check if 'price' is in negative topics
+        negative_topics = stats.get("negative_topics", [])
+        if any("price" in t.lower() or "expensive" in t.lower() or "cost" in t.lower() for t in negative_topics):
+            recommendations.append("Action: Re-evaluate pricing strategy vs competitors.")
+            
+        # Rule 3: Logistics Issues
+        if any("shipping" in t.lower() or "delivery" in t.lower() or "arrive" in t.lower() for t in negative_topics):
+            recommendations.append("Action: Audit logistics partners.")
+
+        # Additional Rules
+        if not recommendations and pos_percent > 80:
+             recommendations.append("Performance is excellent. Consider a loyalty campaign.")
+             
+        return recommendations
 
     def generate_report(self, data: Dict[str, Any], format: str = "json") -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -112,7 +140,8 @@ class ReportService:
     def generate_pdf_report(self, product_id: str) -> str:
         """Generate a PDF report for a product_id.
 
-        The PDF contains: Total Reviews, Avg Sentiment Score, Top 5 positive and top 5 negative reviews.
+        The PDF contains: Total Reviews, Avg Sentiment Score, Top 5 positive and top 5 negative reviews,
+        and AI Business Recommendations.
         """
         if not _REPORTLAB_AVAILABLE:
             raise ImportError("PDF generation requires reportlab")
@@ -120,7 +149,7 @@ class ReportService:
         # Query Supabase for reviews
         try:
             from database import supabase
-            resp = supabase.table("reviews").select("*, sentiment_score, sentiment_label").eq("product_id", product_id).execute()
+            resp = supabase.table("reviews").select("*, sentiment_analysis(*), sentiment_score, sentiment_label").eq("product_id", product_id).execute()
             rows = resp.data or []
         except Exception as e:
             print(f"Failed to fetch reviews for report: {e}")
@@ -128,12 +157,37 @@ class ReportService:
 
         total = len(rows)
         avg_sent = 0.0
+        pos_count = 0
+        texts = []
+        
         try:
-            scores = [float(r.get("sentiment_score") or 0) for r in rows]
+            scores = []
+            for r in rows:
+                s = float(r.get("sentiment_score") or 0)
+                scores.append(s)
+                if r.get("sentiment_label") == "POSITIVE" or (r.get("sentiment_analysis") and r.get("sentiment_analysis")[0].get("label") == "POSITIVE"):
+                    pos_count += 1
+                
+                content = r.get("content") or r.get("text") or ""
+                if content:
+                    texts.append(content)
+
             if scores:
                 avg_sent = sum(scores) / len(scores)
         except Exception:
             avg_sent = 0.0
+
+        pos_percent = (pos_count / total * 100) if total > 0 else 0
+
+        # Extract topics to find negative themes
+        topics = ai_service.extract_topics(texts, top_k=10)
+        neg_topics = [t["topic"] for t in topics if t["sentiment"] == "negative"]
+
+        # Generate Recommendations
+        recs = self.generate_recommendations({
+            "positive_percent": pos_percent,
+            "negative_topics": neg_topics
+        })
 
         # Sort top positive and negative by sentiment_score
         positives = sorted([r for r in rows if (r.get("sentiment_score") is not None)], key=lambda x: float(x.get("sentiment_score") or 0), reverse=True)[:5]
@@ -150,11 +204,13 @@ class ReportService:
         story.append(Paragraph(f"Sentiment Report - Product {product_id}", styles['Title']))
         story.append(Spacer(1, 12))
 
+        # Overview Table
         story.append(Paragraph("Overview", styles['Heading2']))
         overview = [
             ['Metric', 'Value'],
             ['Total Reviews', str(total)],
             ['Average Sentiment', f"{avg_sent:.3f}"],
+            ['Positive Reviews', f"{pos_percent:.1f}%"],
         ]
         t = Table(overview)
         t.setStyle(TableStyle([
@@ -164,7 +220,19 @@ class ReportService:
             ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
         ]))
         story.append(t)
-        story.append(Spacer(1, 12))
+        story.append(Spacer(1, 20))
+
+        # AI Recommendations Section
+        if recs:
+            story.append(Paragraph("AI Business Recommendations", styles['Heading2']))
+            for rec in recs:
+                # Style check for "CRITICAL"
+                if "CRITICAL" in rec:
+                    story.append(Paragraph(f"<b><font color='red'>{rec}</font></b>", styles['Normal']))
+                else:
+                    story.append(Paragraph(f"• {rec}", styles['Normal']))
+                story.append(Spacer(1, 6))
+            story.append(Spacer(1, 12))
 
         def add_review_list(title, items):
             story.append(Paragraph(title, styles['Heading3']))
