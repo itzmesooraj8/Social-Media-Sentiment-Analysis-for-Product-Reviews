@@ -23,9 +23,9 @@ import { ExportButton } from '@/components/dashboard/ExportButton';
 const Index = () => {
   const { data, isLoading } = useDashboardData();
 
-  const apiMetrics = data?.data?.metrics || {};
-  const recentReviews = data?.data?.recentReviews || [];
-  const rawPlatformBreakdown = data?.data?.platformBreakdown || {};
+  const apiMetrics = data?.data || {};
+  const recentReviews = apiMetrics?.recentReviews || [];
+  const rawPlatformBreakdown = apiMetrics?.platformBreakdown || {};
   const platformBreakdown = Array.isArray(rawPlatformBreakdown)
     ? rawPlatformBreakdown
     : Object.entries(rawPlatformBreakdown || {}).map(([platform, vals]) => ({ platform, ...(vals as any) }));
@@ -34,7 +34,7 @@ const Index = () => {
     metrics: {
       totalReviews: apiMetrics.totalReviews ?? 0,
       sentimentDelta: apiMetrics.sentimentDelta ?? 0,
-      botsDetected: apiMetrics.botsDetected ?? 0,
+      botsDetected: apiMetrics.credibilityReport?.botsDetected ?? 0,
       averageCredibility: apiMetrics.averageCredibility ?? 0,
     },
     recentReviews,
@@ -42,8 +42,8 @@ const Index = () => {
     aspectScores: [],
     alerts: [],
     platformBreakdown,
-    topKeywords: [],
-    credibilityReport: {
+    topKeywords: apiMetrics.topKeywords || [],
+    credibilityReport: apiMetrics.credibilityReport || {
       overallScore: 0,
       verifiedReviews: 0,
       botsDetected: 0,

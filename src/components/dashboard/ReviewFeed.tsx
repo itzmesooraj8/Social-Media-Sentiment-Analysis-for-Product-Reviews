@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageCircle, Twitter, Youtube, ExternalLink } from "lucide-react";
+import { MessageCircle, Twitter, Youtube, ExternalLink, ThumbsUp, Repeat, MessageSquare } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 
 // Define the Review type based on your DB schema
@@ -16,6 +16,9 @@ interface Review {
   timestamp: string;
   sourceUrl?: string;
   credibility?: number;
+  like_count?: number;
+  reply_count?: number;
+  retweet_count?: number;
 }
 
 interface ReviewFeedProps {
@@ -80,6 +83,35 @@ export const ReviewFeed: React.FC<ReviewFeedProps> = ({ reviews }) => {
                     <p className="text-sm text-gray-700 leading-relaxed">
                       {review.text}
                     </p>
+
+                    {/* Engagement Metrics */}
+                    <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+                      {(review.like_count || 0) > 0 && (
+                        <div className="flex items-center gap-1">
+                          <ThumbsUp className="h-3 w-3" />
+                          <span>{review.like_count}</span>
+                        </div>
+                      )}
+                      {(review.reply_count || 0) > 0 && (
+                        <div className="flex items-center gap-1">
+                          <MessageCircle className="h-3 w-3" />
+                          <span>{review.reply_count}</span>
+                        </div>
+                      )}
+                      {(review.retweet_count || 0) > 0 && (
+                        <div className="flex items-center gap-1">
+                          <Repeat className="h-3 w-3" />
+                          <span>{review.retweet_count}</span>
+                        </div>
+                      )}
+                      {review.credibility && (
+                        <div className="flex items-center gap-1 ml-auto">
+                           <span className={review.credibility > 0.7 ? "text-green-600" : review.credibility < 0.4 ? "text-red-600" : "text-yellow-600"}>
+                             Cred: {(review.credibility * 100).toFixed(0)}%
+                           </span>
+                        </div>
+                      )}
+                    </div>
 
                     {review.sourceUrl && (
                       <a

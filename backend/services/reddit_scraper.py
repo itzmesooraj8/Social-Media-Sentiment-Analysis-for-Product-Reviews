@@ -71,6 +71,8 @@ class RedditScraperService:
                         "url": f"https://reddit.com{submission.permalink}",
                         "platform": "reddit",
                         "posted_at": posted,
+                        "like_count": submission.score,
+                        "reply_count": submission.num_comments
                     })
 
                     # Try to gather a few top-level comments
@@ -87,6 +89,8 @@ class RedditScraperService:
                                 "url": f"https://reddit.com{comment.permalink}",
                                 "platform": "reddit",
                                 "posted_at": posted_c,
+                                "like_count": comment.score,
+                                "reply_count": 0 # Comments might have replies but simple scraper won't traverse deep
                             })
                     except Exception:
                         # Comments retrieval failed for this submission

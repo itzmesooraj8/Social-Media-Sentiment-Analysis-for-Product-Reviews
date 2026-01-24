@@ -245,21 +245,30 @@ async def _get_dashboard_metrics_fallback():
         sentiment_resp = supabase.table("sentiment_analysis").select("label, credibility").execute()
         sentiment_data = sentiment_resp.data
         
+        avg_credibility = 0
+        bots_detected = 0
+        verified_reviews = 0
+        avg_sentiment = 0
+        pos_percent = 0
+
         if sentiment_data:
             # Map sentiment to 0-100 score
             score_map = {"POSITIVE": 100, "NEUTRAL": 50, "NEGATIVE": 0}
             total_score = sum(score_map.get(s.get("label", "NEUTRAL").upper(), 50) for s in sentiment_data)
             avg_sentiment = total_score / len(sentiment_data)
             
-            avg_credibility = sum(s.get("credibility", 0) for s in sentiment_data) / len(sentiment_data)
+            # Credibility Calculations
+            cred_scores = [float(s.get("credibility", 0)) for s in sentiment_data]
+            avg_credibility = (sum(cred_scores) / len(cred_scores)) * 100 if cred_scores else 0
+            
+            # Simple Bot Detection Logic: Credibility < 0.3
+            bots_detected = sum(1 for s in cred_scores if s < 0.3)
+            # Verified Logic: Credibility > 0.7
+            verified_reviews = sum(1 for s in cred_scores if s > 0.7)
             
             # Calculate positive percent for recommendations
             pos_count = sum(1 for s in sentiment_data if s.get("label", "").upper() == "POSITIVE")
             pos_percent = (pos_count / len(sentiment_data)) * 100
-        else:
-            avg_sentiment = 0
-            avg_credibility = 0
-            pos_percent = 0
             
         # Platform breakdown - aggregate manually
         platform_resp = supabase.table("reviews").select("platform").execute()
@@ -281,6 +290,33 @@ async def _get_dashboard_metrics_fallback():
         except Exception:
             pass
 
+        # Recent Reviews (for Feed)
+        recent_reviews = []
+        try:
+            rr_data = await get_recent_reviews_with_sentiment(limit=10)
+            for r in rr_data:
+                # Flat map sentiment
+                sa = r.get("sentiment_analysis") or {}
+                # Handle if list
+                if isinstance(sa, list) and sa: sa = sa[0]
+                
+                recent_reviews.append({
+                    "id": r["id"],
+                    "text": r.get("content") or r.get("text", ""),
+                    "platform": r.get("platform", "web"),
+                    "username": r.get("username") or r.get("author", "Anonymous"),
+                    "sentiment": (sa.get("label") or "neutral").lower(),
+                    "sentiment_label": (sa.get("label") or "neutral").upper(),
+                    "timestamp": r["created_at"],
+                    "sourceUrl": r.get("source_url"),
+                    "credibility": sa.get("credibility"),
+                    "like_count": r.get("like_count", 0),
+                    "reply_count": r.get("reply_count", 0),
+                    "retweet_count": r.get("retweet_count", 0)
+                })
+        except Exception as e:
+            print(f"Recent reviews fetch failed: {e}")
+
         # Generate Recommendations
         try:
             from services.report_service import report_service
@@ -297,10 +333,19 @@ async def _get_dashboard_metrics_fallback():
         return {
             "totalReviews": total_reviews,
             "sentimentScore": avg_sentiment,
-            "averageCredibility": avg_credibility,
+            "averageCredibility": avg_credibility, # 0-100
             "platformBreakdown": platforms,
             "topKeywords": topics,
-            "recommendations": recommendations
+            "recommendations": recommendations,
+            "recentReviews": recent_reviews,
+            "credibilityReport": {
+                "overallScore": avg_credibility,
+                "verifiedReviews": verified_reviews,
+                "botsDetected": bots_detected,
+                "spamClusters": 0, # Placeholder for advanced logic
+                "suspiciousPatterns": 0,
+                "totalAnalyzed": len(sentiment_data) if sentiment_data else 0
+            }
         }
     except Exception as e:
         print(f"Fallback metrics failed: {e}")
@@ -308,7 +353,15 @@ async def _get_dashboard_metrics_fallback():
             "totalReviews": 0,
             "sentimentScore": 0,
             "averageCredibility": 0,
-            "platformBreakdown": {}
+            "platformBreakdown": {},
+            "credibilityReport": {
+                "overallScore": 0,
+                "verifiedReviews": 0,
+                "botsDetected": 0,
+                "spamClusters": 0,
+                "suspiciousPatterns": 0,
+                "totalAnalyzed": 0
+            }
         }
 
 

@@ -60,6 +60,7 @@ def run_migrations():
             '04_finalize_production.sql',
             '05_add_youtube_comments.sql',
             '06_add_roles.sql',
+            '07_add_engagement_metrics.sql',
             'security.sql'
         ]
 

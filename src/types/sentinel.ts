@@ -13,6 +13,10 @@ export interface Review {
   created_at: string;
   source_url?: string;
   likes?: number;
+  like_count?: number;
+  reply_count?: number;
+  retweet_count?: number;
+  metadata?: any;
   isBot?: boolean;
 }
 

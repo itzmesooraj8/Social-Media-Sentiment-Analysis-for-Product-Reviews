@@ -46,9 +46,17 @@ class DataPipelineService:
             if not content:
                 continue
                 
-            # 1. Analyze Sentiment using AI Service
+            # 1. Prepare Metadata for Credibility Score
+            metadata = {
+                "like_count": review.get("like_count", 0),
+                "reply_count": review.get("reply_count", 0),
+                "retweet_count": review.get("retweet_count", 0),
+                "platform_karma": review.get("author_karma", 0) 
+            }
+
+            # 2. Analyze Sentiment using AI Service (with metadata)
             try:
-                analysis = await ai_service.analyze_sentiment(content)
+                analysis = await ai_service.analyze_sentiment(content, metadata=metadata)
             except Exception as e:
                 print(f"AI Analysis failed for review: {e}")
                 # Fallback to neutral
@@ -56,22 +64,23 @@ class DataPipelineService:
 
             text_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
             
-            # 2. Prepare Review Data
-            # 2. Prepare Review Data
-            # Map 'text' to 'content' if your DB schema uses 'content' instead of 'text'
-            # Based on the error "null value in column content", the DB column is named 'content'.
-            
+            # 3. Prepare Review Data
             review_data = {
                 "product_id": product_id,
-                "content": content, # MAPPED FOR DB SCHEMA (was 'text')
+                "content": content,
                 "username": review.get("author") or review.get("username", "Anonymous"),
                 "platform": review.get("platform", "web_upload"),
                 "source_url": review.get("source_url", ""),
                 "text_hash": text_hash,
-                "created_at": review.get("created_at") or datetime.now().isoformat()
+                "created_at": review.get("created_at") or datetime.now().isoformat(),
+                # New Metrics
+                "like_count": metadata["like_count"],
+                "reply_count": metadata["reply_count"],
+                "retweet_count": metadata["retweet_count"],
+                "metadata": metadata
             }
             
-            # 3. Save to Database
+            # 4. Save to Database
             try:
                 # Save review
                 # We try to exclude fields if they cause errors (robustness)

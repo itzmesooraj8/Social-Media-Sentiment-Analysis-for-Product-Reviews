@@ -8,7 +8,7 @@ Endpoints:
 - POST /api/scrape/trigger
 - GET /api/dashboard
 
-Focus: YouTube scraping + sentiment analysis. Reddit/Twitter are stubbed and deferred.
+Focus: YouTube scraping + sentiment analysis. Reddit/Twitter integrations active.
 """
 
 import os
@@ -304,60 +304,69 @@ async def api_product_stats(product_id: str):
 @app.get("/api/analytics")
 async def api_get_analytics(range: str = "7d"):
     """
-    Get analytics data for charts (daily sentiment, etc).
+    Get analytics data for charts (daily sentiment, etc) using Pandas for efficient aggregation.
     """
     try:
-        # 1. Daily Sentiment Trend (Last 7 days)
-        # Using a raw SQL query for aggregation as Supabase JS client doesn't support complex group_by easily without RPC
-        # But we can simulate it by fetching recent reviews and aggregating in python for simplicity if volume is low,
-        # or better, use an RPC call if it existed.
-        # For this sprint, we'll fetch reviews and aggregate in Python to ensure it works without migration.
+        import pandas as pd
+        import datetime
         
         # Calculate start date based on range (default 7d)
-        import datetime
         days = 7
         if range == "30d": days = 30
         start_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
         
+        # Fetch raw data
+        # We need created_at and sentiment label
         query = supabase.table("reviews").select("created_at, sentiment_analysis(label)").gte("created_at", start_date.isoformat())
         resp = query.execute()
         reviews = resp.data or []
 
-        # Aggregate by date
-        daily_stats = {}
+        if not reviews:
+             return {"success": True, "data": {"sentimentTrends": []}}
+
+        # Convert to Pandas DataFrame
+        # Flatten the structure first
+        flat_data = []
         for r in reviews:
-            date_str = r["created_at"].split("T")[0]
-            if date_str not in daily_stats:
-                daily_stats[date_str] = {"positive": 0, "negative": 0, "neutral": 0, "total": 0}
-            
-            # Extract label
             label = "NEUTRAL"
-            if r.get("sentiment_analysis"):
-                # Handle list or dict return from join
-                sa = r["sentiment_analysis"]
+            sa = r.get("sentiment_analysis")
+            if sa:
                 if isinstance(sa, list) and sa:
-                    label = sa[0].get("label", "NEUTRAL")
+                     label = sa[0].get("label") or "NEUTRAL"
                 elif isinstance(sa, dict):
-                    label = sa.get("label", "NEUTRAL")
+                     label = sa.get("label") or "NEUTRAL"
             
-            daily_stats[date_str]["total"] += 1
-            if label == "POSITIVE":
-                daily_stats[date_str]["positive"] += 1
-            elif label == "NEGATIVE":
-                daily_stats[date_str]["negative"] += 1
-            else:
-                daily_stats[date_str]["neutral"] += 1
+            flat_data.append({
+                "created_at": r["created_at"],
+                "label": label
+            })
+            
+        df = pd.DataFrame(flat_data)
+        df["created_at"] = pd.to_datetime(df["created_at"])
         
-        # Format for Recharts
+        # Resample by Day
+        # We need columns: positive, negative, neutral
+        # Create dummies
+        dummies = pd.get_dummies(df["label"])
+        # Ensure all columns exist
+        for col in ["POSITIVE", "NEGATIVE", "NEUTRAL"]:
+            if col not in dummies.columns:
+                dummies[col] = 0
+                
+        # Merge back with date
+        df = pd.concat([df["created_at"], dummies], axis=1)
+        
+        # Group by day
+        daily = df.groupby(pd.Grouper(key="created_at", freq="D")).sum().fillna(0)
+        
+        # Format for API
         trends = []
-        sorted_dates = sorted(daily_stats.keys())
-        for d in sorted_dates:
-            stats = daily_stats[d]
+        for date, row in daily.iterrows():
             trends.append({
-                "date": d,
-                "positive": stats["positive"],
-                "negative": stats["negative"],
-                "neutral": stats["neutral"]
+                "date": date.strftime("%Y-%m-%d"),
+                "positive": int(row.get("POSITIVE", 0)),
+                "negative": int(row.get("NEGATIVE", 0)),
+                "neutral": int(row.get("NEUTRAL", 0))
             })
             
         return {"success": True, "data": {"sentimentTrends": trends}}

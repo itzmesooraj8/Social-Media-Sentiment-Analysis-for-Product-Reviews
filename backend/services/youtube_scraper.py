@@ -112,6 +112,8 @@ class YouTubeScraperService:
                         "platform": "youtube",
                         "source_url": f"https://youtu.be/{video_id}",
                         "created_at": top.get("publishedAt"),
+                        "like_count": top.get("likeCount", 0),
+                        "reply_count": item["snippet"].get("totalReplyCount", 0)
                     }
                     yield comment
                     fetched += 1
@@ -168,6 +170,8 @@ class YouTubeScraperService:
                         "platform": "youtube",
                         "source_url": f"https://youtu.be/{video_id}",
                         "created_at": top.get("publishedAt"),
+                        "like_count": top.get("likeCount", 0),
+                        "reply_count": item["snippet"].get("totalReplyCount", 0)
                     })
                     fetched += 1
                     if fetched >= max_results:
