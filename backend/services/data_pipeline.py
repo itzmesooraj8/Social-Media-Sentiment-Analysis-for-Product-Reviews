@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+import asyncio
 from typing import List, Dict, Any
 from datetime import datetime
 from database import supabase, save_sentiment_analysis
@@ -19,7 +20,7 @@ class DataPipelineService:
         # Remove hashtags
         text = re.sub(r'#\w+', '', text)
         # Remove emojis/special chars (keep alphanumeric and basic punctuation)
-        # This regex keeps letters, numbers, spaces, and .,!?'-
+        # This regex keeps letters, numbers, spaces, and .,!?'- 
         text = re.sub(r'[^\w\s.,!?\'-]', '', text)
         # Collapse whitespace
         text = re.sub(r'\s+', ' ', text).strip()
@@ -120,6 +121,9 @@ class DataPipelineService:
         try:
             # Gather all text from this batch
             all_texts = [r.get("content") or r.get("text") or "" for r in processed_reviews]
+            if not all_texts:
+                return processed_reviews
+
             if all_texts:
                 topics = await asyncio.to_thread(ai_service.extract_topics, all_texts)
                 
