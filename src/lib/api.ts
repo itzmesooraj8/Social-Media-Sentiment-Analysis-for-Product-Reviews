@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { supabase } from './supabase';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001/api';
 
 const api = axios.create({
     baseURL: API_URL,
@@ -60,7 +60,8 @@ export const sentinelApi = {
 
     getProducts: async () => {
         try {
-            const response = await api.get('/products', { timeout: 30000 });
+            // Increase timeout to 60 seconds (60000ms) to prevent ECONNABORTED on slow networks
+            const response = await api.get('/products', { timeout: 60000 });
             return response.data.data || [];
         } catch (e) {
             console.error("API /products failed", e);
@@ -91,8 +92,8 @@ export const getAnalytics = async (range: string) => {
         const response = await api.get(`/analytics?range=${range}`);
         return response.data;
     } catch (e) {
-         console.error("Analytics fetch failed", e);
-         return { success: false, data: { sentimentTrends: [] } };
+        console.error("Analytics fetch failed", e);
+        return { success: false, data: { sentimentTrends: [] } };
     }
 };
 
@@ -122,7 +123,7 @@ export const analyzeText = sentinelApi.analyzeText;
 export const scrapeYoutube = sentinelApi.scrapeYoutube;
 
 export const getYoutubeStreamUrl = (url: string, productId?: string, max_results = 50) => {
-    const base = API_URL.replace(/\/+$/,'');
+    const base = API_URL.replace(/\/+$/, '');
     const params = new URLSearchParams();
     params.set('url', url);
     if (productId) params.set('product_id', productId);
@@ -218,8 +219,8 @@ export const resolveAlert = async (id: string) => {
 
 export const getSystemStatus = async () => {
     try {
-         const response = await api.get('/system/status');
-         return response.data?.data || { reddit: false, twitter: false, youtube: false, database: false };
+        const response = await api.get('/system/status');
+        return response.data?.data || { reddit: false, twitter: false, youtube: false, database: false };
     } catch (e) {
         return { reddit: false, twitter: false, youtube: false, database: false };
     }

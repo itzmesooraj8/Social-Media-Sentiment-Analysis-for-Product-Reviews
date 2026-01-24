@@ -139,6 +139,7 @@ class AIService:
                 print(f"Sentiment error: {e}")
 
         # 2. Emotion Analysis (Real Model)
+        emotion_score = 0.0
         if self._emotion_pipe:
             try:
                 e_out = self._emotion_pipe(text[:512])
@@ -150,6 +151,7 @@ class AIService:
                         top_e = e_out[0]
                     
                     emotion = top_e.get("label", "neutral")
+                    emotion_score = float(top_e.get("score", 0.0))
             except Exception as e:
                 print(f"Emotion error: {e}")
         else:
@@ -157,15 +159,17 @@ class AIService:
             text_l = text.lower()
             if label == "POSITIVE":
                 emotion = "joy"
+                emotion_score = 0.8
             elif label == "NEGATIVE":
                 emotion = "anger"
+                emotion_score = 0.8
 
         credibility = self._compute_credibility(text, score, metadata)
         
         return {
             "label": label,
             "score": round(score, 4),
-            "emotion": emotion,
+            "emotions": [{"name": emotion, "score": int(emotion_score * 100)}] if emotion != "neutral" else [],
             "credibility": credibility
         }
     

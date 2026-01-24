@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 from datetime import datetime
 from database import supabase, save_sentiment_analysis
 from services.ai_service import ai_service
+from services.monitor_service import monitor_service
 
 class DataPipelineService:
     def _clean_text(self, text: str) -> str:
@@ -47,7 +48,7 @@ class DataPipelineService:
             if not content:
                 continue
                 
-            # 1. Prepare Metadata for Credibility Score
+            # 1. Prepare Metadata for Credibility Score and Engagement
             metadata = {
                 "like_count": review.get("like_count", 0),
                 "reply_count": review.get("reply_count", 0),
@@ -84,11 +85,10 @@ class DataPipelineService:
             # 4. Save to Database
             try:
                 # Save review
-                # We try to exclude fields if they cause errors (robustness)
                 try:
                     res = supabase.table("reviews").insert(review_data).execute()
                 except Exception as e:
-                    # Retry without text_hash if schema issue
+                    # Retry without text_hash if schema issue (robustness)
                     if "text_hash" in str(e):
                         del review_data["text_hash"]
                         res = supabase.table("reviews").insert(review_data).execute()
@@ -111,8 +111,13 @@ class DataPipelineService:
                     }
                     await save_sentiment_analysis(analysis_data)
                     saved_count += 1
-                    
-                processed_reviews.append({**review_data, "analysis": analysis})
+                
+                # Compose full object for monitoring
+                full_review_object = {**review_data, "analysis": analysis}
+                processed_reviews.append(full_review_object)
+                
+                # 5. Real-Time Alert Check
+                await monitor_service.check_triggers(full_review_object)
                 
             except Exception as e:
                 print(f"Failed to save review: {e}")
@@ -121,6 +126,8 @@ class DataPipelineService:
         try:
             # Gather all text from this batch
             all_texts = [r.get("content") or r.get("text") or "" for r in processed_reviews]
+            
+            # Robustness: Check for empty batch
             if not all_texts:
                 return processed_reviews
 
@@ -128,21 +135,19 @@ class DataPipelineService:
                 topics = await asyncio.to_thread(ai_service.extract_topics, all_texts)
                 
                 # Save topics to 'topic_analysis' table
-                # We treat each bigram as a "topic" for now
                 for t in topics:
                     topic_data = {
-                        "topic_name": t["topic"], # Corrected key
-                        "sentiment": 0, # Placeholder
-                        "size": t["count"],       # Corrected key
+                        "topic_name": t["topic"], 
+                        "sentiment": 0, 
+                        "size": t["count"],       
                         "keywords": t["topic"].split(),
                         "created_at": datetime.now().isoformat()
                     }
                     try:
-                         # Insert or ignore (if we had a unique constraint, but we don't, so just insert)
-                         # Real app would upsert or aggregate.
                          supabase.table("topic_analysis").insert(topic_data).execute()
                     except Exception as e:
-                        print(f"Failed to save topic {t['text']}: {e}")
+                        # silently ignore dupes/errors in background
+                        pass
                         
         except Exception as e:
              print(f"Topic Extraction failed: {e}")

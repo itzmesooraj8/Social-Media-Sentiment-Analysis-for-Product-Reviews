@@ -19,8 +19,8 @@ print(f"DEBUG: Loading .env from {env_path}")
 print(f"DEBUG: SUPABASE_URL Found? {bool(SUPABASE_URL)}")
 print(f"DEBUG: SUPABASE_KEY Found? {bool(SUPABASE_KEY)}")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("CRITICAL: Supabase credentials not found in environment variables!")
+if not SUPABASE_URL or not SUPABASE_KEY or "your_supabase_url_here" in SUPABASE_URL:
+    print("CRITICAL: Supabase credentials not found or invalid (placeholders detected). Using local fallback.")
     supabase: Client = None
 else:
     try:
@@ -60,7 +60,8 @@ async def get_products():
     """Fetch all products from the database."""
     try:
         if supabase is not None:
-            response = supabase.table("products").select("*").limit(50).execute()
+            import asyncio
+            response = await asyncio.to_thread(lambda: supabase.table("products").select("*").limit(50).execute())
             return response.data
         # Fallback to local JSON
         db = _read_local_db()
@@ -74,7 +75,8 @@ async def add_product(product_data: dict):
     """Add a new product to the database."""
     try:
         if supabase is not None:
-            response = supabase.table("products").insert(product_data).execute()
+            import asyncio
+            response = await asyncio.to_thread(lambda: supabase.table("products").insert(product_data).execute())
             return response.data
         # local fallback - ensure id exists
         import uuid
@@ -96,7 +98,9 @@ async def get_reviews(product_id: str = None, limit: int = 100):
         query = supabase.table("reviews").select("*")
         if product_id:
             query = query.eq("product_id", product_id)
-        response = query.limit(limit).order("created_at", desc=True).execute()
+        
+        import asyncio
+        response = await asyncio.to_thread(lambda: query.limit(limit).order("created_at", desc=True).execute())
         return response.data
     except Exception as e:
         print(f"Error fetching reviews: {e}")
@@ -107,7 +111,8 @@ async def get_product_by_id(product_id: str):
     """Return a single product by id using Supabase if available, otherwise local JSON."""
     try:
         if supabase is not None:
-            resp = supabase.table("products").select("*").eq("id", product_id).limit(1).execute()
+            import asyncio
+            resp = await asyncio.to_thread(lambda: supabase.table("products").select("*").eq("id", product_id).limit(1).execute())
             if resp.data:
                 return resp.data[0]
             return None
@@ -126,14 +131,15 @@ async def delete_product(product_id: str):
     """Delete a product by id. Uses Supabase if available, otherwise local JSON fallback."""
     try:
         if supabase is not None:
+            import asyncio
             # First delete any reviews that reference the product to avoid FK constraint errors
             try:
-                _ = supabase.table("reviews").delete().eq("product_id", product_id).execute()
+                _ = await asyncio.to_thread(lambda: supabase.table("reviews").delete().eq("product_id", product_id).execute())
             except Exception as e:
                 print(f"Warning: failed to delete reviews for product {product_id}: {e}")
 
             # Now delete the product itself
-            resp = supabase.table("products").delete().eq("id", product_id).execute()
+            resp = await asyncio.to_thread(lambda: supabase.table("products").delete().eq("id", product_id).execute())
             if hasattr(resp, "error") and resp.error:
                 raise Exception(resp.error)
             return {"success": True, "deleted_id": product_id}
@@ -156,16 +162,12 @@ async def get_recent_reviews_with_sentiment(limit: int = 50):
     """Fetch recent reviews with their sentiment analysis included."""
     try:
         # Supabase join syntax: table(*), tied via foreign key
-        # Assuming review_id in sentiment_analysis references reviews.id
-        # Note: In standard Supabase, we select from parent and include child? 
-        # Or select from Child and include parent? 
-        # Reviews is parent. Sentiment is child (review_id). 
-        # To get Review + Sentiment, we usually need: select *, sentiment_analysis(*)
-        response = supabase.table("reviews")\
+        import asyncio
+        response = await asyncio.to_thread(lambda: supabase.table("reviews")\
             .select("*, sentiment_analysis(*)")\
             .order("created_at", desc=True)\
             .limit(limit)\
-            .execute()
+            .execute())
         return response.data
     except Exception as e:
         print(f"Error fetching recent reviews: {e}")
@@ -236,15 +238,32 @@ async def get_dashboard_stats():
 
 async def _get_dashboard_metrics_fallback():
     """Optimized aggregation for dashboard metrics."""
+    import asyncio
     try:
-        # Get total reviews count (Lightweight)
-        reviews_resp = supabase.table("reviews").select("id", count="exact").execute()
-        total_reviews = reviews_resp.count if reviews_resp.count else 0
+        # Parallelize independent queries using asyncio.gather + to_thread
+        # 1. Total Reviews
+        reviews_task = asyncio.to_thread(lambda: supabase.table("reviews").select("id", count="exact").execute())
         
-        # Get sentiment stats
-        sentiment_resp = supabase.table("sentiment_analysis").select("label, credibility").execute()
-        sentiment_data = sentiment_resp.data
+        # 2. Sentiment Data
+        sentiment_task = asyncio.to_thread(lambda: supabase.table("sentiment_analysis").select("label, credibility").execute())
         
+        # 3. Platform Data
+        platform_task = asyncio.to_thread(lambda: supabase.table("reviews").select("platform").execute())
+
+        # 4. Top Topics
+        topic_task = asyncio.to_thread(lambda: supabase.table("topic_analysis").select("topic_name, size, sentiment").order("size", desc=True).limit(10).execute())
+
+        # Execute parallel
+        reviews_resp, sentiment_resp, platform_resp, topic_resp = await asyncio.gather(
+            reviews_task, sentiment_task, platform_task, topic_task, return_exceptions=True
+        )
+        
+        # Unpack results safely
+        total_reviews = reviews_resp.count if not isinstance(reviews_resp, Exception) and reviews_resp.count else 0
+        sentiment_data = sentiment_resp.data if not isinstance(sentiment_resp, Exception) and sentiment_resp.data else []
+        platform_data = platform_resp.data if not isinstance(platform_resp, Exception) and platform_resp.data else []
+        topic_data = topic_resp.data if not isinstance(topic_resp, Exception) and topic_resp.data else []
+
         avg_credibility = 0
         bots_detected = 0
         verified_reviews = 0
@@ -270,25 +289,18 @@ async def _get_dashboard_metrics_fallback():
             pos_count = sum(1 for s in sentiment_data if s.get("label", "").upper() == "POSITIVE")
             pos_percent = (pos_count / len(sentiment_data)) * 100
             
-        # Platform breakdown - aggregate manually
-        platform_resp = supabase.table("reviews").select("platform").execute()
+        # Platform breakdown
         platforms = {}
-        if platform_resp.data:
-             for r in platform_resp.data:
-                 p = r.get("platform", "unknown")
-                 platforms[p] = platforms.get(p, 0) + 1
+        for r in platform_data:
+             p = r.get("platform", "unknown")
+             platforms[p] = platforms.get(p, 0) + 1
         
         # Top Keywords / Topics
         topics = []
         negative_topics = []
-        try:
-            # Fetch recent top topics by size
-            topic_resp = supabase.table("topic_analysis").select("topic_name, size, sentiment").order("size", desc=True).limit(10).execute()
-            if topic_resp.data:
-                topics = [{"text": t["topic_name"], "value": t["size"], "sentiment": t.get("sentiment")} for t in topic_resp.data]
-                negative_topics = [t["topic_name"] for t in topic_resp.data if t.get("sentiment") == "negative"]
-        except Exception:
-            pass
+        if topic_data:
+            topics = [{"text": t["topic_name"], "value": t["size"], "sentiment": t.get("sentiment")} for t in topic_data]
+            negative_topics = [t["topic_name"] for t in topic_data if t.get("sentiment") == "negative"]
 
         # Recent Reviews (for Feed)
         recent_reviews = []

@@ -78,37 +78,52 @@ const Integrations = () => {
   const [testingConnection, setTestingConnection] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const { data: statusData } = useQuery({
-      queryKey: ['systemStatus'],
-      queryFn: getSystemStatus,
-      refetchInterval: 30000
+  const { data: statusData, isLoading } = useQuery({
+    queryKey: ['systemStatus'],
+    queryFn: getSystemStatus,
+    refetchInterval: 30000
   });
 
   useEffect(() => {
     if (statusData) {
-        // Map system status to integrations list
-        const defaults = [
-            { id: 'twitter', name: 'Twitter/X', platform: 'twitter' as const, key: 'twitter' },
-            { id: 'reddit', name: 'Reddit', platform: 'reddit' as const, key: 'reddit' },
-            { id: 'youtube', name: 'YouTube', platform: 'youtube' as const, key: 'youtube' },
-        ];
+      // Map system status to integrations list
+      const defaults = [
+        { id: 'twitter', name: 'Twitter/X', platform: 'twitter' as const, key: 'twitter' },
+        { id: 'reddit', name: 'Reddit', platform: 'reddit' as const, key: 'reddit' },
+        { id: 'youtube', name: 'YouTube', platform: 'youtube' as const, key: 'youtube' },
+      ];
 
-        const mapped = defaults.map(d => ({
-            id: d.id,
-            name: d.name,
-            platform: d.platform,
-            status: statusData[d.key as keyof typeof statusData] ? 'connected' : 'disconnected',
-            lastSync: statusData[d.key as keyof typeof statusData] ? new Date() : null,
-            reviewsCollected: 0, // dynamic count not available in simple status endpoint
-            syncFrequency: '30 minutes',
-            isEnabled: !!statusData[d.key as keyof typeof statusData]
-        }));
-        
-        // @ts-ignore
-        setIntegrations(mapped);
+      const mapped = defaults.map(d => ({
+        id: d.id,
+        name: d.name,
+        platform: d.platform,
+        status: statusData[d.key as keyof typeof statusData] ? 'connected' : 'disconnected',
+        lastSync: statusData[d.key as keyof typeof statusData] ? new Date() : null,
+        reviewsCollected: 0, // dynamic count not available in simple status endpoint
+        syncFrequency: '30 minutes',
+        isEnabled: !!statusData[d.key as keyof typeof statusData]
+      }));
+
+      // @ts-ignore
+      setIntegrations(mapped);
     }
   }, [statusData]);
 
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="space-y-6">
+          <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-card rounded-xl animate-pulse" />)}
+          </div>
+          <div className="space-y-4">
+            {[1, 2, 3].map(i => <div key={i} className="h-24 bg-card rounded-xl animate-pulse" />)}
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   const formatLastSync = (date: Date | null) => {
     if (!date) return 'Never';

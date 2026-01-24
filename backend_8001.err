@@ -1,0 +1,11 @@
+INFO:     Will watch for changes in these directories: ['C:\\Users\\itzme\\Downloads\\sentiment-beacon-main\\backend']
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [24332] using WatchFiles
+INFO:     Started server process [10360]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'services\ai_service.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [10360]

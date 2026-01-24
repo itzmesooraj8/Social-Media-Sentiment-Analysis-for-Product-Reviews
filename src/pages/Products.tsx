@@ -109,7 +109,24 @@ export default function Products() {
     });
   };
 
-  if (isLoading) return <div className="flex justify-center p-8">Loading...</div>;
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="space-y-6">
+          <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+          <div className="flex justify-between">
+            <div className="h-10 w-32 bg-muted animate-pulse rounded" />
+            <div className="h-10 w-32 bg-muted animate-pulse rounded" />
+          </div>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="h-48 rounded-xl border bg-card text-card-foreground shadow animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>

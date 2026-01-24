@@ -136,6 +136,22 @@ const Settings = () => {
     saveSettingsMutation.mutate(payloads);
   };
 
+  const { isLoading } = settingsResp ? { isLoading: false } : { isLoading: true };
+
+  if (!settingsResp && isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="space-y-6">
+          <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+          <div className="flex gap-2">
+            {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-10 w-24 bg-muted animate-pulse rounded" />)}
+          </div>
+          <div className="h-96 bg-card rounded-xl animate-pulse" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <motion.div
