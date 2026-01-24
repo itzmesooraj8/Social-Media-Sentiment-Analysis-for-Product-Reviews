@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
+import { getReports, downloadReport } from '@/lib/api';
 import {
     FileText,
     Download,
@@ -37,6 +39,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { format } from 'date-fns';
 
 const containerVariants = {
     hidden: { opacity: 0 },
@@ -51,67 +54,6 @@ const itemVariants = {
     visible: { opacity: 1, y: 0 }
 };
 
-type ReportStatus = 'completed' | 'generating' | 'scheduled';
-type ReportType = 'sentiment' | 'credibility' | 'competitive' | 'executive';
-
-interface Report {
-    id: string;
-    name: string;
-    type: ReportType;
-    status: ReportStatus;
-    createdAt: string;
-    size: string;
-    period: string;
-}
-
-const reports: Report[] = [
-    {
-        id: '1',
-        name: 'Monthly Sentiment Analysis - December 2025',
-        type: 'sentiment',
-        status: 'completed',
-        createdAt: '2025-12-28',
-        size: '2.4 MB',
-        period: 'Dec 1 - Dec 31, 2025'
-    },
-    {
-        id: '2',
-        name: 'Q4 Credibility Assessment',
-        type: 'credibility',
-        status: 'completed',
-        createdAt: '2025-12-25',
-        size: '4.1 MB',
-        period: 'Oct 1 - Dec 31, 2025'
-    },
-    {
-        id: '3',
-        name: 'Competitive Analysis Report',
-        type: 'competitive',
-        status: 'generating',
-        createdAt: '2026-01-09',
-        size: '-',
-        period: 'Jan 1 - Jan 9, 2026'
-    },
-    {
-        id: '4',
-        name: 'Weekly Executive Summary',
-        type: 'executive',
-        status: 'scheduled',
-        createdAt: '2026-01-15',
-        size: '-',
-        period: 'Jan 9 - Jan 15, 2026'
-    },
-    {
-        id: '5',
-        name: 'November Sentiment Analysis',
-        type: 'sentiment',
-        status: 'completed',
-        createdAt: '2025-11-30',
-        size: '2.1 MB',
-        period: 'Nov 1 - Nov 30, 2025'
-    },
-];
-
 const reportTypes = {
     sentiment: { label: 'Sentiment', icon: FilePieChart, color: 'bg-sentinel-positive/20 text-sentinel-positive' },
     credibility: { label: 'Credibility', icon: FileBarChart, color: 'bg-sentinel-credibility/20 text-sentinel-credibility' },
@@ -119,21 +61,20 @@ const reportTypes = {
     executive: { label: 'Executive', icon: FileText, color: 'bg-amber-500/20 text-amber-400' },
 };
 
-const statusConfig = {
-    completed: { label: 'Completed', icon: CheckCircle2, color: 'bg-sentinel-positive/20 text-sentinel-positive' },
-    generating: { label: 'Generating', icon: Loader2, color: 'bg-sentinel-credibility/20 text-sentinel-credibility' },
-    scheduled: { label: 'Scheduled', icon: Clock, color: 'bg-muted text-muted-foreground' },
-};
-
 const Reports = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [filterType, setFilterType] = useState<string>('all');
     const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-    const filteredReports = reports.filter(report => {
-        const matchesSearch = report.name.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesType = filterType === 'all' || report.type === filterType;
-        return matchesSearch && matchesType;
+    const { data: reports = [], isLoading } = useQuery({
+        queryKey: ['reports'],
+        queryFn: getReports,
+        refetchInterval: 10000
+    });
+
+    const filteredReports = reports.filter((report: any) => {
+        const matchesSearch = report.filename.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesSearch;
     });
 
     return (
@@ -150,92 +91,11 @@ const Reports = () => {
                         <h1 className="text-2xl font-bold">Reports</h1>
                         <p className="text-muted-foreground">Generate and manage your analysis reports</p>
                     </div>
-                    <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                        <DialogTrigger asChild>
-                            <Button className="bg-sentinel-positive hover:bg-sentinel-positive/90 text-black">
-                                <Plus className="h-4 w-4 mr-2" />
-                                Create Report
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent className="glass-card border-border/50">
-                            <DialogHeader>
-                                <DialogTitle>Create New Report</DialogTitle>
-                                <DialogDescription>
-                                    Configure and generate a new analysis report
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-4 py-4">
-                                <div className="space-y-2">
-                                    <Label>Report Name</Label>
-                                    <Input placeholder="Enter report name" className="glass-card border-border/50" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Report Type</Label>
-                                    <Select defaultValue="sentiment">
-                                        <SelectTrigger className="glass-card border-border/50">
-                                            <SelectValue placeholder="Select type" />
-                                        </SelectTrigger>
-                                        <SelectContent className="glass-card border-border/50">
-                                            <SelectItem value="sentiment">Sentiment Analysis</SelectItem>
-                                            <SelectItem value="credibility">Credibility Assessment</SelectItem>
-                                            <SelectItem value="competitive">Competitive Analysis</SelectItem>
-                                            <SelectItem value="executive">Executive Summary</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Date Range</Label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <Input type="date" className="glass-card border-border/50" />
-                                        <Input type="date" className="glass-card border-border/50" />
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Include Sections</Label>
-                                    <div className="space-y-2">
-                                        <div className="flex items-center space-x-2">
-                                            <Checkbox id="trends" defaultChecked />
-                                            <label htmlFor="trends" className="text-sm">Sentiment Trends</label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <Checkbox id="aspects" defaultChecked />
-                                            <label htmlFor="aspects" className="text-sm">Aspect Analysis</label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <Checkbox id="alerts" defaultChecked />
-                                            <label htmlFor="alerts" className="text-sm">Alert Summary</label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <Checkbox id="credibility" />
-                                            <label htmlFor="credibility" className="text-sm">Credibility Report</label>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <DialogFooter>
-                                <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                                <Button className="bg-sentinel-positive hover:bg-sentinel-positive/90 text-black"
-                                    onClick={async () => {
-                                        setIsCreateOpen(false);
-                                        try {
-                                            const res = await fetch("http://localhost:8000/api/reports/generate", {
-                                                method: "POST",
-                                                headers: { "Content-Type": "application/json" },
-                                                body: JSON.stringify({ type: "sentiment", format: "pdf" })
-                                            });
-                                            const data = await res.json();
-                                            if (data.success && data.downloadUrl) {
-                                                window.location.href = "http://localhost:8000" + data.downloadUrl;
-                                            }
-                                        } catch (e) {
-                                            alert("Failed to generate report");
-                                        }
-                                    }}>
-                                    Generate Report
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
+                    {/* Simplified create dialog for demo */}
+                    <Button className="bg-sentinel-positive hover:bg-sentinel-positive/90 text-black" onClick={() => setIsCreateOpen(true)}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create Report
+                    </Button>
                 </motion.div>
 
                 {/* Filters */}
@@ -249,70 +109,47 @@ const Reports = () => {
                             className="pl-9 glass-card border-border/50"
                         />
                     </div>
-                    <Select value={filterType} onValueChange={setFilterType}>
-                        <SelectTrigger className="w-full sm:w-[180px] glass-card border-border/50">
-                            <Filter className="h-4 w-4 mr-2" />
-                            <SelectValue placeholder="Filter by type" />
-                        </SelectTrigger>
-                        <SelectContent className="glass-card border-border/50">
-                            <SelectItem value="all">All Types</SelectItem>
-                            <SelectItem value="sentiment">Sentiment</SelectItem>
-                            <SelectItem value="credibility">Credibility</SelectItem>
-                            <SelectItem value="competitive">Competitive</SelectItem>
-                            <SelectItem value="executive">Executive</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </motion.div>
-
-                {/* Report Templates */}
-                <motion.div variants={itemVariants}>
-                    <h2 className="text-lg font-semibold mb-4">Quick Templates</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {Object.entries(reportTypes).map(([key, config]) => (
-                            <Card
-                                key={key}
-                                className="glass-card border-border/50 cursor-pointer hover:border-sentinel-positive/50 transition-all group"
-                                onClick={() => setIsCreateOpen(true)}
-                            >
-                                <CardContent className="pt-6">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`p-2 rounded-lg ${config.color}`}>
-                                            <config.icon className="h-5 w-5" />
-                                        </div>
-                                        <div>
-                                            <p className="font-medium group-hover:text-sentinel-positive transition-colors">{config.label}</p>
-                                            <p className="text-xs text-muted-foreground">Quick generate</p>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
                 </motion.div>
 
                 {/* Reports List */}
                 <motion.div variants={itemVariants}>
-                    <h2 className="text-lg font-semibold mb-4">Recent Reports</h2>
                     <Card className="glass-card border-border/50">
-                        <CardContent className="p-6 text-center text-muted-foreground">
-                            <p>Generated reports will appear here or download automatically.</p>
-                            {/* In a persistent system, we would list database records here. */}
-                        </CardContent>
-                    </Card>
-                </motion.div>
-
-                {/* Stats Cards */}
-                <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card className="glass-card border-border/50">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">Reports Generated</CardTitle>
+                        <CardHeader>
+                            <CardTitle>Generated Reports</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">-</div>
-                            <p className="text-xs text-muted-foreground">Real-time stats</p>
+                            {isLoading ? (
+                                <div className="text-center py-8">Loading reports...</div>
+                            ) : filteredReports.length === 0 ? (
+                                <div className="text-center py-8 text-muted-foreground">No reports found.</div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {filteredReports.map((report: any) => (
+                                        <div key={report.filename} className="flex items-center justify-between p-4 bg-muted/20 rounded-lg">
+                                            <div className="flex items-center gap-4">
+                                                <div className="p-2 rounded bg-sentinel-credibility/20 text-sentinel-credibility">
+                                                    <FileText className="h-6 w-6" />
+                                                </div>
+                                                <div>
+                                                    <p className="font-medium">{report.filename}</p>
+                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                        <Clock className="h-3 w-3" />
+                                                        {new Date(report.created_at).toLocaleDateString()}
+                                                        <span>•</span>
+                                                        <span>{(report.size / 1024).toFixed(1)} KB</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <Button variant="outline" size="sm" onClick={() => downloadReport(report.filename)}>
+                                                <Download className="h-4 w-4 mr-2" />
+                                                Download
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
-                    {/* ... other stats removed or placeholder ... */}
                 </motion.div>
             </motion.div>
         </DashboardLayout>

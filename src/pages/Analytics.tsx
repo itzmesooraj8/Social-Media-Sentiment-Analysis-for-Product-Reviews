@@ -47,6 +47,7 @@ const Analytics = () => {
   const { data: analyticsRes, isLoading: isAnalyticsLoading } = useQuery({
     queryKey: ['analytics'],
     queryFn: () => getAnalytics('7d'),
+    refetchInterval: 10000
   });
 
   const { data: summaryRes } = useQuery({
@@ -59,11 +60,15 @@ const Analytics = () => {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="p-8 flex items-center justify-center h-full">
-          <div className="text-center space-y-4">
-            <div className="animate-spin h-12 w-12 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
-            <p className="text-muted-foreground">Loading AI Analytics...</p>
+        <div className="p-8 space-y-4">
+          <Skeleton className="h-12 w-1/3" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+             <Skeleton className="h-32 w-full" />
+             <Skeleton className="h-32 w-full" />
+             <Skeleton className="h-32 w-full" />
+             <Skeleton className="h-32 w-full" />
           </div>
+          <Skeleton className="h-[400px] w-full" />
         </div>
       </DashboardLayout>
     );
@@ -71,7 +76,8 @@ const Analytics = () => {
 
   const analyticsData = analyticsRes?.success ? analyticsRes.data : null;
   const metrics = (dashboardData as any)?.data?.metrics || (dashboardData as any)?.metrics || {};
-  const sentimentTrends = (dashboardData as any)?.data?.sentimentTrends || (dashboardData as any)?.sentimentTrends || [];
+  // Prioritize analytics endpoint for trends
+  const sentimentTrends = analyticsData?.sentimentTrends || (dashboardData as any)?.data?.sentimentTrends || [];
   const forecastData = predictionRes?.success ? predictionRes.data?.forecast : [];
   const trendDirection = predictionRes?.success ? predictionRes.data?.trend : null;
 

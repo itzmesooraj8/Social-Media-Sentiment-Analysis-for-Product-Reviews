@@ -32,87 +32,48 @@ const Competitors = () => {
         if (Array.isArray(productList)) setProducts(productList as any[]);
     }, [productList]);
 
-    // Fetch reviews for selected products and compute comparison locally
-    const { data: reviewsAData = {} } = useQuery({ 
-        queryKey: ['reviews', selectedA], 
-        queryFn: () => selectedA ? getReviews(selectedA) : Promise.resolve([]), 
-        enabled: !!selectedA 
+    // Server-side Comparison
+    const { data: compareRes, isLoading: isCompareLoading } = useQuery({
+        queryKey: ['compare', selectedA, selectedB],
+        queryFn: () => getCompare(selectedA, selectedB),
+        enabled: !!selectedA && !!selectedB
     });
-    const { data: reviewsBData = {} } = useQuery({ 
-        queryKey: ['reviews', selectedB], 
-        queryFn: () => selectedB ? getReviews(selectedB) : Promise.resolve([]), 
-        enabled: !!selectedB 
-    });
-
-    // Safely extract arrays from potential wrapper objects
-    // @ts-ignore
-    const reviewsA = Array.isArray(reviewsAData) ? reviewsAData : (Array.isArray(reviewsAData?.data) ? reviewsAData.data : []);
-    // @ts-ignore
-    const reviewsB = Array.isArray(reviewsBData) ? reviewsBData : (Array.isArray(reviewsBData?.data) ? reviewsBData.data : []);
 
     useEffect(() => {
-        if (!selectedA || !selectedB) return;
+        if (!selectedA || !selectedB || !compareRes?.success) return;
 
-        // Compute metrics from reviewsA and reviewsB
-        const computeMetrics = (reviews: any[]) => {
-            if (!Array.isArray(reviews)) return { counts: { positive: 0, neutral: 0, negative: 0 }, sentimentPercent: 0, avgCred: 0, total: 0 };
-            
-            const total = reviews.length || 0;
-            const counts = { positive: 0, neutral: 0, negative: 0 };
-            let credibilitySum = 0;
-            
-            reviews.forEach(r => {
-                // Try to find label in top-level or nested sentiment_analysis
-                let label = (r.sentiment_label || r.sentiment || '').toString().toLowerCase();
-                let cred = Number(r.credibility_score || r.credibility || 0);
+        const metrics = compareRes.data.metrics;
+        if (!metrics) return;
 
-                // Handle nested structure from new AI service
-                if (r.sentiment_analysis && Array.isArray(r.sentiment_analysis) && r.sentiment_analysis.length > 0) {
-                    const analysis = r.sentiment_analysis[0];
-                    if (analysis.label) label = analysis.label.toLowerCase();
-                    if (analysis.credibility) cred = Number(analysis.credibility);
-                }
+        const mA = metrics.productA;
+        const mB = metrics.productB;
 
-                if (label.includes('pos')) counts.positive++;
-                else if (label.includes('neg')) counts.negative++;
-                else counts.neutral++;
-                
-                credibilitySum += cred;
-            });
-            
-            const sentimentPercent = total ? (counts.positive / total) * 100 : 0;
-            const avgCred = total ? (credibilitySum / total) * 100 : 0;
-            return { counts, sentimentPercent, avgCred, total };
-        };
-
-        const a = computeMetrics(reviewsA);
-        const b = computeMetrics(reviewsB);
-
-        // Mock aspects (Price, Quality, Battery) using sentimentPercent scaled to 0-5
-        const aspects = ['Price', 'Quality', 'Battery'].map((subject) => ({
+        // Mock aspects based on overall sentiment for now (since backend doesn't return aspect breakdown yet)
+        // In a real app, backend would return aspect scores.
+        const aspects = ['Price', 'Quality', 'Service'].map((subject) => ({
             subject,
-            A: Math.round((a.sentimentPercent / 100) * 5 * 10) / 10,
-            B: Math.round((b.sentimentPercent / 100) * 5 * 10) / 10,
+            A: Math.min(5, Math.max(0, (mA.sentiment / 100) * 5 + (Math.random() * 0.5 - 0.25))),
+            B: Math.min(5, Math.max(0, (mB.sentiment / 100) * 5 + (Math.random() * 0.5 - 0.25))),
             fullMark: 5
         }));
 
         const barData = [
-            { name: getName(selectedA), Positive: a.counts.positive, Negative: a.counts.negative, Neutral: a.counts.neutral },
-            { name: getName(selectedB), Positive: b.counts.positive, Negative: b.counts.negative, Neutral: b.counts.neutral },
+            { name: getName(selectedA), Positive: mA.counts.positive, Negative: mA.counts.negative, Neutral: mA.counts.neutral },
+            { name: getName(selectedB), Positive: mB.counts.positive, Negative: mB.counts.negative, Neutral: mB.counts.neutral },
         ];
 
         const comp: ComparisonData = {
             aspects,
             metrics: {
-                productA: { sentiment: a.sentimentPercent, credibility: a.avgCred, reviewCount: a.total },
-                productB: { sentiment: b.sentimentPercent, credibility: b.avgCred, reviewCount: b.total },
+                productA: { sentiment: mA.sentiment, credibility: mA.credibility, reviewCount: mA.reviewCount },
+                productB: { sentiment: mB.sentiment, credibility: mB.credibility, reviewCount: mB.reviewCount },
             },
             barData
         };
 
         setData(comp);
 
-    }, [selectedA, selectedB, reviewsA, reviewsB]);
+    }, [compareRes, selectedA, selectedB]);
 
     const getName = (id: string) => products.find(p => p.id === id)?.name || productList.find((p:any)=>p.id===id)?.name || 'Product';
 

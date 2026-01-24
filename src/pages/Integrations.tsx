@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
+import { getSystemStatus } from '@/lib/api';
 import {
   Link2,
   Plus,
@@ -76,33 +78,36 @@ const Integrations = () => {
   const [testingConnection, setTestingConnection] = useState<string | null>(null);
   const { toast } = useToast();
 
+  const { data: statusData } = useQuery({
+      queryKey: ['systemStatus'],
+      queryFn: getSystemStatus,
+      refetchInterval: 30000
+  });
+
   useEffect(() => {
-    const fetchIntegrations = async () => {
-      try {
-        // In a real app, use the API. For now, since DB is likely empty, we handle the empty state.
-        // But we should try to fetch.
-        const response = await fetch('http://localhost:8000/api/integrations');
-        const data = await response.json();
-        if (data.success) {
-          // Map backend data to UI interface if needed, or use as is
-          const mapped = data.data.map((i: any) => ({
-            id: i.id,
-            name: i.platform, // Mapping platform to name for now
-            platform: i.platform,
-            status: i.status === 'active' ? 'connected' : (i.status === 'error' ? 'error' : 'disconnected'),
-            lastSync: i.last_sync ? new Date(i.last_sync) : null,
-            reviewsCollected: 0,
+    if (statusData) {
+        // Map system status to integrations list
+        const defaults = [
+            { id: 'twitter', name: 'Twitter/X', platform: 'twitter' as const, key: 'twitter' },
+            { id: 'reddit', name: 'Reddit', platform: 'reddit' as const, key: 'reddit' },
+            { id: 'youtube', name: 'YouTube', platform: 'youtube' as const, key: 'youtube' },
+        ];
+
+        const mapped = defaults.map(d => ({
+            id: d.id,
+            name: d.name,
+            platform: d.platform,
+            status: statusData[d.key as keyof typeof statusData] ? 'connected' : 'disconnected',
+            lastSync: statusData[d.key as keyof typeof statusData] ? new Date() : null,
+            reviewsCollected: 0, // dynamic count not available in simple status endpoint
             syncFrequency: '30 minutes',
-            isEnabled: i.is_enabled
-          }));
-          setIntegrations(mapped);
-        }
-      } catch (error) {
-        console.error("Failed to fetch integrations", error);
-      }
-    };
-    fetchIntegrations();
-  }, []);
+            isEnabled: !!statusData[d.key as keyof typeof statusData]
+        }));
+        
+        // @ts-ignore
+        setIntegrations(mapped);
+    }
+  }, [statusData]);
 
 
   const formatLastSync = (date: Date | null) => {

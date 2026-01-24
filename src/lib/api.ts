@@ -87,9 +87,15 @@ export const sentinelApi = {
 
 export const getDashboardStats = sentinelApi.getDashboardStats;
 export const getAnalytics = async (range: string) => {
-    // Placeholder, map to dashboard stats or specific endpoint if exists
-    return sentinelApi.getDashboardStats();
+    try {
+        const response = await api.get(`/analytics?range=${range}`);
+        return response.data;
+    } catch (e) {
+         console.error("Analytics fetch failed", e);
+         return { success: false, data: { sentimentTrends: [] } };
+    }
 };
+
 export const getExecutiveSummary = async () => {
     try {
         const response = await api.get('/dashboard');
@@ -124,15 +130,24 @@ export const getYoutubeStreamUrl = (url: string, productId?: string, max_results
     return `${base}/scrape/youtube/stream?${params.toString()}`;
 };
 
-export const downloadReport = async (productId: string) => {
+export const getReports = async () => {
     try {
-        const response = await api.get(`/reports/${productId}`, { responseType: 'blob' });
+        const response = await api.get('/reports');
+        return response.data?.data || [];
+    } catch (e) {
+        return [];
+    }
+};
+
+export const downloadReport = async (filename: string) => {
+    try {
+        const response = await api.get(`/reports/${filename}`, { responseType: 'blob' });
         const contentType = response.headers['content-type'] || 'application/pdf';
         const blob = new Blob([response.data], { type: contentType });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `sentinel_report_${productId}.pdf`;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -173,11 +188,11 @@ export const triggerScrape = async (productId: string) => {
 
 export const getCompare = async (idA: string, idB: string) => {
     try {
-        const response = await api.get(`/compare?productA=${idA}&productB=${idB}`);
-        return { success: true, data: response.data?.data || { aspects: [], metrics: {} } };
+        const response = await api.get(`/competitors/compare?productA=${idA}&productB=${idB}`);
+        return { success: true, data: response.data?.data || { metrics: {} } };
     } catch (e) {
         // Return empty comparison if endpoint not available
-        return { success: false, data: { aspects: [], metrics: {} } };
+        return { success: false, data: { metrics: {} } };
     }
 };
 
@@ -189,6 +204,24 @@ export const getAlerts = async () => {
     } catch (e) {
         // Return empty array if alerts endpoint not available
         return [];
+    }
+};
+
+export const resolveAlert = async (id: string) => {
+    try {
+        await api.post(`/alerts/${id}/read`);
+        return { success: true };
+    } catch (e) {
+        return { success: false };
+    }
+};
+
+export const getSystemStatus = async () => {
+    try {
+         const response = await api.get('/system/status');
+         return response.data?.data || { reddit: false, twitter: false, youtube: false, database: false };
+    } catch (e) {
+        return { reddit: false, twitter: false, youtube: false, database: false };
     }
 };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAlerts } from '@/lib/api';
+import { getAlerts, resolveAlert as apiResolveAlert } from '@/lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -110,7 +110,8 @@ const Alerts = () => {
         queryFn: async () => {
             const data = await getAlerts();
             return data;
-        }
+        },
+        refetchInterval: 5000
     });
 
     const [alerts, setAlerts] = useState<AlertItem[]>(alertsDataResp || []);
@@ -139,11 +140,22 @@ const Alerts = () => {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] })
     });
 
+    const resolveMutation = useMutation({
+        mutationFn: async (id: string) => {
+            await apiResolveAlert(id);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['alerts'] });
+        }
+    });
+
     const markAsRead = (id: string) => {
         markReadMutation.mutate(id);
     };
 
     const resolveAlert = (id: string) => {
+        resolveMutation.mutate(id);
+        // Optimistic update
         setAlerts(prev => prev.map(a => a.id === id ? { ...a, isResolved: true, isRead: true } : a));
     };
 
