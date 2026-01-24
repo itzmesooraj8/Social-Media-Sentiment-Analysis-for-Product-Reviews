@@ -21,16 +21,22 @@ class AIService:
         self.emotion_model = "j-hartmann/emotion-english-distilroberta-base"
         self._sentiment_pipe = None
         self._emotion_pipe = None
+        self._models_loaded = False
 
-        if _TRANSFORMERS_AVAILABLE:
-            try:
-                print("[Loading] Sentiment Model...")
-                self._sentiment_pipe = pipeline("sentiment-analysis", model=self.sentiment_model)
-                print("[Loading] Emotion Model...")
-                self._emotion_pipe = pipeline("text-classification", model=self.emotion_model, top_k=1)
-                print("[OK] AI Models Loaded.")
-            except Exception as e:
-                print(f"[ERROR] AI Init Error: {e}")
+    def _ensure_models_loaded(self):
+        if self._models_loaded or not _TRANSFORMERS_AVAILABLE:
+            return
+
+        try:
+            print("[Loading] Sentiment Model (Lazy Load)...")
+            self._sentiment_pipe = pipeline("sentiment-analysis", model=self.sentiment_model)
+            print("[Loading] Emotion Model (Lazy Load)...")
+            self._emotion_pipe = pipeline("text-classification", model=self.emotion_model, top_k=1)
+            print("[OK] AI Models Loaded.")
+            self._models_loaded = True
+        except Exception as e:
+            print(f"[ERROR] AI Init Error: {e}")
+            self._models_loaded = True # Prevent retry loop on failure
 
     def _normalize_label(self, raw_label: str) -> str:
         lbl = (raw_label or "").upper()
@@ -63,6 +69,8 @@ class AIService:
     @lru_cache(maxsize=2048)
     def analyze_text(self, text: str) -> Dict[str, any]:
         """Synchronous analyze. Cached to avoid repeated work."""
+        self._ensure_models_loaded()
+
         if not text or not text.strip():
             return {"label": "NEUTRAL", "score": 0.5, "emotion": "neutral", "credibility": 0.1}
 
