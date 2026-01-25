@@ -53,6 +53,7 @@ class ProductCreate(BaseModel):
 
 class ScrapeRequest(BaseModel):
     product_id: str
+    url: Optional[str] = None
 
 
 
@@ -137,7 +138,7 @@ async def trigger_scrape(request: ScrapeRequest, background_tasks: BackgroundTas
     keywords = product.get("keywords") or [product.get("name")]
 
     # Deploy agents in background
-    background_tasks.add_task(scrapers.scrape_all, keywords, product_id)
+    background_tasks.add_task(scrapers.scrape_all, keywords, product_id, request.url)
 
     return {"status": "accepted", "message": "Agents deployed in background"}
 

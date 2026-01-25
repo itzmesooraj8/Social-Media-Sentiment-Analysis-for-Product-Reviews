@@ -35,6 +35,10 @@ class YouTubeScraperService:
         # Run blocking requests in threadpool
         return await asyncio.to_thread(self._sync_search_comments, query, max_results)
 
+    async def scrape_video_comments(self, video_url: str, max_results: int = 50) -> List[Dict[str, Any]]:
+        """Directly scrape comments from a specific video URL."""
+        return await self.search_video_comments(video_url, max_results)
+
     def _get_video_id_sync(self, query: str) -> Optional[str]:
         video_id = None
         if "youtube.com" in query or "youtu.be" in query:
