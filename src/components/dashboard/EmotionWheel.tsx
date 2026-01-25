@@ -1,4 +1,7 @@
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Sector } from 'recharts';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
+import { Loader2, AlertCircle } from 'lucide-react';
 
 interface EmotionData {
   name: string;
@@ -7,14 +10,14 @@ interface EmotionData {
 }
 
 const defaultColors: Record<string, string> = {
-  'Joy': 'hsl(142, 71%, 45%)',
-  'Trust': 'hsl(199, 89%, 48%)',
-  'Anticipation': 'hsl(38, 92%, 50%)',
-  'Surprise': 'hsl(280, 70%, 50%)',
-  'Sadness': 'hsl(220, 70%, 50%)',
-  'Anger': 'hsl(0, 84%, 60%)',
-  'Fear': 'hsl(260, 50%, 40%)',
-  'Disgust': 'hsl(150, 30%, 40%)',
+  'Joy': '#22c55e',          // Vibrant Green
+  'Trust': '#3b82f6',        // Bright Blue
+  'Anticipation': '#f59e0b',  // Amber/Orange
+  'Surprise': '#a855f7',     // Purple
+  'Sadness': '#64748b',       // Blue Grey
+  'Anger': '#ef4444',        // Red
+  'Fear': '#1e293b',         // Dark Navy
+  'Disgust': '#10b981',      // Emerald
 };
 
 interface EmotionWheelProps {
@@ -22,14 +25,29 @@ interface EmotionWheelProps {
   data?: EmotionData[];
 }
 
+const renderActiveShape = (props: any) => {
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props;
+  return (
+    <g>
+      <Sector
+        cx={cx}
+        cy={cy}
+        innerRadius={innerRadius}
+        outerRadius={outerRadius + 6}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={fill}
+        className="drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]"
+      />
+    </g>
+  );
+};
+
 export function EmotionWheel({ isLoading, data }: EmotionWheelProps) {
   if (isLoading) {
     return (
-      <div className="glass-card p-6 animate-pulse">
-        <div className="h-6 w-40 bg-muted rounded mb-4" />
-        <div className="h-[280px] flex items-center justify-center">
-          <div className="w-48 h-48 rounded-full bg-muted/50" />
-        </div>
+      <div className="glass-card p-6 h-[350px] flex items-center justify-center animate-pulse">
+        <Loader2 className="h-8 w-8 text-primary animate-spin opacity-50" />
       </div>
     );
   }
@@ -42,100 +60,128 @@ export function EmotionWheel({ isLoading, data }: EmotionWheelProps) {
     }))
     : [];
 
-  if (emotionData.length === 0) {
-    return (
-      <div className="glass-card p-6">
-        <h3 className="text-lg font-semibold mb-4">Emotion Detection</h3>
-        <p className="text-sm text-muted-foreground mb-4">Distribution of emotions across all reviews</p>
-        <div className="h-[280px] flex items-center justify-center bg-muted/20 rounded-lg">
-          <p className="text-muted-foreground">No emotion data available. Analyze reviews to detect emotions.</p>
-        </div>
-      </div>
-    );
-  }
+  const isEmpty = emotionData.length === 0;
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const dataPoint = payload[0].payload;
-      return (
-        <div className="glass-card p-3 border border-border/50">
-          <p className="font-medium">{dataPoint.name}</p>
-          <p className="text-sm text-muted-foreground">{dataPoint.value}% of reviews</p>
-        </div>
-      );
-    }
-    return null;
-  };
+  // Placeholder data for beautiful empty state
+  const placeholderData = [
+    { name: 'Waiting', value: 100, color: 'rgba(255,255,255,0.03)' },
+  ];
 
   return (
-    <div className="glass-card p-6">
-      <h3 className="text-lg font-semibold mb-4">Emotion Detection</h3>
-      <p className="text-sm text-muted-foreground mb-4">Distribution of emotions across all reviews</p>
+    <div className="glass-card p-6 h-[350px] flex flex-col relative overflow-hidden group">
+      {/* Decorator background */}
+      <div className="absolute top-0 right-0 p-24 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
 
-      <div className="h-[280px]">
+      <div className="flex justify-between items-start mb-2 z-10">
+        <div>
+          <h3 className="text-lg font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">
+            Emotion DNA
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1">Sentiment extraction engine</p>
+        </div>
+        {!isEmpty && (
+          <div className="text-xs font-mono px-2 py-1 rounded bg-white/5 border border-white/10 text-muted-foreground">
+            REAL-TIME
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 flex items-center justify-center relative">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
+            <defs>
+              <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                <feMerge>
+                  <feMergeNode in="coloredBlur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
             <Pie
-              data={emotionData}
+              data={isEmpty ? placeholderData : emotionData}
               cx="50%"
               cy="50%"
-              innerRadius={60}
-              outerRadius={100}
-              paddingAngle={2}
+              innerRadius={75}
+              outerRadius={95}
+              paddingAngle={isEmpty ? 0 : 4}
               dataKey="value"
               animationBegin={0}
-              animationDuration={1000}
+              animationDuration={1500}
+              stroke="none"
+              cornerRadius={isEmpty ? 0 : 6}
+              activeShape={isEmpty ? undefined : renderActiveShape}
             >
-              {emotionData.map((entry, index) => (
+              {(isEmpty ? placeholderData : emotionData).map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
                   fill={entry.color}
-                  stroke="hsl(0 0% 10%)"
-                  strokeWidth={1}
+                  style={{ filter: !isEmpty ? 'url(#glow)' : undefined }}
                 />
               ))}
             </Pie>
-            <Tooltip content={<CustomTooltip />} />
+            {!isEmpty && <Tooltip
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const d = payload[0].payload;
+                  return (
+                    <div className="glass-card px-3 py-2 border border-white/10 shadow-xl backdrop-blur-xl bg-black/80">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full" style={{ background: d.color }} />
+                        <span className="font-semibold text-sm">{d.name}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1 font-mono">
+                        Impact: <span className="text-white font-bold">{d.value}%</span>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />}
           </PieChart>
         </ResponsiveContainer>
-      </div>
 
-      {/* Legend */}
-      <div className="grid grid-cols-4 gap-2 mt-4">
-        {emotionData.map((emotion) => (
-          <div key={emotion.name} className="flex items-center gap-1.5">
-            <div
-              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-              style={{ backgroundColor: emotion.color }}
-            />
-            <span className="text-xs text-muted-foreground truncate">{emotion.name}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Top Emotions Summary */}
-      <div className="mt-4 pt-4 border-t border-border/50">
-        <h4 className="text-sm font-medium mb-3">Top Emotions</h4>
-        <div className="space-y-2">
-          {emotionData.slice(0, 3).map((emotion, index) => (
-            <div key={emotion.name} className="flex items-center gap-3">
-              <span className="text-xs font-medium text-muted-foreground w-4">{index + 1}</span>
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm">{emotion.name}</span>
-                  <span className="text-sm font-medium">{emotion.value}%</span>
-                </div>
-                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{ backgroundColor: emotion.color, width: `${emotion.value}%` }}
-                  />
-                </div>
+        {/* Center overlay */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          {isEmpty ? (
+            <div className="text-center opacity-40 flex flex-col items-center">
+              <div className="w-12 h-12 rounded-full border border-dashed border-white/20 flex items-center justify-center mb-2 animate-spin-slow">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <p className="text-xs font-medium">No Signal</p>
+            </div>
+          ) : (
+            <div className="text-center">
+              <div className="text-3xl font-bold tracking-tighter text-white drop-shadow-lg">
+                {emotionData[0]?.value}%
+              </div>
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
+                {emotionData[0]?.name}
               </div>
             </div>
-          ))}
+          )}
         </div>
       </div>
+
+      {/* Modern Legend */}
+      <AnimatePresence>
+        {!isEmpty && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="grid grid-cols-4 gap-2 mt-4"
+          >
+            {emotionData.slice(0, 4).map((e) => (
+              <div key={e.name} className="flex flex-col items-center justify-center p-2 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                <div className="w-1.5 h-1.5 rounded-full mb-1.5" style={{ background: e.color }} />
+                <span className="text-[10px] text-muted-foreground font-medium truncate w-full text-center">{e.name}</span>
+                <span className="text-xs font-bold text-white mt-0.5">{e.value}%</span>
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

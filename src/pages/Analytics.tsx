@@ -31,7 +31,7 @@ const Analytics = () => {
   const navigate = useNavigate();
 
   // 1. Fetch Core Data
-  const { metrics: dashboardData, loading: isDashboardLoading } = useDashboardData();
+  const { data: dashboardData, isLoading: isDashboardLoading } = useDashboardData();
 
   // 2. Fetch Products to drive Predictive AI
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: getProducts });
@@ -63,10 +63,10 @@ const Analytics = () => {
         <div className="p-8 space-y-4">
           <Skeleton className="h-12 w-1/3" />
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-             <Skeleton className="h-32 w-full" />
-             <Skeleton className="h-32 w-full" />
-             <Skeleton className="h-32 w-full" />
-             <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
           </div>
           <Skeleton className="h-[400px] w-full" />
         </div>
@@ -78,7 +78,7 @@ const Analytics = () => {
   const metrics = (dashboardData as any)?.data?.metrics || (dashboardData as any)?.metrics || {};
   // Prioritize analytics endpoint for trends
   const sentimentTrends = analyticsData?.sentimentTrends || (dashboardData as any)?.data?.sentimentTrends || [];
-  const forecastData = predictionRes?.success ? predictionRes.data?.forecast : [];
+  const forecastData = (predictionRes?.success && predictionRes.data?.forecast) ? predictionRes.data.forecast : [];
   const trendDirection = predictionRes?.success ? predictionRes.data?.trend : null;
 
   // Stats Array - NO HARDCODED FALLBACKS - show real data or "-"

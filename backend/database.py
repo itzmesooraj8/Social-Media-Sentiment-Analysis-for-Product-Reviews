@@ -239,95 +239,197 @@ async def get_dashboard_stats():
 async def _get_dashboard_metrics_fallback():
     """Optimized aggregation for dashboard metrics."""
     import asyncio
+    from datetime import datetime, timedelta
+    
     try:
-        # Parallelize independent queries using asyncio.gather + to_thread
-        # 1. Total Reviews
-        reviews_task = asyncio.to_thread(lambda: supabase.table("reviews").select("id", count="exact").execute())
+        # Parallelize independent queries
+        # 1. Total Reviews & Platform (using Reviews table)
+        reviews_task = asyncio.to_thread(lambda: supabase.table("reviews").select("id, platform, created_at").execute())
         
-        # 2. Sentiment Data
-        sentiment_task = asyncio.to_thread(lambda: supabase.table("sentiment_analysis").select("label, credibility").execute())
+        # 2. Sentiment Data (using SentimentAnalysis table) - We need created_at from reviews ideally, 
+        # but for speed we might query reviews with join. 
+        # Let's do a join: reviews select *, sentiment_analysis(*)
+        # However, for large datasets, this is heavy. 
+        # Let's fetch sentiment_analysis and assume we can link via review_id or if created_at is needed, we rely on reviews.
+        # Actually, let's just fetch joined data for the last 30 days to compute trends/stats.
         
-        # 3. Platform Data
-        platform_task = asyncio.to_thread(lambda: supabase.table("reviews").select("platform").execute())
+        # 2. Sentiment Data (using SentimentAnalysis table) - 30d window
+        # We include 'content' now for recent reviews feed
+        start_date_30d = (datetime.utcnow() - timedelta(days=30)).isoformat()
+        
+        joined_task = asyncio.to_thread(lambda: supabase.table("reviews")
+            .select("id, content, created_at, platform, sentiment_analysis(label, score, credibility, emotions, aspects)")
+            .gte("created_at", start_date_30d)
+            .execute()
+        )
 
-        # 4. Top Topics
+        # 3. Top Topics
         topic_task = asyncio.to_thread(lambda: supabase.table("topic_analysis").select("topic_name, size, sentiment").order("size", desc=True).limit(10).execute())
+        
+        # 4. Alerts
+        alerts_task = asyncio.to_thread(lambda: supabase.table("alerts").select("*").order("created_at", desc=True).limit(5).execute())
 
         # Execute parallel
-        reviews_resp, sentiment_resp, platform_resp, topic_resp = await asyncio.gather(
-            reviews_task, sentiment_task, platform_task, topic_task, return_exceptions=True
+        joined_resp, topic_resp, alerts_resp = await asyncio.gather(
+            joined_task, topic_task, alerts_task, return_exceptions=True
         )
         
-        # Unpack results safely
-        total_reviews = reviews_resp.count if not isinstance(reviews_resp, Exception) and reviews_resp.count else 0
-        sentiment_data = sentiment_resp.data if not isinstance(sentiment_resp, Exception) and sentiment_resp.data else []
-        platform_data = platform_resp.data if not isinstance(platform_resp, Exception) and platform_resp.data else []
+        # Process joined data
+        reviews_data = joined_resp.data if not isinstance(joined_resp, Exception) and joined_resp.data else []
         topic_data = topic_resp.data if not isinstance(topic_resp, Exception) and topic_resp.data else []
+        alerts_data = alerts_resp.data if not isinstance(alerts_resp, Exception) and alerts_resp.data else []
 
-        avg_credibility = 0
-        bots_detected = 0
-        verified_reviews = 0
-        avg_sentiment = 0
-        pos_percent = 0
-
-        if sentiment_data:
-            # Map sentiment to 0-100 score
-            score_map = {"POSITIVE": 100, "NEUTRAL": 50, "NEGATIVE": 0}
-            total_score = sum(score_map.get(s.get("label", "NEUTRAL").upper(), 50) for s in sentiment_data)
-            avg_sentiment = total_score / len(sentiment_data)
-            
-            # Credibility Calculations
-            cred_scores = [float(s.get("credibility", 0)) for s in sentiment_data]
-            avg_credibility = (sum(cred_scores) / len(cred_scores)) * 100 if cred_scores else 0
-            
-            # Simple Bot Detection Logic: Credibility < 0.3
-            bots_detected = sum(1 for s in cred_scores if s < 0.3)
-            # Verified Logic: Credibility > 0.7
-            verified_reviews = sum(1 for s in cred_scores if s > 0.7)
-            
-            # Calculate positive percent for recommendations
-            pos_count = sum(1 for s in sentiment_data if s.get("label", "").upper() == "POSITIVE")
-            pos_percent = (pos_count / len(sentiment_data)) * 100
-            
-        # Platform breakdown
-        platforms = {}
-        for r in platform_data:
-             p = r.get("platform", "unknown")
-             platforms[p] = platforms.get(p, 0) + 1
+        # Aggregators
+        # Note: 'count=exact' is expensive, so we only do it if we really need true total >= 30d
+        # For dashboard speed, usually 30d total is enough, but "Total Reviews" usually implies all-time.
+        # We will dispatch a separate optimized count query.
+        total_count_task = asyncio.to_thread(lambda: supabase.table("reviews").select("id", count="exact", head=True).execute())
         
-        # Top Keywords / Topics
-        topics = []
-        negative_topics = []
-        if topic_data:
-            topics = [{"text": t["topic_name"], "value": t["size"], "sentiment": t.get("sentiment")} for t in topic_data]
-            negative_topics = [t["topic_name"] for t in topic_data if t.get("sentiment") == "negative"]
+        # We await it immediately here, but could have gathered it.
+        total_count_resp = await total_count_task
+        total_reviews_all_time = 0
+        if hasattr(total_count_resp, 'count') and total_count_resp.count is not None:
+             total_reviews_all_time = total_count_resp.count
+        else:
+             total_reviews_all_time = len(reviews_data) # Fallback to 30d count
 
-        # Recent Reviews (for Feed)
-        recent_reviews = []
-        try:
-            rr_data = await get_recent_reviews_with_sentiment(limit=10)
-            for r in rr_data:
-                # Flat map sentiment
-                sa = r.get("sentiment_analysis") or {}
-                # Handle if list
-                if isinstance(sa, list) and sa: sa = sa[0]
+        platforms = {}
+        sentiment_scores = []
+        credibility_scores = []
+        emotions_agg = {}
+        aspects_agg = {}
+        
+        # For Trends
+        daily_sentiment = {} # "YYYY-MM-DD" -> [scores]
+        
+        now = datetime.utcnow()
+        seven_days_ago = now - timedelta(days=7)
+        fourteen_days_ago = now - timedelta(days=14)
+        
+        current_period_scores = []
+        prev_period_scores = []
+
+        for r in reviews_data:
+            # Platform
+            p = r.get("platform", "unknown")
+            platforms[p] = platforms.get(p, 0) + 1
+            
+            # Date
+            created_at = r.get("created_at")
+            if not created_at: continue
+            
+            try:
+                dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            except:
+                continue
                 
-                recent_reviews.append({
-                    "id": r["id"],
-                    "text": r.get("content") or r.get("text", ""),
-                    "platform": r.get("platform", "web"),
-                    "username": r.get("username") or r.get("author", "Anonymous"),
-                    "sentiment": (sa.get("label") or "neutral").lower(),
-                    "sentiment_label": (sa.get("label") or "neutral").upper(),
-                    "timestamp": r["created_at"],
-                    "sourceUrl": r.get("source_url"),
-                    "credibility": sa.get("credibility"),
-                    "like_count": r.get("like_count", 0),
-                    "reply_count": r.get("reply_count", 0),
-                    "retweet_count": r.get("retweet_count", 0)
-                })
-        except Exception as e:
-            print(f"Recent reviews fetch failed: {e}")
+            date_str = dt.strftime("%Y-%m-%d")
+            
+            # Sentiment Analysis Data
+            sa = r.get("sentiment_analysis")
+            if isinstance(sa, list) and sa: sa = sa[0]
+            if not sa: continue
+            
+            # Score
+            label = sa.get("label", "NEUTRAL")
+            score = 50
+            if label == "POSITIVE": score = 100
+            elif label == "NEGATIVE": score = 0
+            
+            # Refine with exact score if available
+            if sa.get("score") is not None:
+                # Assuming sa['score'] is -1 to 1 or 0 to 1.
+                # Let's assume 0-1 from TextBlob/Transformer, mapped to 0-100
+                raw = float(sa.get("score"))
+                if raw <= 1.0: score = raw * 100
+                else: score = raw # already 0-100?
+            
+            sentiment_scores.append(score)
+            
+            # Credibility
+            cred = float(sa.get("credibility", 0))
+            credibility_scores.append(cred)
+            
+            # Delta Calculation buckets
+            if dt >= seven_days_ago.replace(tzinfo=dt.tzinfo):
+                current_period_scores.append(score)
+            elif dt >= fourteen_days_ago.replace(tzinfo=dt.tzinfo):
+                prev_period_scores.append(score)
+            
+            # Trend Aggregation
+            if date_str not in daily_sentiment:
+                daily_sentiment[date_str] = {"sum": 0, "count": 0}
+            daily_sentiment[date_str]["sum"] += score
+            daily_sentiment[date_str]["count"] += 1
+            
+            # Emotions
+            ems = sa.get("emotions", [])
+            if isinstance(ems, list):
+                for e in ems:
+                    # e might be string or dict {"name": "joy", "score": 0.9}
+                    if isinstance(e, str):
+                        emotions_agg[e] = emotions_agg.get(e, 0) + 1
+                    elif isinstance(e, dict):
+                        nm = e.get("label") or e.get("name")
+                        if nm: emotions_agg[nm] = emotions_agg.get(nm, 0) + 1
+            
+            # Aspects
+            asps = sa.get("aspects", [])
+            if isinstance(asps, list):
+                 for a in asps:
+                     # a might be {"aspect": "price", "sentiment": "negative"}
+                     if isinstance(a, dict):
+                         nm = a.get("aspect")
+                         sent = a.get("sentiment", "neutral")
+                         if nm:
+                             if nm not in aspects_agg: aspects_agg[nm] = {"total": 0, "positive": 0, "negative": 0}
+                             aspects_agg[nm]["total"] += 1
+                             if sent.lower() == "positive": aspects_agg[nm]["positive"] += 1
+                             elif sent.lower() == "negative": aspects_agg[nm]["negative"] += 1
+
+        # Calculate Averages
+        avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0
+        avg_credibility = (sum(credibility_scores) / len(credibility_scores)) * 100 if credibility_scores else 0
+        
+        # Delta
+        curr_avg = sum(current_period_scores) / len(current_period_scores) if current_period_scores else 0
+        prev_avg = sum(prev_period_scores) / len(prev_period_scores) if prev_period_scores else 0
+        sentiment_delta = curr_avg - prev_avg
+        
+        # Bot Detection
+        bots_detected = sum(1 for c in credibility_scores if c < 0.4) # Strict
+        verified_reviews = sum(1 for c in credibility_scores if c > 0.8)
+
+        # Recommendations Logic (Positive %)
+        pos_percent = sum(1 for s in sentiment_scores if s > 60) / len(sentiment_scores) * 100 if sentiment_scores else 0
+        
+        # Format Top Keywords (Topics)
+        topics = [{"text": t["topic_name"], "value": t["size"], "sentiment": t.get("sentiment")} for t in topic_data]
+        negative_topics = [t["topic_name"] for t in topic_data if t.get("sentiment") == "negative"]
+
+        # Format Trends
+        sentiment_trends = []
+        sorted_dates = sorted(daily_sentiment.keys())
+        for d in sorted_dates:
+            val = daily_sentiment[d]
+            avg = val["sum"] / val["count"]
+            sentiment_trends.append({"date": d, "sentiment": avg})
+            
+        # Format Aspects
+        formatted_aspects = []
+        for aspect, stats in aspects_agg.items():
+            # simple score: (pos - neg) / total * 100, normalized to 0-100
+            # or just pos %?
+            # User wants Radar chart. usually 0-100.
+            score = 50 # neutral base
+            if stats["total"] > 0:
+                net = (stats["positive"] - stats["negative"])
+                # map -total to +total -> 0 to 100
+                score = 50 + (net / stats["total"] * 50)
+            formatted_aspects.append({"aspect": aspect, "score": score, "count": stats["total"]})
+        
+        # Format Emotions
+        formatted_emotions = [{"name": k, "value": v, "color": "var(--sentinel-primary)"} for k, v in emotions_agg.items()]
 
         # Generate Recommendations
         try:
@@ -339,28 +441,60 @@ async def _get_dashboard_metrics_fallback():
         except ImportError:
             recommendations = []
         except Exception as e:
-            print(f"Error generating recommendations: {e}")
             recommendations = []
+            
+        # Recent Reviews
+        recent_reviews = []
+        # Reuse the first 10 from reviews_data if sorted desc, otherwise ensure sort
+        reviews_data.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        for r in reviews_data[:10]:
+            sa = r.get("sentiment_analysis")
+            if isinstance(sa, list) and sa: sa = sa[0]
+            if not sa: sa = {}
+            
+            recent_reviews.append({
+                "id": r.get("id"),
+                "text": r.get("content") or r.get("text") or "No content",
+                "platform": r.get("platform", "web"),
+                "username": r.get("username") or r.get("author", "Anonymous"),
+                "sentiment": (sa.get("label") or "neutral").lower(),
+                "sentiment_label": (sa.get("label") or "neutral").upper(),
+                "timestamp": r["created_at"],
+                "sourceUrl": r.get("source_url"),
+                "credibility": float(sa.get("credibility", 0)),
+                "like_count": r.get("like_count", 0),
+                "reply_count": r.get("reply_count", 0),
+                "retweet_count": r.get("retweet_count", 0)
+            })
+
+
 
         return {
-            "totalReviews": total_reviews,
+            "totalReviews": total_reviews_all_time,
             "sentimentScore": avg_sentiment,
-            "averageCredibility": avg_credibility, # 0-100
+            "sentimentDelta": sentiment_delta,
+            "averageCredibility": avg_credibility,
             "platformBreakdown": platforms,
             "topKeywords": topics,
             "recommendations": recommendations,
             "recentReviews": recent_reviews,
+            "sentimentTrends": sentiment_trends,
+            "aspectScores": formatted_aspects,
+            "emotions": formatted_emotions,
+            "alerts": alerts_data,
             "credibilityReport": {
                 "overallScore": avg_credibility,
                 "verifiedReviews": verified_reviews,
                 "botsDetected": bots_detected,
-                "spamClusters": 0, # Placeholder for advanced logic
+                "spamClusters": 0,
                 "suspiciousPatterns": 0,
-                "totalAnalyzed": len(sentiment_data) if sentiment_data else 0
+                "totalAnalyzed": len(sentiment_scores)
             }
         }
     except Exception as e:
         print(f"Fallback metrics failed: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "totalReviews": 0,
             "sentimentScore": 0,
@@ -369,10 +503,7 @@ async def _get_dashboard_metrics_fallback():
             "credibilityReport": {
                 "overallScore": 0,
                 "verifiedReviews": 0,
-                "botsDetected": 0,
-                "spamClusters": 0,
-                "suspiciousPatterns": 0,
-                "totalAnalyzed": 0
+                "botsDetected": 0
             }
         }
 

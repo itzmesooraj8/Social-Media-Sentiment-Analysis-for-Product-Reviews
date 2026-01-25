@@ -1,29 +1,15 @@
-
 import { useQuery } from "@tanstack/react-query";
-
-interface DashboardData {
-  success: boolean;
-  data: any; // Replace 'any' with specific type if available
-}
-
-const fetchDashboardData = async (): Promise<DashboardData> => {
-  const response = await fetch("/api/dashboard");
-  if (!response.ok) {
-    throw new Error("Network response was not ok");
-  }
-  return response.json();
-};
+import api from "../lib/api";
 
 export const useDashboardData = () => {
-  const query = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ["dashboard"],
-    queryFn: fetchDashboardData,
-    refetchInterval: 3000, // 3 seconds heartbeat
+    queryFn: async () => {
+        const response = await api.getDashboardStats();
+        return response; 
+    },
+    refetchInterval: 3000, // 3 Seconds (PDF Requirement: Real-Time Analysis)
   });
 
-  return {
-    data: query.data,
-    isLoading: query.isLoading,
-    isError: query.isError,
-  };
+  return { data, isLoading, refetch };
 };

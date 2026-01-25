@@ -1,10 +1,10 @@
 import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
-import { 
-  AlertTriangle, 
-  Bot, 
-  TrendingDown, 
-  Zap, 
+import {
+  AlertTriangle,
+  Bot,
+  TrendingDown,
+  Zap,
   ShieldAlert,
   ExternalLink
 } from 'lucide-react';
@@ -66,63 +66,76 @@ export function AlertsPanel({ alerts, isLoading }: AlertsPanelProps) {
           {alerts.length} active
         </span>
       </div>
-      
-      <ScrollArea className="flex-1 -mx-2 px-2">
-        <div className="space-y-3">
-          {alerts.map((alert, index) => {
-            const Icon = alertIcons[alert.type];
-            
-            return (
-              <motion.div
-                key={alert.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3, delay: index * 0.05 }}
-                className={cn(
-                  'p-4 rounded-xl border-l-4 transition-all duration-200',
-                  'hover:translate-x-1 cursor-pointer group',
-                  severityStyles[alert.severity]
-                )}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={cn(
-                    'p-2 rounded-lg',
-                    severityBadgeStyles[alert.severity]
-                  )}>
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={cn(
-                        'text-xs font-medium px-2 py-0.5 rounded-full uppercase tracking-wider',
-                        severityBadgeStyles[alert.severity]
-                      )}>
-                        {alert.severity}
-                      </span>
-                      {alert.metadata?.platform && (
-                        <span className="text-xs text-muted-foreground capitalize">
-                          {alert.metadata.platform}
-                        </span>
-                      )}
-                    </div>
-                    
-                    <p className="text-sm text-foreground line-clamp-2 mb-1">
-                      {alert.message}
-                    </p>
-                    
-                    <p className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(alert.timestamp, { addSuffix: true })}
-                    </p>
-                  </div>
-                  
-                  <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-              </motion.div>
-            );
-          })}
+
+      {alerts.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center -mt-6">
+          <div className="w-20 h-20 rounded-full bg-sentinel-positive/5 flex items-center justify-center mb-4 ring-1 ring-sentinel-positive/20 relative">
+            <div className="absolute inset-0 rounded-full bg-sentinel-positive/10 animate-ping opacity-20" />
+            <ShieldAlert className="h-8 w-8 text-sentinel-positive" />
+          </div>
+          <h4 className="font-medium text-foreground">No Active Alerts</h4>
+          <p className="text-sm text-muted-foreground text-center max-w-[200px] mt-1">
+            System is monitoring all channels. No anomalies detected.
+          </p>
         </div>
-      </ScrollArea>
+      ) : (
+        <ScrollArea className="flex-1 -mx-2 px-2">
+          <div className="space-y-3">
+            {alerts.map((alert, index) => {
+              const Icon = alertIcons[alert.type];
+
+              return (
+                <motion.div
+                  key={alert.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, delay: index * 0.05 }}
+                  className={cn(
+                    'p-4 rounded-xl border-l-4 transition-all duration-200',
+                    'hover:translate-x-1 cursor-pointer group',
+                    severityStyles[alert.severity]
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={cn(
+                      'p-2 rounded-lg',
+                      severityBadgeStyles[alert.severity]
+                    )}>
+                      <Icon className="h-4 w-4" />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={cn(
+                          'text-xs font-medium px-2 py-0.5 rounded-full uppercase tracking-wider',
+                          severityBadgeStyles[alert.severity]
+                        )}>
+                          {alert.severity}
+                        </span>
+                        {alert.metadata?.platform && (
+                          <span className="text-xs text-muted-foreground capitalize">
+                            {alert.metadata.platform}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-sm text-foreground line-clamp-2 mb-1">
+                        {alert.message}
+                      </p>
+
+                      <p className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(alert.timestamp, { addSuffix: true })}
+                      </p>
+                    </div>
+
+                    <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </ScrollArea>
+      )}
     </motion.div>
   );
 }

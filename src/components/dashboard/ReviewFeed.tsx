@@ -1,10 +1,14 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageCircle, Twitter, Youtube, ExternalLink, Heart, MessageSquare, Repeat, ShieldCheck, ShieldAlert } from "lucide-react";
+import {
+  MessageCircle, Twitter, Youtube, ExternalLink,
+  Heart, MessageSquare, Repeat, ShieldCheck, ShieldAlert
+} from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { Review } from '@/types/sentinel';
+import { cn } from '@/lib/utils';
+import { Badge } from "@/components/ui/badge";
 
 interface ReviewFeedProps {
   reviews: Review[];
@@ -14,103 +18,116 @@ export const ReviewFeed: React.FC<ReviewFeedProps> = ({ reviews }) => {
 
   const getPlatformIcon = (platform: string) => {
     switch (platform.toLowerCase()) {
-      case 'twitter': return <Twitter className="h-4 w-4 text-blue-400" />;
-      case 'youtube': return <Youtube className="h-4 w-4 text-red-600" />;
-      case 'reddit': return <MessageCircle className="h-4 w-4 text-orange-500" />;
-      default: return <MessageSquare className="h-4 w-4 text-gray-500" />;
+      case 'twitter': return <Twitter className="h-3.5 w-3.5 text-[#1DA1F2]" />;
+      case 'youtube': return <Youtube className="h-3.5 w-3.5 text-[#FF0000]" />;
+      case 'reddit': return <MessageCircle className="h-3.5 w-3.5 text-[#FF4500]" />;
+      default: return <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />;
     }
   };
 
-  const getSentimentColor = (sentiment: string) => {
+  const getSentimentStyles = (sentiment: string) => {
     switch (sentiment?.toLowerCase()) {
-      case 'positive': return 'bg-green-100 text-green-800 border-green-200';
-      case 'negative': return 'bg-red-100 text-red-800 border-red-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+      case 'positive': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
+      case 'negative': return 'bg-red-500/10 text-red-500 border-red-500/20';
+      default: return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
     }
-  };
-
-  // 0-1 Score to visual
-  const getCredibilityBadge = (score?: number) => {
-      if (score === undefined) return null;
-      const pct = Math.round(score * 100);
-      if (score >= 0.7) {
-          return (
-              <div className="flex items-center gap-1 text-xs text-green-600 font-medium" title="Verified Credible">
-                  <ShieldCheck className="h-3 w-3" /> {pct}% Trust
-              </div>
-          );
-      } else if (score < 0.4) {
-          return (
-              <div className="flex items-center gap-1 text-xs text-red-500 font-medium" title="Low Credibility / Potential Bot">
-                  <ShieldAlert className="h-3 w-3" /> {pct}% Trust
-              </div>
-          );
-      }
-      return <div className="text-xs text-gray-400">{pct}% Trust</div>;
   };
 
   return (
-    <Card className="h-full col-span-1 md:col-span-2 lg:col-span-3">
-      <CardHeader>
-        <CardTitle>Live Intelligence Feed</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[400px] pr-4">
-          <div className="space-y-4">
+    <div className="glass-card h-[400px] flex flex-col overflow-hidden relative group">
+      {/* Premium Header */}
+      <div className="p-4 border-b border-border/50 flex justify-between items-center bg-black/20 backdrop-blur-sm z-10">
+        <div className="flex items-center gap-2">
+          <div className="h-2 w-2 rounded-full bg-sentinel-highlight animate-pulse" />
+          <h3 className="font-semibold text-sm tracking-wide uppercase text-muted-foreground">Live Intelligence Feed</h3>
+        </div>
+        <div className="text-[10px] font-mono text-muted-foreground px-2 py-0.5 rounded border border-white/10">
+          {reviews.length} EVENTS
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1 p-0">
+        <div className="p-4 space-y-3">
+          <AnimatePresence initial={false}>
             {reviews.length === 0 ? (
-              <div className="text-center text-gray-500 py-10">
-                Waiting for live data...
-              </div>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex flex-col items-center justify-center h-[280px] text-muted-foreground"
+              >
+                <div className="w-16 h-16 rounded-full border border-white/10 flex items-center justify-center mb-4 relative">
+                  <div className="absolute inset-0 bg-sentinel-highlight/5 rounded-full animate-ping opacity-20" />
+                  <MessageSquare className="h-6 w-6 opacity-30" />
+                </div>
+                <p className="text-sm font-medium">Awaiting Signals</p>
+                <p className="text-xs opacity-50 mt-1">Listening to global channels...</p>
+              </motion.div>
             ) : (
-              reviews.map((review) => (
-                <div key={review.id} className="flex gap-4 p-4 rounded-lg border bg-card text-card-foreground shadow-sm hover:shadow-md transition-all">
-                  <div className="mt-1">
-                    {getPlatformIcon(review.platform)}
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center justify-between">
+              reviews.map((review, idx) => (
+                <motion.div
+                  key={review.id}
+                  initial={{ opacity: 0, x: -20, height: 0 }}
+                  animate={{ opacity: 1, x: 0, height: 'auto' }}
+                  transition={{ duration: 0.3, delay: idx * 0.05 }}
+                  className="group/item relative pl-4 border-l-2 border-transparent hover:border-sentinel-highlight transition-all"
+                >
+                  {/* Timeline node */}
+                  <div className="absolute left-[-5px] top-3 w-2 h-2 rounded-full bg-border group-hover/item:bg-sentinel-highlight transition-colors" />
+
+                  <div className="p-3 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm">{review.username}</span>
-                        <span className="text-xs text-muted-foreground">
+                        <div className="p-1 rounded-md bg-white/5">
+                          {getPlatformIcon(review.platform)}
+                        </div>
+                        <span className="text-xs font-semibold text-foreground/90">{review.username}</span>
+                        <span className="text-[10px] text-muted-foreground">
                           {review.timestamp ? formatDistanceToNow(new Date(review.timestamp), { addSuffix: true }) : 'Just now'}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                          {getCredibilityBadge(review.credibility)}
-                          <Badge variant="outline" className={getSentimentColor(review.sentiment || review.sentiment_label || '')}>
-                            {(review.sentiment_label || review.sentiment || 'neutral').toString().toUpperCase()}
-                          </Badge>
+                      <div className={cn("text-[10px] font-medium px-2 py-0.5 rounded border uppercase tracking-wider", getSentimentStyles(review.sentiment || review.sentiment_label || ''))}>
+                        {review.sentiment_label || review.sentiment || 'NEUTRAL'}
                       </div>
                     </div>
 
-                    <p className="text-sm text-gray-700 leading-relaxed">
+                    {/* Content */}
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
                       {review.text}
                     </p>
 
-                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-                        <div className="flex gap-4 text-xs text-gray-500">
-                            <span className="flex items-center gap-1" title="Likes"><Heart className="h-3 w-3" /> {review.like_count || 0}</span>
-                            <span className="flex items-center gap-1" title="Replies"><MessageSquare className="h-3 w-3" /> {review.reply_count || 0}</span>
-                            <span className="flex items-center gap-1" title="Retweets"><Repeat className="h-3 w-3" /> {review.retweet_count || 0}</span>
-                        </div>
-                        {review.sourceUrl && (
-                        <a
-                            href={review.sourceUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-blue-500 hover:underline flex items-center gap-1"
-                        >
-                            Original <ExternalLink className="h-3 w-3" />
-                        </a>
+                    {/* Footer Metrics */}
+                    <div className="flex items-center justify-between mt-3 pt-2 border-t border-white/5 opacity-60 group-hover/item:opacity-100 transition-opacity">
+                      <div className="flex gap-3 text-[10px] font-mono text-muted-foreground">
+                        {review.credibility !== undefined && review.credibility >= 0.7 && (
+                          <span className="flex items-center gap-1 text-emerald-500">
+                            <ShieldCheck className="h-3 w-3" /> VERIFIED
+                          </span>
                         )}
+                        {review.credibility !== undefined && review.credibility < 0.4 && (
+                          <span className="flex items-center gap-1 text-red-500">
+                            <ShieldAlert className="h-3 w-3" /> BOT?
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1"><Heart className="h-3 w-3" /> {review.like_count || 0}</span>
+                      </div>
+
+                      {review.sourceUrl && (
+                        <a href={review.sourceUrl} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-white transition-colors">
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ))
             )}
-          </div>
-        </ScrollArea>
-      </CardContent>
-    </Card>
+          </AnimatePresence>
+        </div>
+      </ScrollArea>
+
+      {/* Bottom fade for infinity scroll effect */}
+      <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-black to-transparent pointer-events-none" />
+    </div>
   );
 };

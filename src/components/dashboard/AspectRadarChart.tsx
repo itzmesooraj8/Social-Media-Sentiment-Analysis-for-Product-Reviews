@@ -58,31 +58,42 @@ export function AspectRadarChart({ data, isLoading }: AspectRadarChartProps) {
       transition={{ duration: 0.5, delay: 0.4 }}
       className="glass-card p-6 h-[350px]"
     >
-      <h3 className="text-lg font-semibold mb-4">Aspect Analysis</h3>
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        Aspect Analysis
+        {isEmpty && <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-white/5 text-muted-foreground animate-pulse">STANDBY</span>}
+      </h3>
 
-      {isEmpty ? (
-        <div className="h-[280px] w-full flex items-center justify-center text-muted-foreground text-sm">
-          No aspect data available yet
-        </div>
-      ) : (
-        <div className="h-[280px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <RadarChart data={chartData} margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
-              <PolarGrid
-                stroke="hsl(var(--border))"
-                opacity={0.5}
-              />
-              <PolarAngleAxis
-                dataKey="aspect"
-                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-              />
-              <PolarRadiusAxis
-                angle={30}
-                domain={[0, 100]}
-                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
-                tickFormatter={(value) => `${(value / 20).toFixed(0)}`}
-              />
-              <Tooltip content={<CustomTooltip />} />
+      <div className="h-[280px] w-full relative">
+        <ResponsiveContainer width="100%" height="100%">
+          <RadarChart
+            data={isEmpty ? [
+              { aspect: 'Price', value: 100 },
+              { aspect: 'Quality', value: 100 },
+              { aspect: 'Service', value: 100 },
+              { aspect: 'Usability', value: 100 },
+              { aspect: 'Features', value: 100 },
+            ] : chartData}
+            margin={{ top: 20, right: 30, bottom: 20, left: 30 }}
+          >
+            <PolarGrid
+              stroke={isEmpty ? "rgba(255,255,255,0.05)" : "hsl(var(--border))"}
+              strokeDasharray={isEmpty ? "4 4" : undefined}
+              opacity={isEmpty ? 0.3 : 0.5}
+            />
+            <PolarAngleAxis
+              dataKey="aspect"
+              tick={{ fill: isEmpty ? 'rgba(255,255,255,0.1)' : 'hsl(var(--muted-foreground))', fontSize: 12 }}
+            />
+            <PolarRadiusAxis
+              angle={30}
+              domain={[0, 100]}
+              tick={isEmpty ? false : { fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
+              axisLine={!isEmpty}
+              tickFormatter={(value) => `${(value / 20).toFixed(0)}`}
+            />
+            {!isEmpty && <Tooltip content={<CustomTooltip />} />}
+
+            {!isEmpty ? (
               <Radar
                 name="Score"
                 dataKey="value"
@@ -91,10 +102,32 @@ export function AspectRadarChart({ data, isLoading }: AspectRadarChartProps) {
                 fillOpacity={0.3}
                 strokeWidth={2}
               />
-            </RadarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
+            ) : (
+              // Empty state "Ghost" radar
+              <Radar
+                name="Scanning"
+                dataKey="value"
+                stroke="transparent"
+                fill="transparent"
+              />
+            )}
+          </RadarChart>
+        </ResponsiveContainer>
+
+        {isEmpty && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            {/* Radar Scanner Animation */}
+            <div className="w-48 h-48 rounded-full border border-white/5 relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-spin-slow w-full h-full origin-bottom-right opacity-30"
+                style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 0)' }}
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <p className="text-xs text-muted-foreground/50 tracking-widest uppercase">Initializing</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 }

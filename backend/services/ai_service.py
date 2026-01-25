@@ -179,53 +179,42 @@ class AIService:
 
     def extract_topics(self, texts: List[str], top_k: int = 5) -> List[Dict[str, any]]:
         """
-        Extract topics using KeyBERT.
+        Extract topics using Bigram Frequency (Client PDF Requirement).
         """
         if not texts:
             return []
-            
-        self._ensure_models_loaded()
 
-        # Combine texts for topic extraction context, or extract from individual and aggregate.
-        # For "themes", aggregating is usually better.
-        full_text = " ".join(texts)
+        # 1. Normalize
+        stop_words = {"the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "is", "was", "are", "were", "it", "this", "that", "i", "my", "we", "our", "you", "your", "good", "bad", "great", "product", "review", "phone", "app", "very", "so", "really", "video", "just", "like", "have", "has", "had", "not", "dont", "cant", "wont"}
         
-        # Limit text length for performance if needed, but KeyBERT handles docs reasonably well.
-        if len(full_text) > 100000:
-             full_text = full_text[:100000]
+        normalized_texts = []
+        for t in texts:
+            # Lowercase, remove punctuation (basic), split
+            cleaned = re.sub(r'[^\w\s]', '', t.lower())
+            words = [w for w in cleaned.split() if w not in stop_words and len(w) > 2]
+            normalized_texts.append(words)
 
+        # 2. Create Bigrams & Count
+        bigram_counts = {}
+        
+        for words in normalized_texts:
+            if len(words) < 2:
+                continue
+            for i in range(len(words) - 1):
+                bigram = f"{words[i]} {words[i+1]}"
+                bigram_counts[bigram] = bigram_counts.get(bigram, 0) + 1
+
+        # 3. Sort and Return Top K
+        sorted_bigrams = sorted(bigram_counts.items(), key=lambda x: x[1], reverse=True)
+        top_bigrams = sorted_bigrams[:top_k]
+        
         results = []
-        try:
-            if self._keybert_model:
-                # Extract keywords/keyphrases
-                keywords = self._keybert_model.extract_keywords(
-                    full_text, 
-                    keyphrase_ngram_range=(1, 2), 
-                    stop_words='english', 
-                    top_n=top_k,
-                    use_mmr=True, # Maximal Marginal Relevance for diversity
-                    diversity=0.7
-                )
-                
-                # Format: [(keyword, score), ...]
-                for kw, score in keywords:
-                    # We need to determine sentiment for this topic.
-                    # Simple approach: Check context around this keyword in original texts?
-                    # Or just return neutral for now since KeyBERT is unsupervised.
-                    # The prompt asked for "Semantically relevant topics".
-                    
-                    results.append({
-                        "topic": kw,
-                        "sentiment": "neutral", # KeyBERT doesn't give sentiment
-                        "count": int(score * 100) # meaningful score for visualization
-                    })
-            else:
-                 # Fallback if KeyBERT not loaded
-                 return []
-                 
-        except Exception as e:
-            print(f"KeyBERT topic extraction failed: {e}")
-            return []
+        for bg, count in top_bigrams:
+            results.append({
+                "topic": bg,
+                "sentiment": "neutral", 
+                "count": count
+            })
             
         return results
 

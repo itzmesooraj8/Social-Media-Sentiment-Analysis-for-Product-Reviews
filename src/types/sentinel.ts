@@ -22,9 +22,34 @@ export interface DashboardStats {
   platformBreakdown: Record<string, number>;
   topKeywords: Array<{ text: string; value: number; sentiment?: string }>;
   recentReviews: Review[];
-  credibilityReport?: {
-      overallScore: number;
-      verifiedReviews: number;
-      botsDetected: number;
-  };
+  credibilityReport?: CredibilityReport;
 }
+
+export interface CredibilityReport {
+  overallScore: number;
+  verifiedReviews: number;
+  botsDetected: number;
+  spamClusters: number;
+  suspiciousPatterns: number;
+  totalAnalyzed: number;
+}
+
+export interface AspectScore {
+  aspect: string;
+  score: number;
+  reviewCount?: number;
+}
+
+export type AlertSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type AlertType = 'bot_detected' | 'spam_cluster' | 'review_surge' | 'sentiment_shift' | 'fake_review';
+
+export interface Alert {
+  id: string;
+  type: AlertType;
+  severity: AlertSeverity;
+  message: string;
+  timestamp: string | Date;
+  metadata?: Record<string, any>;
+  is_read?: boolean;
+}
+

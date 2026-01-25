@@ -25,34 +25,34 @@ export function CredibilityReport({ report, isLoading }: CredibilityReportProps)
     );
   }
 
-  const scoreColor = report.overallScore >= 85 
-    ? 'text-sentinel-positive' 
-    : report.overallScore >= 70 
-      ? 'text-sentinel-warning' 
+  const scoreColor = report.overallScore >= 85
+    ? 'text-sentinel-positive'
+    : report.overallScore >= 70
+      ? 'text-sentinel-warning'
       : 'text-sentinel-negative';
 
   const stats = [
-    { 
-      label: 'Verified Reviews', 
-      value: report.verifiedReviews.toLocaleString(), 
+    {
+      label: 'Verified Reviews',
+      value: (report.verifiedReviews || 0).toLocaleString(),
       icon: CheckCircle,
       color: 'text-sentinel-positive'
     },
-    { 
-      label: 'Bots Detected', 
-      value: report.botsDetected, 
+    {
+      label: 'Bots Detected',
+      value: report.botsDetected,
       icon: Bot,
       color: 'text-sentinel-negative'
     },
-    { 
-      label: 'Spam Clusters', 
-      value: report.spamClusters, 
+    {
+      label: 'Spam Clusters',
+      value: report.spamClusters,
       icon: AlertTriangle,
       color: 'text-sentinel-warning'
     },
-    { 
-      label: 'Suspicious', 
-      value: report.suspiciousPatterns, 
+    {
+      label: 'Suspicious',
+      value: report.suspiciousPatterns,
       icon: BarChart3,
       color: 'text-sentinel-neutral'
     },
@@ -69,26 +69,26 @@ export function CredibilityReport({ report, isLoading }: CredibilityReportProps)
         <Shield className="h-5 w-5 text-sentinel-credibility" />
         <h3 className="text-lg font-semibold">Credibility Report</h3>
       </div>
-      
+
       {/* Overall Score */}
       <div className="glass-card p-4 rounded-xl mb-6">
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm text-muted-foreground">Overall Credibility Score</span>
-          <motion.span 
+          <motion.span
             initial={{ opacity: 0, scale: 0.5 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 1 }}
             className={cn('text-3xl font-bold', scoreColor)}
           >
-            {report.overallScore.toFixed(1)}%
+            {(report.overallScore || 0).toFixed(1)}%
           </motion.span>
         </div>
-        <Progress 
-          value={report.overallScore} 
+        <Progress
+          value={report.overallScore || 0}
           className="h-2"
         />
         <p className="text-xs text-muted-foreground mt-2">
-          Analyzed {report.totalAnalyzed.toLocaleString()} reviews
+          Analyzed {(report.totalAnalyzed || 0).toLocaleString()} reviews
         </p>
       </div>
 

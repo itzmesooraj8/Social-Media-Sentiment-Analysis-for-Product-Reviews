@@ -25,7 +25,8 @@ from fastapi import Query
 sys.path.insert(0, str(Path(__file__).parent))
 
 from services.ai_service import ai_service
-from services import scrapers
+from services import scrapers, reddit_scraper, twitter_scraper
+from services.prediction_service import generate_forecast
 from routers import reports
 from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats, get_product_by_id, delete_product
 
@@ -54,10 +55,23 @@ class ScrapeRequest(BaseModel):
     product_id: str
 
 
+
 class YoutubeScrapeRequest(BaseModel):
     url: str
     product_id: Optional[str] = None
     max_results: Optional[int] = 50
+
+
+class RedditScrapeRequest(BaseModel):
+    query: str
+    limit: Optional[int] = 50
+
+
+class TwitterScrapeRequest(BaseModel):
+    query: str
+    product_id: Optional[str] = None
+    limit: Optional[int] = 20
+
 
 
 @app.get("/health")
@@ -141,6 +155,41 @@ async def api_scrape_youtube(payload: YoutubeScrapeRequest):
         saved_count = len(processed)
 
     return {"success": True, "saved": saved_count, "count": len(items)}
+
+
+@app.post("/api/scrape/reddit")
+async def api_scrape_reddit(payload: RedditScrapeRequest):
+    query = (payload.query or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+
+    try:
+        from services.reddit_scraper import reddit_scraper
+        items = await reddit_scraper.search_product_mentions(query, limit=payload.limit or 50)
+        return {"success": True, "data": items, "count": len(items)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/scrape/twitter")
+async def api_scrape_twitter(payload: TwitterScrapeRequest):
+    query = (payload.query or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+
+    try:
+        from services.twitter_scraper import twitter_scraper
+        items = await twitter_scraper.search_tweets(query, limit=payload.limit or 20)
+        
+        # If product_id, save them
+        if payload.product_id and items:
+             from services.data_pipeline import data_pipeline
+             await data_pipeline.process_reviews(items, payload.product_id)
+
+        return {"success": True, "data": items, "count": len(items)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.get("/api/scrape/youtube/stream")
@@ -301,6 +350,9 @@ async def api_product_stats(product_id: str):
         return {"success": False, "detail": str(e)}
 
 
+
+
+
 @app.get("/api/analytics")
 async def api_get_analytics(range: str = "7d"):
     """
@@ -402,6 +454,72 @@ async def api_mark_alert_read(alert_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/products/{product_id}/predictions")
+async def api_product_predictions(product_id: str):
+    """
+    AI Forecast Endpoint.
+    """
+    try:
+        import datetime
+        import pandas as pd
+        
+        # 1. Fetch historical data (last 30 days)
+        days = 30
+        start_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
+        
+        query = supabase.table("reviews").select("created_at, sentiment_analysis(score)").eq("product_id", product_id).gte("created_at", start_date.isoformat())
+        resp = query.execute()
+        reviews = resp.data or []
+        
+        if not reviews:
+            return {"success": True, "data": {"forecast": [], "trend": "stable"}}
+            
+        # 2. Aggregate by day
+        daily_data = {}
+        for r in reviews:
+            dt = pd.to_datetime(r["created_at"]).strftime("%Y-%m-%d")
+            sa = r.get("sentiment_analysis")
+            score = 0
+            if sa:
+                if isinstance(sa, list) and sa:
+                     score = float(sa[0].get("score") or 0)
+                elif isinstance(sa, dict):
+                     score = float(sa.get("score") or 0)
+            
+            if dt not in daily_data:
+                daily_data[dt] = []
+            daily_data[dt].append(score)
+            
+        history = []
+        for date_str, scores in daily_data.items():
+            avg_score = sum(scores) / len(scores)
+            history.append({"date": date_str, "sentiment": avg_score})
+            
+        # 3. Generate forecast
+        predictions = generate_forecast(history)
+        
+        # 4. Calculate Trend
+        trend = "stable"
+        if len(predictions) >= 2:
+            first = predictions[0]["sentiment"]
+            last = predictions[-1]["sentiment"]
+            delta = last - first
+            if delta > 0.1: trend = "improving"
+            elif delta < -0.1: trend = "declining"
+        
+        return {
+            "success": True, 
+            "data": {
+                "forecast": predictions,
+                "trend": trend
+            }
+        }
+        
+    except Exception as e:
+        print(f"Prediction error: {e}")
+        return {"success": False, "detail": str(e)}
+
+
 @app.get("/api/competitors/compare")
 async def api_compare_products(productA: str, productB: str):
     try:
@@ -453,6 +571,37 @@ async def api_compare_products(productA: str, productB: str):
     except Exception as e:
         print(f"Compare error: {e}")
         return {"success": False, "detail": str(e)}
+
+
+async def scrape_reddit_background(query: str, product_id: str):
+    """Background task to scrape Reddit and save results."""
+    try:
+        from services.reddit_scraper import reddit_scraper
+        from services.data_pipeline import data_pipeline
+        
+        items = await reddit_scraper.search_product_mentions(query, limit=50)
+        if items:
+            await data_pipeline.process_reviews(items, product_id)
+            print(f"Background Reddit scrape saved {len(items)} items for {product_id}")
+    except Exception as e:
+        print(f"Background Reddit scrape failed: {e}")
+
+
+async def scrape_twitter_background(query: str, product_id: str):
+    """Background task to scrape Twitter and save results."""
+    try:
+        from services.twitter_scraper import twitter_scraper
+        from services.data_pipeline import data_pipeline
+        
+        items = await twitter_scraper.search_tweets(query, limit=20)
+        if items:
+            await data_pipeline.process_reviews(items, product_id)
+            print(f"Background Twitter scrape saved {len(items)} items for {product_id}")
+    except Exception as e:
+        print(f"Background Twitter scrape failed: {e}")
+
+
+
 
 
 @app.get("/api/reports")

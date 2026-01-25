@@ -33,14 +33,14 @@ const Index = () => {
   const assembled = {
     metrics: {
       totalReviews: apiMetrics.totalReviews ?? 0,
-      sentimentDelta: apiMetrics.sentimentDelta ?? 0,
+      sentimentDelta: apiMetrics.sentimentDelta ? parseFloat(apiMetrics.sentimentDelta.toFixed(1)) : 0,
       botsDetected: apiMetrics.credibilityReport?.botsDetected ?? 0,
       averageCredibility: apiMetrics.averageCredibility ?? 0,
     },
     recentReviews,
-    sentimentTrends: [],
-    aspectScores: [],
-    alerts: [],
+    sentimentTrends: apiMetrics.sentimentTrends || [],
+    aspectScores: apiMetrics.aspectScores || [],
+    alerts: apiMetrics.alerts || [],
     platformBreakdown,
     topKeywords: apiMetrics.topKeywords || [],
     credibilityReport: apiMetrics.credibilityReport || {
@@ -51,6 +51,7 @@ const Index = () => {
       suspiciousPatterns: 0,
       totalAnalyzed: 0,
     },
+    emotions: apiMetrics.emotions || [],
     lastUpdated: new Date()
   };
   const isLoadingLocal = isLoading;
@@ -58,15 +59,14 @@ const Index = () => {
   const { data: summaryResp, isLoading: summaryLoading } = useQuery({
     queryKey: ['reportSummary'],
     queryFn: async () => {
-      const response = await fetch('http://localhost:8000/api/dashboard');
-      if (!response.ok) throw new Error('Failed to fetch summary');
-      const json = await response.json();
-      // Only show real AI summary, no fallback text
+      // Logic moved to single dashboard call, but keeping if specific endpoint needed later
+      // Using data from main hook if available
       return {
-        summary: json.data?.aiSummary || null,
-        recommendations: json.data?.recommendations || []
+        summary: null, // AI summary generation on demand or from stats
+        recommendations: apiMetrics.recommendations || []
       };
     },
+    enabled: !!data, // Only run if main data loaded
     retry: false
   });
 
@@ -129,9 +129,9 @@ const Index = () => {
             title="Sentiment Delta"
             value={assembled?.metrics.sentimentDelta ?? 0}
             change={assembled?.metrics.sentimentDelta}
-            changeType={assembled?.metrics.sentimentDelta && assembled.metrics.sentimentDelta > 0 ? 'positive' : 'negative'}
+            changeType={assembled?.metrics.sentimentDelta >= 0 ? 'positive' : 'negative'}
             icon={BarChart3}
-            accentColor={assembled?.metrics.sentimentDelta && assembled.metrics.sentimentDelta > 0 ? 'positive' : 'negative'}
+            accentColor={assembled?.metrics.sentimentDelta >= 0 ? 'positive' : 'negative'}
             delay={1}
             suffix="%"
             subtitle="vs last week"
@@ -158,7 +158,7 @@ const Index = () => {
         {/* Live Analyzer & Insights */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <LiveReviewAnalyzer />
-          <InsightCard isLoading={isLoading || summaryLoading} summary={summaryResp?.summary} recommendations={summaryResp?.recommendations} />
+          <InsightCard isLoading={isLoading || summaryLoading} summary={summaryResp?.summary} recommendations={assembled.recommendations || []} />
         </div>
 
         {/* Sentiment Trend Chart */}
@@ -170,7 +170,7 @@ const Index = () => {
         {/* Review Feed & Emotions */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <ReviewFeed reviews={assembled?.recentReviews ?? []} />
-          <EmotionWheel isLoading={isLoading} />
+          <EmotionWheel isLoading={isLoading} data={assembled.emotions} />
         </div>
 
         {/* Aspect Analysis & Alerts Row */}
