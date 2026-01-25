@@ -73,6 +73,18 @@ class TwitterScrapeRequest(BaseModel):
     limit: Optional[int] = 20
 
 
+class AlertCreate(BaseModel):
+    keyword: str
+    threshold: float
+    email: str
+
+
+class SettingsUpdate(BaseModel):
+    theme: Optional[str] = "light"
+    email_notifications: Optional[bool] = True
+    scraping_interval: Optional[int] = 24
+
+
 
 @app.get("/health")
 async def health():
@@ -445,6 +457,28 @@ async def api_get_alerts(limit: int = 20):
         return {"success": False, "data": []}
 
 
+@app.post("/api/alerts")
+async def api_create_alert(payload: AlertCreate):
+    try:
+        # Save to DB
+        # Check if table exists via insert trial
+        alert_data = {
+            "type": "keyword_monitor",
+            "severity": "medium", 
+            "title": f"Monitor: {payload.keyword}",
+            "message": f"Threshold set to {payload.threshold} for {payload.email}",
+            "is_read": False,
+            "details": {"keyword": payload.keyword, "threshold": payload.threshold, "email": payload.email}
+        }
+        res = supabase.table("alerts").insert(alert_data).execute()
+        return {"success": True, "data": res.data}
+    except Exception as e:
+        print(f"Create alert error: {e}")
+        # In-memory fallback if DB fails (per prompt "just in-memory if DB schema is tight")
+        # But we'll try to stick to DB mostly.
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/alerts/{alert_id}/read")
 async def api_mark_alert_read(alert_id: int):
     try:
@@ -651,19 +685,86 @@ async def api_download_report(filename: str):
     return FileResponse(file_path, media_type='application/pdf', filename=file_path.name)
 
 
+@app.post("/api/settings")
+async def api_update_settings(payload: SettingsUpdate):
+    try:
+        # Save to user_settings table
+        # We'll use a fixed user_id 'default' for single-tenant mode
+        user_id = "default"
+        
+        updates = [
+            {"user_id": user_id, "key": "theme", "value": payload.theme},
+            {"user_id": user_id, "key": "email_notifications", "value": str(payload.email_notifications)},
+            {"user_id": user_id, "key": "scraping_interval", "value": str(payload.scraping_interval)}
+        ]
+        
+        for up in updates:
+            # Upsert
+            supabase.table("user_settings").upsert(up, on_conflict="user_id, key").execute()
+            
+        return {"success": True}
+    except Exception as e:
+        print(f"Settings update error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/settings")
+async def api_get_settings():
+    try:
+        user_id = "default"
+        resp = supabase.table("user_settings").select("*").eq("user_id", user_id).execute()
+        data = resp.data or []
+        
+        # Convert list to dict
+        settings = {
+            "theme": "light",
+            "email_notifications": True,
+            "scraping_interval": 24
+        }
+        
+        for row in data:
+            k = row["key"]
+            v = row["value"]
+            if k == "theme": settings["theme"] = v
+            elif k == "email_notifications": settings["email_notifications"] = (v == "True")
+            elif k == "scraping_interval": settings["scraping_interval"] = int(v) if v.isdigit() else 24
+            
+        return {"success": True, "data": settings}
+    except Exception as e:
+        print(f"Settings get error: {e}")
+        # Return defaults
+        return {"success": True, "data": {"theme": "light", "email_notifications": True, "scraping_interval": 24}}
+
+
 @app.get("/api/system/status")
 async def api_system_status():
     """
     Check active credentials/services.
     """
-    # Simple check of env vars for this sprint
-    status = {
-        "reddit": bool(os.getenv("REDDIT_CLIENT_ID")),
-        "twitter": bool(os.getenv("TWITTER_API_KEY")),
-        "youtube": bool(os.getenv("YOUTUBE_API_KEY")),
-        "database": True # Assumed if we are here
-    }
-    return {"success": True, "data": status}
+    try:
+        # Check Reddit
+        reddit_status = bool(os.getenv("REDDIT_CLIENT_ID"))
+        
+        # Check YouTube
+        youtube_status = bool(os.getenv("YOUTUBE_API_KEY"))
+        
+        # Check Twitter (Nitter uses scraper, but maybe API key logic if present)
+        # Prompt says: Twitter: True (Since we use Nitter).
+        twitter_status = True 
+        
+        return {"success": True, "data": {
+            "reddit": reddit_status,
+            "youtube": youtube_status,
+            "twitter": twitter_status,
+            "database": True
+        }}
+    except Exception as e:
+         return {"success": False, "data": {
+            "reddit": False,
+            "youtube": False,
+            "twitter": True,
+            "database": False
+        }}
 
 
 @app.get("/api/integrations")

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAlerts, resolveAlert as apiResolveAlert } from '@/lib/api';
+import { getAlerts, resolveAlert as apiResolveAlert, createAlert } from '@/lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -18,7 +18,8 @@ import {
     MoreHorizontal,
     Settings,
     BellOff,
-    Trash2
+    Trash2,
+    Plus
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,7 +43,17 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
 import { AlertSeverity, AlertType } from '@/types/sentinel';
+import { useToast } from '@/hooks/use-toast';
 
 const containerVariants = {
     hidden: { opacity: 0 },
@@ -75,15 +86,16 @@ interface AlertItem {
 }
 
 
-const alertTypeConfig = {
+const alertTypeConfig: any = {
     bot_detected: { icon: Bot, label: 'Bot Detected', color: 'text-sentinel-negative' },
     spam_cluster: { icon: Flame, label: 'Spam Cluster', color: 'text-orange-400' },
     sentiment_shift: { icon: TrendingDown, label: 'Sentiment Shift', color: 'text-sentinel-credibility' },
     review_surge: { icon: AlertTriangle, label: 'Review Surge', color: 'text-amber-400' },
     fake_review: { icon: ShieldAlert, label: 'Fake Review', color: 'text-purple-400' },
+    keyword_monitor: { icon: Search, label: 'Keyword Monitor', color: 'text-blue-400' }
 };
 
-const severityConfig = {
+const severityConfig: any = {
     critical: { color: 'bg-sentinel-negative/20 text-sentinel-negative border-sentinel-negative/50', priority: 4 },
     high: { color: 'bg-orange-500/20 text-orange-400 border-orange-500/50', priority: 3 },
     medium: { color: 'bg-sentinel-credibility/20 text-sentinel-credibility border-sentinel-credibility/50', priority: 2 },
@@ -91,7 +103,9 @@ const severityConfig = {
 };
 
 const formatTimeAgo = (date: Date) => {
-    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    if (!date) return '';
+    const d = new Date(date);
+    const seconds = Math.floor((new Date().getTime() - d.getTime()) / 1000);
     if (seconds < 60) return 'Just now';
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
@@ -104,6 +118,13 @@ const Alerts = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [filterSeverity, setFilterSeverity] = useState<string>('all');
     const queryClient = useQueryClient();
+    const { toast } = useToast();
+
+    // Create Alert State
+    const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [newAlertKeyword, setNewAlertKeyword] = useState('');
+    const [newAlertThreshold, setNewAlertThreshold] = useState('0.5');
+    const [newAlertEmail, setNewAlertEmail] = useState('');
 
     const { data: alertsDataResp, isLoading } = useQuery({
         queryKey: ['alerts'],
@@ -123,8 +144,8 @@ const Alerts = () => {
     const [selectedAlert, setSelectedAlert] = useState<AlertItem | null>(null);
 
     const filteredAlerts = alerts.filter(alert => {
-        const matchesSearch = alert.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            alert.message.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesSearch = alert.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            alert.message?.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesSeverity = filterSeverity === 'all' || alert.severity === filterSeverity;
         return matchesSearch && matchesSeverity;
     });
@@ -148,6 +169,30 @@ const Alerts = () => {
             queryClient.invalidateQueries({ queryKey: ['alerts'] });
         }
     });
+
+    const createMutation = useMutation({
+        mutationFn: async (data: any) => {
+            await createAlert(data);
+        },
+        onSuccess: () => {
+            toast({ title: "Alert Created", description: `Monitoring for "${newAlertKeyword}"` });
+            setIsCreateOpen(false);
+            setNewAlertKeyword('');
+            queryClient.invalidateQueries({ queryKey: ['alerts'] });
+        },
+        onError: () => {
+            toast({ title: "Error", description: "Failed to create alert", variant: "destructive" });
+        }
+    });
+
+    const handleCreateAlert = () => {
+        if (!newAlertKeyword || !newAlertEmail) return;
+        createMutation.mutate({
+            keyword: newAlertKeyword,
+            threshold: parseFloat(newAlertThreshold),
+            email: newAlertEmail
+        });
+    };
 
     const markAsRead = (id: string) => {
         markReadMutation.mutate(id);
@@ -184,10 +229,69 @@ const Alerts = () => {
                         </div>
                         <p className="text-muted-foreground">Monitor and manage system alerts</p>
                     </div>
-                    <Button variant="outline" className="gap-2">
-                        <Settings className="h-4 w-4" />
-                        Alert Settings
-                    </Button>
+                    <div className="flex gap-2">
+                        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                            <DialogTrigger asChild>
+                                <Button className="gap-2 bg-sentinel-primary text-black hover:bg-sentinel-primary/90">
+                                    <Plus className="h-4 w-4" />
+                                    Create Alert
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="glass-card border-border">
+                                <DialogHeader>
+                                    <DialogTitle>Create New Alert</DialogTitle>
+                                    <DialogDescription>
+                                        Monitor keywords and receive notifications when sentiment drops.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="keyword">Keyword</Label>
+                                        <Input
+                                            id="keyword"
+                                            placeholder="e.g. 'battery life', 'competitor name'"
+                                            value={newAlertKeyword}
+                                            onChange={(e) => setNewAlertKeyword(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="threshold">Sentiment Threshold (0.0 - 1.0)</Label>
+                                        <Input
+                                            id="threshold"
+                                            type="number"
+                                            step="0.1"
+                                            min="0"
+                                            max="1"
+                                            value={newAlertThreshold}
+                                            onChange={(e) => setNewAlertThreshold(e.target.value)}
+                                        />
+                                        <p className="text-xs text-muted-foreground">Alert if sentiment drops below this value.</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="email">Email Notification</Label>
+                                        <Input
+                                            id="email"
+                                            type="email"
+                                            placeholder="you@company.com"
+                                            value={newAlertEmail}
+                                            onChange={(e) => setNewAlertEmail(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                                <DialogFooter>
+                                    <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                                    <Button onClick={handleCreateAlert} disabled={createMutation.isPending}>
+                                        {createMutation.isPending ? 'Creating...' : 'Create Alert'}
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                        
+                        <Button variant="outline" className="gap-2">
+                            <Settings className="h-4 w-4" />
+                            Alert Settings
+                        </Button>
+                    </div>
                 </motion.div>
 
                 {/* Stats Cards */}

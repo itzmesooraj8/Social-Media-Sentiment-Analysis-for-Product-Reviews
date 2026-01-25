@@ -161,7 +161,7 @@ const Analytics = () => {
                           <Legend />
                           <Line
                             type="monotone"
-                            dataKey="predicted_score"
+                            dataKey="sentiment"
                             name="AI Projection"
                             stroke="hsl(var(--sentinel-credibility))"
                             strokeWidth={3}

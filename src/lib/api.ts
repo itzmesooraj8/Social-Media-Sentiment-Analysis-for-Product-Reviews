@@ -236,5 +236,26 @@ export const getReviews = async (productId: string, limit = 500) => {
     }
 };
 
+export const createAlert = async (data: any) => {
+    const response = await api.post('/alerts', data);
+    return response.data;
+};
+
+export const updateSettings = async (data: any) => {
+    const response = await api.post('/settings', data);
+    return response.data;
+};
+
+export const getSettings = async () => {
+    try {
+        const response = await api.get('/settings');
+        return response.data?.data;
+    } catch (e) {
+        return null;
+    }
+};
+
+export const getPredictions = getPredictiveAnalytics;
+
 export default sentinelApi;
 
