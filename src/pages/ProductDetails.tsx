@@ -10,14 +10,14 @@ import { MetricCard } from '@/components/dashboard/MetricCard';
 import { FileText, BarChart3, Shield } from 'lucide-react';
 import { ReviewFeed } from '@/components/dashboard/ReviewFeed';
 import { SentimentTrendChart } from '@/components/dashboard/SentimentTrendChart';
+import { getProductStats } from '@/lib/api';
 
 export default function ProductDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   // Fetch product specific reviews/stats
-  // Re-using api/reviews for now, filtered by product_id
-  const { data: reviewsData, isLoading } = useQuery({
+  const { data: reviewsData } = useQuery({
     queryKey: ['reviews', id],
     queryFn: async () => {
       const res = await fetch(`http://localhost:8000/api/reviews?product_id=${id}&limit=100`);
@@ -26,19 +26,29 @@ export default function ProductDetails() {
     }
   });
 
+  const { data: statsData } = useQuery({
+    queryKey: ['productStats', id],
+    queryFn: () => getProductStats(id!),
+    enabled: !!id,
+    refetchInterval: 5000 // Real-time poll
+  });
+
   const reviews = reviewsData?.data || [];
   
-  // Calculate simple stats on the fly
-  const totalReviews = reviews.length;
-  const avgSentiment = reviews.reduce((acc: number, r: any) => {
-    const score = r.sentiment_analysis?.[0]?.score || 0.5;
-    return acc + score;
-  }, 0) / (totalReviews || 1);
+  // Use real aggregated stats from backend
+  const totalReviews = statsData?.total_reviews || 0;
+  const avgSentiment = statsData?.average_sentiment || 0; // 0-100 scale from backend
+  
+  // Convert 0-100 back to 0-1 for display if needed, or keep as %
+  // The backend now returns avg_sentiment (0-100) and positive_percent (0-100).
+  // Let's assume user wants 0-1 scale for "Score" based on existing UI, or we can adapt.
+  // The existing UI said "Score (0-1)". Let's map 0-100 -> 0-1.
+  const displayScore = (avgSentiment / 100).toFixed(2);
 
-  // Analyze emotions from the new model
-  // We look at the first sentiment analysis entry
-  const emotions = reviews.map((r: any) => r.sentiment_analysis?.[0]?.emotions?.[0] || 'neutral');
-  // Just a simple list for now
+  // Analyze emotions from the new model (Most recent review)
+  // We look at the first sentiment analysis entry of the most recent review
+  const latestEmotion = reviews[0]?.sentiment_analysis?.[0]?.emotions?.[0]?.name || 
+                        reviews[0]?.sentiment_analysis?.[0]?.emotions?.[0] || 'neutral';
 
   return (
     <DashboardLayout>
@@ -65,14 +75,14 @@ export default function ProductDetails() {
           />
           <MetricCard
             title="Avg Sentiment"
-            value={avgSentiment.toFixed(2)}
+            value={displayScore}
             icon={BarChart3}
-            accentColor={avgSentiment > 0.6 ? 'positive' : 'negative'}
+            accentColor={parseFloat(displayScore) > 0.6 ? 'positive' : 'negative'}
             subtitle="Score (0-1)"
           />
           <MetricCard
             title="Latest Emotion"
-            value={emotions[0] || 'N/A'}
+            value={latestEmotion}
             icon={Shield}
             accentColor="credibility"
             subtitle="Most recent"

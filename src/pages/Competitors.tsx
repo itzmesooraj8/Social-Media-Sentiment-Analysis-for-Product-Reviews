@@ -48,12 +48,17 @@ const Competitors = () => {
         const mA = metrics.productA;
         const mB = metrics.productB;
 
-        // Mock aspects based on overall sentiment for now (since backend doesn't return aspect breakdown yet)
-        // In a real app, backend would return aspect scores.
-        const aspects = ['Price', 'Quality', 'Service'].map((subject) => ({
-            subject,
-            A: Math.min(5, Math.max(0, (mA.sentiment / 100) * 5 + (Math.random() * 0.5 - 0.25))),
-            B: Math.min(5, Math.max(0, (mB.sentiment / 100) * 5 + (Math.random() * 0.5 - 0.25))),
+        // Use real aspect data if available, otherwise default to empty to avoid fake data
+        const subjects = new Set([...Object.keys(mA.aspects || {}), ...Object.keys(mB.aspects || {})]);
+        // Default subjects if none found
+        if (subjects.size === 0) {
+            ['Price', 'Quality', 'Service'].forEach(s => subjects.add(s.toLowerCase()));
+        }
+
+        const aspects = Array.from(subjects).map((subject) => ({
+            subject: subject.charAt(0).toUpperCase() + subject.slice(1),
+            A: mA.aspects?.[subject] || 0,
+            B: mB.aspects?.[subject] || 0,
             fullMark: 5
         }));
 

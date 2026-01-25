@@ -560,35 +560,67 @@ async def api_compare_products(productA: str, productB: str):
     try:
         # Re-use the logic from product_stats but for two products
         async def get_stats(pid):
-            reviews = supabase.table("reviews").select("id", count="exact").eq("product_id", pid).execute()
-            total = reviews.count or 0
+            response = supabase.table("reviews")\
+                .select("sentiment_analysis(score, label, credibility, aspects)")\
+                .eq("product_id", pid)\
+                .execute()
             
-            sentiments = supabase.table("sentiment_analysis").select("score, label, credibility").eq("product_id", pid).execute()
-            data = sentiments.data or []
+            rows = response.data or []
+            total = len(rows)
             
-            avg_score = 0
-            avg_cred = 0
+            scores = []
+            creds = []
             positive_count = 0
             neutral_count = 0
             negative_count = 0
             
-            if data:
-                scores = [float(d.get("score", 0.5)) for d in data]
-                creds = [float(d.get("credibility", 0.95)) for d in data] # default high cred if missing
-                avg_score = (sum(scores) / len(scores)) * 100 # scale to 0-100
-                avg_cred = (sum(creds) / len(creds)) * 100
+            aspects_agg = {}
+
+            for r in rows:
+                sa = r.get("sentiment_analysis")
+                if isinstance(sa, list) and sa: sa = sa[0]
                 
-                for d in data:
-                    l = d.get("label")
+                if sa and isinstance(sa, dict):
+                    s = float(sa.get("score") or 0.5)
+                    c = float(sa.get("credibility") or 0.95)
+                    l = sa.get("label")
+                    
+                    scores.append(s)
+                    creds.append(c)
+                    
                     if l == "POSITIVE": positive_count += 1
                     elif l == "NEGATIVE": negative_count += 1
                     else: neutral_count += 1
+                    
+                    # Aggregating aspects
+                    asps = sa.get("aspects") or []
+                    for a in asps:
+                        # a is {"aspect": "price", "sentiment": "negative", "score": 0.9}
+                        aname = a.get("aspect")
+                        asent = a.get("sentiment")
+                        if aname:
+                            if aname not in aspects_agg: aspects_agg[aname] = {"score_sum": 0, "count": 0}
+                            # Map sentiment to 0-5 scale roughly
+                            val = 2.5
+                            if asent == "positive": val = 5.0
+                            elif asent == "negative": val = 0.0
+                            aspects_agg[aname]["score_sum"] += val
+                            aspects_agg[aname]["count"] += 1
             
+            avg_score = (sum(scores) / len(scores)) * 100 if scores else 0
+            avg_cred = (sum(creds) / len(creds)) * 100 if creds else 0
+            
+            # Format aspects for frontend
+            final_aspects = {}
+            for k, v in aspects_agg.items():
+                final_aspects[k] = v["score_sum"] / v["count"] if v["count"] > 0 else 0
+
             return {
                 "sentiment": avg_score,
                 "credibility": avg_cred,
                 "reviewCount": total,
-                "counts": {"positive": positive_count, "neutral": neutral_count, "negative": negative_count}
+                "counts": {"positive": positive_count, "neutral": neutral_count, "negative": negative_count},
+                "aspects": final_aspects
             }
             
         statsA = await get_stats(productA)

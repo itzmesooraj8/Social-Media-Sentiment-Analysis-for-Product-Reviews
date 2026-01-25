@@ -236,6 +236,16 @@ export const getReviews = async (productId: string, limit = 500) => {
     }
 };
 
+export const getProductStats = async (productId: string) => {
+    try {
+        const response = await api.get(`/products/${productId}/stats`);
+        return response.data?.data || null;
+    } catch (e) {
+        console.error('getProductStats failed', e);
+        return null;
+    }
+};
+
 export const createAlert = async (data: any) => {
     const response = await api.post('/alerts', data);
     return response.data;
