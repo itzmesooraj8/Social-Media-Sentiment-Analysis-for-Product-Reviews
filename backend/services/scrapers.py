@@ -1,75 +1,77 @@
 import asyncio
-from services.youtube_scraper import youtube_scraper
-from services.reddit_scraper import reddit_scraper
-from services.twitter_scraper import twitter_scraper
-from services.ai_service import ai_service
-from services.data_pipeline import data_pipeline
+import logging
+from typing import List, Dict, Optional
 
-async def scrape_all(product_keywords: list, product_id: str, target_url: str = None):
-    """
-    Orchestrator to run all scrapers. 
-    If target_url is provided, it prioritizes that specific source.
-    """
-    print(f"[{product_id}] 🚀 Deploying scrapers. Keywords: {product_keywords}, Target URL: {target_url}")
+# Import scrapers (assuming they are in the same package or available in path)
+from services import youtube_scraper
+from services import reddit_scraper
+from services import twitter_scraper
+from services import data_pipeline
 
+logger = logging.getLogger(__name__)
+
+async def scrape_all(product_keywords: List[str], product_id: str, url: Optional[str] = None) -> Dict[str, int]:
+    """
+    Orchestrator to run all available scrapers in parallel.
+    Prioritizes YouTube and Reddit as stable sources.
+    """
+    logger.info(f"Starting scrape_all for {product_id} with keywords: {product_keywords}")
+    
     tasks = []
+    
+    # 1. YouTube Scraper task
+    tasks.append(youtube_scraper.scrape_youtube(product_keywords, limit=20))
+    
+    # 2. Reddit Scraper task
+    tasks.append(reddit_scraper.scrape_reddit(product_keywords, limit=20))
+    
+    # 3. Twitter Scraper task (Optional/Volatility handling)
+    tasks.append(twitter_scraper.scrape_twitter(product_keywords, limit=20))
 
-    # 1. Smart Scraping: Direct URL Handling
-    if target_url:
-        if "youtube.com" in target_url or "youtu.be" in target_url:
-            print(f"[{product_id}] 🎯 Targeted YouTube Scrape: {target_url}")
-            tasks.append(youtube_scraper.scrape_video_comments(target_url, max_results=100))
-        elif "reddit.com" in target_url:
-             print(f"[{product_id}] 🎯 Targeted Reddit Scrape: {target_url}")
-             # We assume reddit_scraper handles URLs in its search or we need a specific method.
-             # Current reddit_scraper.search_product_mentions takes a query. 
-             # Ideally we'd have a specific method, but for now we pass the URL as query 
-             # and hope the scraper handles it (most PRAW wrappers do if implemented right, 
-             # but here we might just search for the URL or rely on existing logic).
-             # Let's assume search_product_mentions can handle it or we stick to general search.
-             # For this task, we'll append it as a search task.
-             tasks.append(reddit_scraper.search_product_mentions(target_url, limit=100))
-
-    # 2. General Keyword Search (Always run to get broader context, unless we want ONLY the url)
-    # The prompt says: "General Keyword Search (Always run this too...)"
-    for keyword in product_keywords:
-        tasks.append(youtube_scraper.search_video_comments(keyword, max_results=20))
-        tasks.append(reddit_scraper.search_product_mentions(keyword, limit=20))
-        tasks.append(twitter_scraper.search_tweets(keyword, limit=20))
-
-    # await asyncio.gather runs them concurrently
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    all_reviews = []
-    youtube_count = 0
-    reddit_count = 0
-    twitter_count = 0
-
-    for res in results:
-        if isinstance(res, Exception):
-            print(f"⚠️ Scraper error: {res}")
-            continue
-        if res:
-            if len(res) > 0:
-                platform = res[0].get('platform', 'unknown')
-                if platform == 'youtube': youtube_count += len(res)
-                elif platform == 'reddit': reddit_count += len(res)
-                elif platform == 'twitter': twitter_count += len(res)
-            
-            all_reviews.extend(res)
-
-    print(f"[{product_id}] 📚 Found {len(all_reviews)} raw items from all sources.")
-
-    if all_reviews:
-        # Save to Supabase via data pipeline
-        processed = await data_pipeline.process_reviews(all_reviews, product_id)
-        print(f"[{product_id}] ✅ Saved {len(processed)} analyzed reviews.")
+    # Execute all scrapers in parallel
+    results_list = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    youtube_results = []
+    reddit_results = []
+    twitter_results = []
+    
+    # Unpack results safely
+    # Result 0: YouTube
+    if isinstance(results_list[0], list):
+        youtube_results = results_list[0]
     else:
-        print(f"[{product_id}] ⚠️ No reviews found.")
+        logger.error(f"YouTube scraper failed: {results_list[0]}")
+        
+    # Result 1: Reddit
+    if isinstance(results_list[1], list):
+        reddit_results = results_list[1]
+    else:
+        logger.error(f"Reddit scraper failed: {results_list[1]}")
 
+    # Result 2: Twitter
+    if isinstance(results_list[2], list):
+        twitter_results = results_list[2]
+    else:
+        logger.error(f"Twitter scraper failed: {results_list[2]}")
+        
+    # Combine all valid results
+    all_raw_data = youtube_results + reddit_results + twitter_results
+    
+    logger.info(f"Scraping complete. Found {len(all_raw_data)} total items.")
+    
+    # Process and Save (Sent to Pipeline)
+    # The pipeline handles AI processing, Sentiment Analysis, and DB insertion
+    saved_count = 0
+    if all_raw_data:
+        saved_count = await data_pipeline.process_and_save(all_raw_data, product_id)
+        
     return {
-        "total": len(all_reviews),
-        "youtube": youtube_count,
-        "reddit": reddit_count,
-        "twitter": twitter_count
+        "status": "completed",
+        "total_scraped": len(all_raw_data),
+        "total_saved": saved_count,
+        "sources": {
+            "youtube": len(youtube_results),
+            "reddit": len(reddit_results),
+            "twitter": len(twitter_results)
+        }
     }

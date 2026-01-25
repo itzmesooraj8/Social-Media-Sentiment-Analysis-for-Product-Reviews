@@ -99,11 +99,17 @@ async def api_get_products():
 
 
 @app.post("/api/products")
-async def api_create_product(payload: ProductCreate):
+async def api_create_product(payload: ProductCreate, background_tasks: BackgroundTasks):
     data = {"name": payload.name, "keywords": payload.keywords or [],
             "track_reddit": payload.track_reddit, "track_twitter": payload.track_twitter,
             "track_youtube": payload.track_youtube}
     res = await add_product(data)
+    
+    # Auto-trigger scrape immediately
+    keywords = payload.keywords or [payload.name]
+    if res and res.get("id"):
+        background_tasks.add_task(scrapers.scrape_all, keywords, res["id"], None)
+        
     return {"success": True, "data": res}
 
 

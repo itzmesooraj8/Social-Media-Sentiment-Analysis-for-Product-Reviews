@@ -1,14 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
-import api from "../lib/api";
+import { useQuery } from '@tanstack/react-query';
+import { sentinelApi } from '../lib/api';
 
 export const useDashboardData = () => {
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["dashboard"],
+    queryKey: ['dashboard'],
     queryFn: async () => {
-        const response = await api.getDashboardStats();
-        return response; 
+      // Call the API method
+      const stats = await sentinelApi.getDashboardStats();
+      return stats;
     },
-    refetchInterval: 3000, // 3 Seconds (PDF Requirement: Real-Time Analysis)
+    // PDF Requirement: Real-Time Analysis with 3s polling
+    refetchInterval: 3000,
+    retry: 2
   });
 
   return { data, isLoading, refetch };
