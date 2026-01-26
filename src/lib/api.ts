@@ -11,16 +11,31 @@ const api = axios.create({
     },
 });
 
-// Sync Auth Token from Supabase
+// Sync Auth Token from Supabase or Local Storage
 api.interceptors.request.use(async (config) => {
     const { data: { session } } = await supabase.auth.getSession();
 
     if (session?.access_token) {
         config.headers.Authorization = `Bearer ${session.access_token}`;
+    } else {
+        const localToken = localStorage.getItem('access_token');
+        if (localToken) {
+            config.headers.Authorization = `Bearer ${localToken}`;
+        }
     }
 
     return config;
 });
+
+export const apiLogin = async (username, password) => {
+    const response = await api.post('/login', { username, password });
+    return response.data;
+};
+
+export const getInsights = async (productId?: string) => {
+    const response = await api.get(`/insights${productId ? `?product_id=${productId}` : ''}`);
+    return response.data?.data || [];
+};
 
 // Handle 401 Unauthorized errors globally
 api.interceptors.response.use(
@@ -191,7 +206,7 @@ export const exportReport = async (productId: string, format: 'pdf' | 'excel' | 
         const response = await api.get(`/reports/export?product_id=${productId}&format=${format}`, {
             responseType: 'blob'
         });
-        
+
         const contentType = response.headers['content-type'];
         const blob = new Blob([response.data], { type: contentType });
         const url = window.URL.createObjectURL(blob);

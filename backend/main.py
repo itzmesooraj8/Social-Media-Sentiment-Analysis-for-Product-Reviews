@@ -62,6 +62,14 @@ app.add_middleware(
 )
 
 app.include_router(reports.router)
+from routers import auth
+app.include_router(auth.router)
+
+from services.insights_service import insights_service
+
+@app.get("/api/insights")
+async def api_get_insights(product_id: Optional[str] = None):
+    return {"success": True, "data": insights_service.generate_insights(product_id)}
 
 @app.post("/api/reviews/upload")
 async def api_upload_reviews(

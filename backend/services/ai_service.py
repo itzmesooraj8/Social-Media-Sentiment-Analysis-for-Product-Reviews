@@ -10,28 +10,28 @@ try:
     _TRANSFORMERS_AVAILABLE = True
 except ImportError:
     _TRANSFORMERS_AVAILABLE = False
-    print("⚠️ Transformers not found. AI features will be limited.")
+    print("[Warning] Transformers not found. AI features will be limited.")
 
 try:
     import textstat
     _TEXTSTAT_AVAILABLE = True
 except ImportError:
     _TEXTSTAT_AVAILABLE = False
-    print("⚠️ textstat not found. Credibility scoring will be limited.")
+    print("[Warning] textstat not found. Credibility scoring will be limited.")
 
 try:
     from keybert import KeyBERT
     _KEYBERT_AVAILABLE = True
 except ImportError:
     _KEYBERT_AVAILABLE = False
-    print("⚠️ KeyBERT not found. Advanced keyphrase extraction will be limited.")
+    print("[Warning] KeyBERT not found. Advanced keyphrase extraction will be limited.")
 
 try:
     from sklearn.feature_extraction.text import CountVectorizer
     _SKLEARN_AVAILABLE = True
 except ImportError:
     _SKLEARN_AVAILABLE = False
-    print("⚠️ sklearn not found. Topic extraction will be limited.")
+    print("[Warning] sklearn not found. Topic extraction will be limited.")
 
 try:
     from nrclex import NRCLex
@@ -44,7 +44,7 @@ try:
     _NRC_AVAILABLE = True
 except ImportError:
     _NRC_AVAILABLE = False
-    print("⚠️ NRCLex/NLTK not found. Advanced emotion detection will be limited.")
+    print("[Warning] NRCLex/NLTK not found. Advanced emotion detection will be limited.")
 
 try:
     import gensim
@@ -52,7 +52,7 @@ try:
     _GENSIM_AVAILABLE = True
 except ImportError:
     _GENSIM_AVAILABLE = False
-    print("⚠️ Gensim not found. LDA Topic modeling will be limited.")
+    print("[Warning] Gensim not found. LDA Topic modeling will be limited.")
 
 # ----------------------------------
 

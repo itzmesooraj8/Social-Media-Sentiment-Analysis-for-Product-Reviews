@@ -29,14 +29,21 @@ async def verify_user(authorization: Optional[str] = Header(None)):
                 detail="Invalid authentication scheme"
             )
         
+        # Try decoding as custom JWT first
+        from auth.utils import decode_access_token
+        custom_token_data = decode_access_token(token)
+        if custom_token_data:
+             return {"id": custom_token_data.username, "email": f"{custom_token_data.username}@local"}
+
+        # If not custom, try Supabase
         user_response = supabase.auth.get_user(token)
-        if not user_response.user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired token"
-            )
+        if user_response.user:
+             return user_response.user
             
-        return user_response.user
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
         
     except Exception as e:
         print(f"Auth Verification Error: {e}")

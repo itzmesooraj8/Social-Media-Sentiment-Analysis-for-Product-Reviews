@@ -3,8 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from "sonner";
 import { FileText, BarChart3, MessageSquare, Shield } from 'lucide-react';
 import { useDashboardData } from '@/hooks/useDashboardData';
-import { getProducts } from '@/lib/api';
+import { getProducts, getInsights } from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
+
+// ... (existing helper function calls if any)
+
+
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { SentimentTrendChart } from '@/components/dashboard/SentimentTrendChart';
@@ -23,7 +27,7 @@ import { DashboardControls } from '@/components/dashboard/DashboardControls';
 const Index = () => {
   const { data, isLoading } = useDashboardData();
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: getProducts });
-  
+
   const [selectedProductId, setSelectedProductId] = useState<string | undefined>(undefined);
 
   // Default to first product for visualization
@@ -32,6 +36,13 @@ const Index = () => {
       setSelectedProductId(products[0].id);
     }
   }, [products, selectedProductId]);
+
+  const { data: insightsData, isLoading: insightsLoading } = useQuery({
+    queryKey: ['insights', selectedProductId],
+    queryFn: () => getInsights(selectedProductId),
+    enabled: !!selectedProductId
+  });
+
 
   const apiMetrics = data?.data || {};
   const recentReviews = apiMetrics?.recentReviews || [];
@@ -70,11 +81,11 @@ const Index = () => {
     queryKey: ['reportSummary'],
     queryFn: async () => {
       return {
-        summary: null, 
+        summary: null,
         recommendations: apiMetrics.recommendations || []
       };
     },
-    enabled: !!data, 
+    enabled: !!data,
     retry: false
   });
 
@@ -115,9 +126,9 @@ const Index = () => {
             <span className="text-sm font-medium text-sentinel-positive">Live Data Feed</span>
           </div>
           {selectedProductId && products?.find(p => p.id === selectedProductId) && (
-              <span className="text-sm text-muted-foreground ml-auto">
-                  Viewing: {products.find(p => p.id === selectedProductId)?.name}
-              </span>
+            <span className="text-sm text-muted-foreground ml-auto">
+              Viewing: {products.find(p => p.id === selectedProductId)?.name}
+            </span>
           )}
         </div>
 
@@ -167,7 +178,7 @@ const Index = () => {
         {/* Live Analyzer & Insights */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <LiveReviewAnalyzer />
-          <InsightCard isLoading={isLoading || summaryLoading} summary={summaryResp?.summary} recommendations={assembled.recommendations || []} />
+          <InsightCard isLoading={isLoading || summaryLoading || insightsLoading} summary={summaryResp?.summary} recommendations={insightsData || []} />
         </div>
 
         {/* Sentiment Trend Chart */}

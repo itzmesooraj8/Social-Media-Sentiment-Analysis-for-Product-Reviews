@@ -7,6 +7,7 @@ from datetime import datetime
 from database import supabase, save_sentiment_analysis
 from services.ai_service import ai_service
 from services.monitor_service import monitor_service
+from services.utils import anonymize_user
 
 class DataPipelineService:
     def _clean_text(self, text: str) -> str:
@@ -74,7 +75,7 @@ class DataPipelineService:
             review_data = {
                 "product_id": product_id,
                 "content": content, 
-                "username": review.get("author") or review.get("username", "Anonymous"),
+                "username": anonymize_user(review.get("author") or review.get("username", "Anonymous")),
                 "platform": review.get("platform", "web_upload"),
                 "source_url": review.get("source_url", ""),
                 "text_hash": text_hash,

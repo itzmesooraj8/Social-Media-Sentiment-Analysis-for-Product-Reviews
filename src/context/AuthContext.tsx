@@ -26,8 +26,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // Check active sessions and sets the user
         const getSession = async () => {
             const { data: { session } } = await supabase.auth.getSession();
-            setSession(session);
-            setUser(session?.user ?? null);
+
+            if (session) {
+                setSession(session);
+                setUser(session.user);
+            } else {
+                // Check local token
+                const localToken = localStorage.getItem('access_token');
+                if (localToken) {
+                    // Fake session/user
+                    setUser({ id: 'admin', email: 'admin@sentinel.ai', aud: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: '' } as any);
+                }
+            }
             setLoading(false);
         };
 
