@@ -23,7 +23,14 @@ try:
     _KEYBERT_AVAILABLE = True
 except ImportError:
     _KEYBERT_AVAILABLE = False
-    print("⚠️ KeyBERT not found. Topic extraction will be limited.")
+    print("⚠️ KeyBERT not found. Advanced keyphrase extraction will be limited.")
+
+try:
+    from sklearn.feature_extraction.text import CountVectorizer
+    _SKLEARN_AVAILABLE = True
+except ImportError:
+    _SKLEARN_AVAILABLE = False
+    print("⚠️ sklearn not found. Topic extraction will be limited.")
 
 from database import supabase
 
@@ -200,13 +207,29 @@ class AIService:
                     break # Only count aspect once per review
 
         credibility = self._compute_credibility(text, score, metadata)
+
+        # 4. Topic/Keyword Extraction (Single Document)
+        topics = []
+        if _SKLEARN_AVAILABLE:
+             try:
+                 vectorizer = CountVectorizer(ngram_range=(2, 2), stop_words='english', max_features=5)
+                 vectorizer.fit_transform([text])
+                 topics = vectorizer.get_feature_names_out().tolist()
+             except Exception:
+                 pass
         
+        # Fallback simple bigrams if sklearn fails or empty
+        if not topics and len(text.split()) > 4:
+             words = re.sub(r'[^\w\s]', '', text.lower()).split()
+             topics = [f"{words[i]} {words[i+1]}" for i in range(len(words)-1) if len(words[i]) > 3 and len(words[i+1]) > 3][:5]
+
         return {
             "label": label,
             "score": round(score, 4),
             "emotions": [{"name": emotion, "score": int(final_emotion_score * 100)}],
             "aspects": aspects_found,
-            "credibility": credibility
+            "credibility": credibility,
+            "topics": topics
         }
     
     async def analyze_sentiment(self, text: str, metadata: Dict[str, Any] = None):

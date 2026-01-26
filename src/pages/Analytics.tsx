@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { getAnalytics, getExecutiveSummary, getPredictiveAnalytics, getProducts } from '@/lib/api';
+import { WordCloudPanel } from '@/components/dashboard/WordCloudPanel';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, ComposedChart, Line, Legend, ScatterChart, Scatter,
@@ -132,6 +133,7 @@ const Analytics = () => {
               </TabsTrigger>
               <TabsTrigger value="trends">Historical Trends</TabsTrigger>
               <TabsTrigger value="platforms">Platform Split</TabsTrigger>
+              <TabsTrigger value="topics">Topic Cloud</TabsTrigger>
             </TabsList>
 
             {/* TAB: AI FORECAST */}
@@ -204,6 +206,11 @@ const Analytics = () => {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            {/* TAB: TOPICS (WORD CLOUD) */}
+            <TabsContent value="topics">
+              <WordCloudPanel topics={(dashboardData as any)?.data?.topKeywords || []} isLoading={isDashboardLoading} />
             </TabsContent>
 
             {/* TAB: PLATFORMS */}

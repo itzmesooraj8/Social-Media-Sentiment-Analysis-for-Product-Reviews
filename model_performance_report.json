@@ -1,0 +1,10 @@
+{
+  "textblob": {
+    "accuracy": 0.9,
+    "latency_ms": 6.2500715255737305
+  },
+  "distilbert": {
+    "accuracy": 0.8,
+    "latency_ms": 258.4175109863281
+  }
+}

@@ -1,77 +1,51 @@
 import asyncio
 import logging
-from typing import List, Dict, Optional
-
-# Import scrapers (assuming they are in the same package or available in path)
-from services import youtube_scraper
-from services import reddit_scraper
-from services import twitter_scraper
-from services import data_pipeline
+from services import youtube_scraper, reddit_scraper, twitter_scraper, data_pipeline
 
 logger = logging.getLogger(__name__)
 
-async def scrape_all(product_keywords: List[str], product_id: str, url: Optional[str] = None) -> Dict[str, int]:
-    """
-    Orchestrator to run all available scrapers in parallel.
-    Prioritizes YouTube and Reddit as stable sources.
-    """
-    logger.info(f"Starting scrape_all for {product_id} with keywords: {product_keywords}")
-    
+async def scrape_all(keywords: list, product_id: str, target_url: str = None):
+    logger.info(f"Starting scrape for {product_id} with keywords: {keywords}")
     tasks = []
     
-    # 1. YouTube Scraper task
-    tasks.append(youtube_scraper.scrape_youtube(product_keywords, limit=20))
+    # 1. Direct URL Handling (Smart Scraping)
+    if target_url:
+        if "youtube.com" in target_url or "youtu.be" in target_url:
+            logger.info("Detected YouTube URL")
+            tasks.append(youtube_scraper.scrape_video_comments(target_url))
+        elif "reddit.com" in target_url:
+            logger.info("Detected Reddit URL")
+            # Using search_product_mentions as fallback for direct post scraping if specialized method missing
+            tasks.append(reddit_scraper.search_product_mentions(target_url))
     
-    # 2. Reddit Scraper task
-    tasks.append(reddit_scraper.scrape_reddit(product_keywords, limit=20))
-    
-    # 3. Twitter Scraper task (Optional/Volatility handling)
-    tasks.append(twitter_scraper.scrape_twitter(product_keywords, limit=20))
+    # 2. General Keyword Search (Parallel)
+    for keyword in keywords:
+        # Note: Scrapers are async in this codebase, so we await them via gather, no to_thread needed for these specific methods
+        if hasattr(youtube_scraper, 'search_video_comments'):
+            tasks.append(youtube_scraper.search_video_comments(keyword))
+        
+        if hasattr(reddit_scraper, 'search_product_mentions'):
+            tasks.append(reddit_scraper.search_product_mentions(keyword))
+            
+        if hasattr(twitter_scraper, 'search_tweets'):
+            tasks.append(twitter_scraper.search_tweets(keyword))
 
-    # Execute all scrapers in parallel
-    results_list = await asyncio.gather(*tasks, return_exceptions=True)
+    # 3. Execute all agents simultaneously
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     
-    youtube_results = []
-    reddit_results = []
-    twitter_results = []
-    
-    # Unpack results safely
-    # Result 0: YouTube
-    if isinstance(results_list[0], list):
-        youtube_results = results_list[0]
-    else:
-        logger.error(f"YouTube scraper failed: {results_list[0]}")
-        
-    # Result 1: Reddit
-    if isinstance(results_list[1], list):
-        reddit_results = results_list[1]
-    else:
-        logger.error(f"Reddit scraper failed: {results_list[1]}")
+    # 4. Flatten and Save
+    flat_results = []
+    for res in results:
+        if isinstance(res, list):
+            flat_results.extend(res)
+        elif isinstance(res, Exception):
+            logger.error(f"Scraper error: {res}")
 
-    # Result 2: Twitter
-    if isinstance(results_list[2], list):
-        twitter_results = results_list[2]
-    else:
-        logger.error(f"Twitter scraper failed: {results_list[2]}")
-        
-    # Combine all valid results
-    all_raw_data = youtube_results + reddit_results + twitter_results
+    logger.info(f"Scraping complete. Found {len(flat_results)} items.")
     
-    logger.info(f"Scraping complete. Found {len(all_raw_data)} total items.")
+    # 5. Send to AI Pipeline (Sentiment + Topic Modeling)
+    if flat_results:
+        # data_pipeline instance has process_reviews method
+        await data_pipeline.process_reviews(flat_results, product_id)
     
-    # Process and Save (Sent to Pipeline)
-    # The pipeline handles AI processing, Sentiment Analysis, and DB insertion
-    saved_count = 0
-    if all_raw_data:
-        saved_count = await data_pipeline.process_and_save(all_raw_data, product_id)
-        
-    return {
-        "status": "completed",
-        "total_scraped": len(all_raw_data),
-        "total_saved": saved_count,
-        "sources": {
-            "youtube": len(youtube_results),
-            "reddit": len(reddit_results),
-            "twitter": len(twitter_results)
-        }
-    }
+    return {"status": "completed", "count": len(flat_results)}

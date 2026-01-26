@@ -21,6 +21,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from fastapi import Query
+from dotenv import load_dotenv
+
+# Load env vars specific to backend BEFORE importing services that might use them on init
+from pathlib import Path
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -32,6 +38,20 @@ from database import supabase, get_products, add_product, get_reviews, get_dashb
 
 app = FastAPI(title="Sentiment Beacon API", version="1.0.0")
 
+# --- LOGGING CONFIGURATION ---
+import logging
+from logging.handlers import RotatingFileHandler
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        RotatingFileHandler("backend.log", maxBytes=1024*1024, backupCount=3, encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("backend")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -41,6 +61,21 @@ app.add_middleware(
 )
 
 app.include_router(reports.router)
+
+@app.get("/api/debug/logs")
+async def api_get_logs(lines: int = 50):
+    """Retrieve the last N lines of the backend log."""
+    try:
+        log_file = Path("backend.log")
+        if not log_file.exists():
+            return {"logs": ["Log file not found."]}
+            
+        with open(log_file, "r", encoding="utf-8") as f:
+            content = f.readlines()
+            return {"logs": content[-lines:]}
+    except Exception as e:
+        return {"logs": [f"Error reading logs: {e}"]}
+
 
 
 class ProductCreate(BaseModel):

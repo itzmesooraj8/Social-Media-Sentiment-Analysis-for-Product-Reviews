@@ -45,6 +45,8 @@ const Competitors = () => {
         const metrics = compareRes.data.metrics;
         if (!metrics) return;
 
+        if (!metrics?.productA || !metrics?.productB) return;
+
         const mA = metrics.productA;
         const mB = metrics.productB;
 
@@ -80,7 +82,7 @@ const Competitors = () => {
 
     }, [compareRes, selectedA, selectedB]);
 
-    const getName = (id: string) => products.find(p => p.id === id)?.name || productList.find((p:any)=>p.id===id)?.name || 'Product';
+    const getName = (id: string) => products.find(p => p.id === id)?.name || productList.find((p: any) => p.id === id)?.name || 'Product';
 
     const getWinner = () => {
         if (!data) return null;
@@ -124,7 +126,7 @@ const Competitors = () => {
                     <Card className={`glass-card ${getWinner() === selectedB ? 'border-sentinel-positive' : 'border-sentinel-negative/30'}`}>
                         <CardHeader className="flex flex-row items-center justify-between">
                             <CardTitle className="text-sentinel-negative">Contender B</CardTitle>
-                             {getWinner() === selectedB && <Badge className="bg-sentinel-positive text-white"><Trophy className="w-3 h-3 mr-1" /> Winner</Badge>}
+                            {getWinner() === selectedB && <Badge className="bg-sentinel-positive text-white"><Trophy className="w-3 h-3 mr-1" /> Winner</Badge>}
                         </CardHeader>
                         <CardContent>
                             <Select value={selectedB} onValueChange={setSelectedB}>
@@ -152,7 +154,7 @@ const Competitors = () => {
 
                         {/* Top Row: Radar & Metrics */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            
+
                             {/* Radar Chart */}
                             <Card className="glass-card border-border/50">
                                 <CardHeader>
@@ -163,7 +165,7 @@ const Competitors = () => {
                                         <ResponsiveContainer width="100%" height="100%">
                                             <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data.aspects}>
                                                 <PolarGrid stroke="hsl(var(--border))" />
-                                                <PolarAngleAxis dataKey="subject" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />        
+                                                <PolarAngleAxis dataKey="subject" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
                                                 <PolarRadiusAxis angle={30} domain={[0, 5]} stroke="hsl(var(--border))" />
                                                 <Radar
                                                     name={getName(selectedA)}
@@ -189,7 +191,7 @@ const Competitors = () => {
                                 </CardContent>
                             </Card>
 
-                             {/* Bar Chart: Counts */}
+                            {/* Bar Chart: Counts */}
                             <Card className="glass-card border-border/50">
                                 <CardHeader><CardTitle>Sentiment Volume Comparison</CardTitle></CardHeader>
                                 <CardContent>
@@ -199,7 +201,7 @@ const Competitors = () => {
                                                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                                                 <XAxis dataKey="name" />
                                                 <YAxis />
-                                                <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ backgroundColor: 'hsl(var(--card))' }} />
+                                                <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ backgroundColor: 'hsl(var(--card))' }} />
                                                 <Legend />
                                                 <Bar dataKey="Positive" fill="hsl(var(--sentinel-positive))" />
                                                 <Bar dataKey="Neutral" fill="hsl(var(--muted))" />

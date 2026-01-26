@@ -67,7 +67,7 @@ const Settings = () => {
 
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [scrapingInterval, setScrapingInterval] = useState('24');
-  
+
   // Extra states (UI only for now or mapped loosely)
   const [credibilityThreshold, setCredibilityThreshold] = useState([75]);
   const [realTimeAnalysis, setRealTimeAnalysis] = useState(true);
@@ -91,15 +91,15 @@ const Settings = () => {
 
   useEffect(() => {
     if (settingsData) {
-        if (settingsData.theme) setTheme(settingsData.theme as any);
-        if (settingsData.email_notifications !== undefined) setEmailNotifications(settingsData.email_notifications);
-        if (settingsData.scraping_interval) setScrapingInterval(String(settingsData.scraping_interval));
+      if (settingsData.theme) setTheme(settingsData.theme as any);
+      if (settingsData.email_notifications !== undefined) setEmailNotifications(settingsData.email_notifications);
+      if (settingsData.scraping_interval) setScrapingInterval(String(settingsData.scraping_interval));
     }
   }, [settingsData, setTheme]);
 
   const saveSettingsMutation = useMutation({
     mutationFn: async (data: any) => {
-        await updateSettings(data);
+      await updateSettings(data);
     },
     onSuccess: () => {
       setSaved(true);
@@ -110,9 +110,9 @@ const Settings = () => {
 
   const handleSave = () => {
     saveSettingsMutation.mutate({
-        theme: theme,
-        email_notifications: emailNotifications,
-        scraping_interval: parseInt(scrapingInterval)
+      theme: theme,
+      email_notifications: emailNotifications,
+      scraping_interval: parseInt(scrapingInterval)
     });
   };
 
@@ -174,19 +174,19 @@ const Settings = () => {
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="space-y-2">
-                        <Label>Scraping Frequency (Hours)</Label>
-                        <Select value={scrapingInterval} onValueChange={setScrapingInterval}>
+                      <Label>Scraping Frequency (Hours)</Label>
+                      <Select value={scrapingInterval} onValueChange={setScrapingInterval}>
                         <SelectTrigger className="glass-card border-border/50">
-                            <SelectValue />
+                          <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="glass-card border-border/50">
-                            <SelectItem value="1">Every Hour</SelectItem>
-                            <SelectItem value="6">Every 6 Hours</SelectItem>
-                            <SelectItem value="12">Every 12 Hours</SelectItem>
-                            <SelectItem value="24">Daily</SelectItem>
-                            <SelectItem value="48">Every 2 Days</SelectItem>
+                          <SelectItem value="1">Every Hour</SelectItem>
+                          <SelectItem value="6">Every 6 Hours</SelectItem>
+                          <SelectItem value="12">Every 12 Hours</SelectItem>
+                          <SelectItem value="24">Daily</SelectItem>
+                          <SelectItem value="48">Every 2 Days</SelectItem>
                         </SelectContent>
-                        </Select>
+                      </Select>
                     </div>
 
                     <div className="space-y-2">
@@ -343,7 +343,18 @@ const Settings = () => {
 
                   <div className="space-y-2">
                     <Label>Role</Label>
-                    <Input defaultValue="Administrator" disabled className="glass-card border-border/50" />
+                    <Select defaultValue="admin">
+                      <SelectTrigger className="glass-card border-border/50">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="glass-card border-border/50">
+                        <SelectItem value="admin">Administrator (Full Access)</SelectItem>
+                        <SelectItem value="analyst">Data Analyst (Read/Write)</SelectItem>
+                        <SelectItem value="viewer">Viewer (Read Only)</SelectItem>
+                        <SelectItem value="marketing">Marketing Manager</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Controls access to sensitive data and configuration.</p>
                   </div>
 
                   <div className="space-y-2">
@@ -381,9 +392,9 @@ const Settings = () => {
                     <div className="space-y-3 pl-6">
                       <div className="flex items-center justify-between">
                         <Label>Enable Email Notifications</Label>
-                        <Switch 
-                            checked={emailNotifications}
-                            onCheckedChange={setEmailNotifications}
+                        <Switch
+                          checked={emailNotifications}
+                          onCheckedChange={setEmailNotifications}
                         />
                       </div>
                       <div className="flex items-center justify-between">
