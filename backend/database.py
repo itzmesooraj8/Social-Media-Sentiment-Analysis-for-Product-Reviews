@@ -6,6 +6,7 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Any, List, Dict, Optional
+from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -62,6 +63,43 @@ async def _safe_db_call(coroutine, timeout: float = 5.0) -> Any:
     except Exception as e:
         print(f"DB Call Error: {e}")
         return None
+
+async def get_sentiment_trends(product_id: str, days: int = 30) -> List[Dict[str, Any]]:
+    """
+    Fetch sentiment trend data for a specific period.
+    Returns list of {created_at, score, label}
+    """
+    if supabase is not None:
+        try:
+            start_date = datetime.now(timezone.utc) - timedelta(days=days)
+            
+            # Efficient join query
+            query = supabase.table("reviews")\
+                .select("created_at, sentiment_analysis(score, label)")\
+                .eq("product_id", product_id)\
+                .gte("created_at", start_date.isoformat())\
+                .order("created_at", desc=False)
+                
+            task = asyncio.to_thread(lambda: query.execute())
+            resp = await _safe_db_call(task, timeout=8.0)
+            
+            if resp and resp.data:
+                # Flatten structure
+                flattened = []
+                for r in resp.data:
+                    sa = r.get("sentiment_analysis")
+                    if isinstance(sa, list) and sa: sa = sa[0]
+                    if sa:
+                        flattened.append({
+                            "created_at": r.get("created_at"),
+                            "score": sa.get("score"),
+                            "label": sa.get("label")
+                        })
+                return flattened
+        except Exception as e:
+            print(f"get_sentiment_trends failed: {e}")
+            
+    return []
 
 # Database helper functions
 async def get_products():

@@ -4,6 +4,7 @@ from functools import lru_cache
 from typing import Dict, List, Any
 import logging
 
+# --- Imports with Safety Checks ---
 try:
     from transformers import pipeline
     _TRANSFORMERS_AVAILABLE = True
@@ -32,12 +33,36 @@ except ImportError:
     _SKLEARN_AVAILABLE = False
     print("⚠️ sklearn not found. Topic extraction will be limited.")
 
+try:
+    from nrclex import NRCLex
+    import nltk
+    # Ensure necessary NLTK data is available for NRCLex
+    try:
+        nltk.data.find('tokenizers/punkt')
+    except LookupError:
+        nltk.download('punkt', quiet=True)
+    _NRC_AVAILABLE = True
+except ImportError:
+    _NRC_AVAILABLE = False
+    print("⚠️ NRCLex/NLTK not found. Advanced emotion detection will be limited.")
+
+try:
+    import gensim
+    from gensim import corpora
+    _GENSIM_AVAILABLE = True
+except ImportError:
+    _GENSIM_AVAILABLE = False
+    print("⚠️ Gensim not found. LDA Topic modeling will be limited.")
+
+# ----------------------------------
+
 from database import supabase
 
 logger = logging.getLogger(__name__)
 
 class AIService:
     def __init__(self):
+        # Using a fine-tuned BERT model (DistilBERT) for sentiment as it's faster and effective
         self.sentiment_model = "distilbert-base-uncased-finetuned-sst-2-english"
         self.emotion_model = "j-hartmann/emotion-english-distilroberta-base"
         self._sentiment_pipe = None
@@ -126,7 +151,7 @@ class AIService:
         emotion = "neutral"
         final_emotion_score = 0.5
         
-        # 1. Sentiment Analysis
+        # 1. Sentiment Analysis (Transformers)
         if self._sentiment_pipe:
             try:
                 out = self._sentiment_pipe(text[:512])
@@ -137,7 +162,7 @@ class AIService:
             except Exception as e:
                 print(f"Sentiment error: {e}")
 
-        # 2. Emotion Logic
+        # 2. Emotion Logic (Transformers fallback + Custom)
         if label == "POSITIVE" and score > 0.8:
             emotion = "Joy/Excitement"
             final_emotion_score = score
@@ -147,8 +172,44 @@ class AIService:
         else:
             emotion = "Neutral/Curiosity"
             final_emotion_score = 0.5
-            
+        
+        # If we have a specific emotion model loaded, use it for better granularity
+        if self._emotion_pipe:
+            try:
+                e_out = self._emotion_pipe(text[:512])
+                if e_out and isinstance(e_out, list):
+                    top_e = e_out[0]
+                    emotion = top_e.get("label")
+                    final_emotion_score = float(top_e.get("score", 0.5))
+            except Exception as e:
+                pass # Fallback to logic above
+
         return label, score, emotion, final_emotion_score
+
+    def _analyze_emotions_nrc(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Analyze emotions using NRCLex (Lexicon-based).
+        Good for detecting: fear, anger, anticipation, trust, surprise, positive, negative, sadness, disgust, joy.
+        """
+        if not _NRC_AVAILABLE:
+            return []
+        
+        try:
+            emotion_obj = NRCLex(text)
+            # raw_emotion_scores is a dict like {'fear': 0.1, 'joy': 0.5}
+            scores = emotion_obj.raw_emotion_scores
+            # Normalize to list of dicts
+            total = sum(scores.values()) if scores else 1
+            results = []
+            for emo, val in scores.items():
+                results.append({"name": emo, "score": int((val / total) * 100)})
+            
+            # Sort by score desc
+            results.sort(key=lambda x: x["score"], reverse=True)
+            return results
+        except Exception as e:
+            print(f"NRCLex error: {e}")
+            return []
 
     def analyze_text(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, any]:
         """Synchronous analyze with Real Emotion & Aspect Detection."""
@@ -157,6 +218,20 @@ class AIService:
 
         # Call cached inference
         label, score, emotion, final_emotion_score = self._predict_sentiment_cached(text)
+        
+        # Get advanced emotions if available
+        nrc_emotions = self._analyze_emotions_nrc(text)
+        
+        # Combine primary emotion with NRC results if needed, or just use NRC as details
+        # For now, we return the primary model emotion as the main one, and nrc as details if we extended the schema
+        # But the current return schema expects a list for 'emotions'. 
+        
+        emotions_list = [{"name": emotion, "score": int(final_emotion_score * 100)}]
+        if nrc_emotions:
+            # Merge or append? Let's append unique ones or keep top NRC
+            for nrc_e in nrc_emotions[:3]: # Top 3 NRC
+                if nrc_e["name"].lower() != emotion.lower():
+                     emotions_list.append(nrc_e)
 
         # 3. Aspect Logic
         text_lower = text.lower()
@@ -185,7 +260,7 @@ class AIService:
 
         credibility = self._compute_credibility(text, score, metadata)
 
-        # 4. Topic/Keyword Extraction
+        # 4. Topic/Keyword Extraction (Simple per-text)
         topics = []
         if _SKLEARN_AVAILABLE:
              try:
@@ -202,7 +277,7 @@ class AIService:
         return {
             "label": label,
             "score": round(score, 4),
-            "emotions": [{"name": emotion, "score": int(final_emotion_score * 100)}],
+            "emotions": emotions_list,
             "aspects": aspects_found,
             "credibility": credibility,
             "topics": topics
@@ -212,9 +287,16 @@ class AIService:
         """Async wrapper."""
         return await asyncio.to_thread(self.analyze_text, text, metadata)
 
-    def extract_topics(self, texts: List[str], top_k: int = 5) -> List[Dict[str, any]]:
+    def extract_topics_lda(self, texts: List[str], num_topics: int = 5, num_words: int = 4) -> List[Dict[str, Any]]:
         """
-        Extract topics using Bigram Frequency (Client PDF Requirement).
+        Extract topics using LDA (Delegates to NLPService).
+        """
+        from services.nlp_service import nlp_service
+        return nlp_service.extract_topics_lda(texts, num_topics, num_words)
+
+    def extract_topics_simple(self, texts: List[str], top_k: int = 5) -> List[Dict[str, any]]:
+        """
+        Extract topics using Bigram Frequency (Fallback / Simple).
         """
         if not texts:
             return []
@@ -253,6 +335,44 @@ class AIService:
             
         return results
 
+    # Alias for backward compatibility if needed, or just cleaner naming
+    extract_topics = extract_topics_simple
+
+    async def analyze_batch(self, texts: List[str]) -> List[Dict[str, Any]]:
+        """
+        Batch analysis for high volume.
+        Currently simple loop, but prepared for pipeline batching if memory allows.
+        """
+        self._ensure_models_loaded()
+        
+        results = []
+        # If we had a GPU, we would pass list to pipe(). 
+        # On CPU, sometimes list is faster too, but let's be safe with memory.
+        # Transformers pipeline can take a list/generator.
+        
+        # Check if we can use pipeline batching
+        if self._sentiment_pipe:
+            try:
+                # Process in chunks of 32
+                chunk_size = 32
+                for i in range(0, len(texts), chunk_size):
+                    batch = texts[i:i+chunk_size]
+                    # This returns a list of dicts for the batch
+                    # Only safe if texts are not too long and memory is okay.
+                    # Fallback to loop if unsure. 
+                    # For now, let's use the robust analyze_text loop to ensure all features (credibility, aspects) are present
+                    # Pipeline batching ONLY gives sentiment. We need aspects/credibility/etc.
+                    pass
+            except Exception:
+                pass
+
+        # Use asyncio.gather for concurrency if doing I/O, but here it's CPU bound.
+        # Running in thread pool is best to not block event loop.
+        
+        loop = asyncio.get_running_loop()
+        tasks = [loop.run_in_executor(None, self.analyze_text, text) for text in texts]
+        results = await asyncio.gather(*tasks)
+        
+        return results
 
 ai_service = AIService()
-

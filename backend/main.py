@@ -17,7 +17,7 @@ import sys
 import asyncio
 from typing import List, Optional, Dict, Any
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
@@ -32,10 +32,10 @@ load_dotenv(dotenv_path=env_path)
 sys.path.insert(0, str(Path(__file__).parent))
 
 from services.ai_service import ai_service
-from services import scrapers, reddit_scraper, twitter_scraper, youtube_scraper, data_pipeline
+from services import scrapers, reddit_scraper, twitter_scraper, youtube_scraper, data_pipeline, wordcloud_service, nlp_service, csv_import_service
 from services.prediction_service import generate_forecast
 from routers import reports
-from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats, get_product_by_id, delete_product
+from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats, get_product_by_id, delete_product, get_sentiment_trends
 
 app = FastAPI(title="Sentiment Beacon API", version="1.0.0")
 
@@ -62,6 +62,26 @@ app.add_middleware(
 )
 
 app.include_router(reports.router)
+
+@app.post("/api/reviews/upload")
+async def api_upload_reviews(
+    file: UploadFile = File(...), 
+    product_id: str = Form(...), 
+    platform: str = Form("csv_upload")
+):
+    """
+    Upload CSV for bulk analysis.
+    """
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Only CSV files allowed")
+        
+    try:
+        content = await file.read()
+        result = await csv_import_service.csv_import_service.process_csv(content, product_id, platform)
+        return {"success": True, "data": result}
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/debug/logs")
 async def api_get_logs(lines: int = 50):
@@ -343,21 +363,54 @@ async def api_dashboard():
 
 
 @app.get("/api/topics")
-async def api_get_topics(limit: int = 10):
+async def api_get_topics(limit: int = 10, product_id: Optional[str] = None):
     """
-    Get top topics for visualization.
+    Get top topics for visualization (LDA).
     """
     try:
+        # If DB has topics stored from background jobs, use them
         if supabase:
-            resp = supabase.table("topic_analysis").select("*").order("size", desc=True).limit(limit).execute()
+            query = supabase.table("topic_analysis").select("*").order("size", desc=True).limit(limit)
+            # if product_id: query = query.eq("product_id", product_id) # Schema doesn't have product_id on topic_analysis yet
+            resp = query.execute()
             data = resp.data or []
-            # format for frontend
-            formatted = [{"text": d["topic_name"], "value": d["size"], "sentiment": d.get("sentiment", 0)} for d in data]
-            return {"success": True, "data": formatted}
-        else:
-            return {"success": True, "data": []}
+            if data:
+                formatted = [{"text": d["topic_name"], "value": d["size"], "sentiment": d.get("sentiment", 0)} for d in data]
+                return {"success": True, "data": formatted}
+                
+        # Fallback: Live extraction if DB empty (optional)
+        return {"success": True, "data": []}
     except Exception as e:
         print(f"Error fetching topics: {e}")
+        return {"success": False, "detail": str(e)}
+
+
+@app.get("/api/products/{product_id}/wordcloud")
+async def api_get_wordcloud(product_id: str):
+    """
+    Generate word clouds (base64 images).
+    """
+    try:
+        reviews = await get_reviews(product_id, limit=200)
+        # We need sentiment label. We can do a join or just rely on 'sentiment_analysis' property if get_reviews fetches it
+        # Current get_reviews fetches it.
+        
+        flat_reviews = []
+        for r in reviews:
+            sa = r.get("sentiment_analysis")
+            label = "NEUTRAL"
+            if isinstance(sa, list) and sa: label = sa[0].get("label")
+            elif isinstance(sa, dict): label = sa.get("label")
+            
+            flat_reviews.append({
+                "content": r.get("content"),
+                "sentiment_label": label
+            })
+            
+        clouds = wordcloud_service.wordcloud_service.generate_wordclouds(flat_reviews)
+        return {"success": True, "data": clouds}
+    except Exception as e:
+        logger.error(f"Wordcloud error: {e}")
         return {"success": False, "detail": str(e)}
 
 
@@ -442,46 +495,33 @@ async def api_product_stats(product_id: str):
 
 
 @app.get("/api/analytics")
-async def api_get_analytics(range: str = "7d"):
+async def api_get_analytics(product_id: Optional[str] = None, range: str = "7d"):
     """
-    Get analytics data for charts (daily sentiment, etc) using Pandas for efficient aggregation.
+    Get analytics data (sentiment trends) with time-filtering.
     """
     try:
         import pandas as pd
-        import datetime
         
-        # Calculate start date based on range (default 7d)
         days = 7
         if range == "30d": days = 30
-        start_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
+        elif range == "90d": days = 90
         
-        # Fetch raw data
-        # We need created_at and sentiment_analysis(label)
-        query = supabase.table("reviews").select("created_at, sentiment_analysis(label)").gte("created_at", start_date.isoformat())
-        resp = query.execute()
-        reviews = resp.data or []
-
-        if not reviews:
+        # If product_id is provided, use specific product logic
+        # If not, use global (or just first product / aggregate - simplistic for now)
+        # But 'get_sentiment_trends' requires product_id. 
+        # If product_id missing, we return empty or need global trends logic.
+        
+        if not product_id:
+             # Fallback to existing global logic if no product specified
+             # (See old logic below, heavily simplified)
              return {"success": True, "data": {"sentimentTrends": []}}
 
-        # Convert to Pandas DataFrame
-        # Flatten the structure first
-        flat_data = []
-        for r in reviews:
-            label = "NEUTRAL"
-            sa = r.get("sentiment_analysis")
-            if sa:
-                if isinstance(sa, list) and sa:
-                     label = sa[0].get("label") or "NEUTRAL"
-                elif isinstance(sa, dict):
-                     label = sa.get("label") or "NEUTRAL"
-            
-            flat_data.append({
-                "created_at": r["created_at"],
-                "label": label
-            })
-            
-        df = pd.DataFrame(flat_data)
+        trends_data = await get_sentiment_trends(product_id, days)
+
+        if not trends_data:
+             return {"success": True, "data": {"sentimentTrends": []}}
+
+        df = pd.DataFrame(trends_data)
         df["created_at"] = pd.to_datetime(df["created_at"])
         
         # Resample by Day

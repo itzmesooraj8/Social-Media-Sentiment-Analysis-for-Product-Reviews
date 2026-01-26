@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from "sonner";
 import { FileText, BarChart3, MessageSquare, Shield } from 'lucide-react';
 import { useDashboardData } from '@/hooks/useDashboardData';
+import { getProducts } from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { MetricCard } from '@/components/dashboard/MetricCard';
@@ -10,18 +11,27 @@ import { SentimentTrendChart } from '@/components/dashboard/SentimentTrendChart'
 import { AspectRadarChart } from '@/components/dashboard/AspectRadarChart';
 import { AlertsPanel } from '@/components/dashboard/AlertsPanel';
 import { PlatformChart } from '@/components/dashboard/PlatformChart';
-import { KeywordCloud } from '@/components/dashboard/KeywordCloud';
+import { ImageWordCloud } from '@/components/dashboard/ImageWordCloud';
 import { CredibilityReport } from '@/components/dashboard/CredibilityReport';
 import { LiveReviewAnalyzer } from '@/components/dashboard/LiveReviewAnalyzer';
 import { ReviewFeed } from '@/components/dashboard/ReviewFeed';
 import { EmotionWheel } from '@/components/dashboard/EmotionWheel';
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { TopicClusters } from '@/components/dashboard/TopicClusters';
-import { DateRangePicker } from '@/components/dashboard/DateRangePicker';
-import { ExportButton } from '@/components/dashboard/ExportButton';
+import { DashboardControls } from '@/components/dashboard/DashboardControls';
 
 const Index = () => {
   const { data, isLoading } = useDashboardData();
+  const { data: products } = useQuery({ queryKey: ['products'], queryFn: getProducts });
+  
+  const [selectedProductId, setSelectedProductId] = useState<string | undefined>(undefined);
+
+  // Default to first product for visualization
+  useEffect(() => {
+    if (products && products.length > 0 && !selectedProductId) {
+      setSelectedProductId(products[0].id);
+    }
+  }, [products, selectedProductId]);
 
   const apiMetrics = data?.data || {};
   const recentReviews = apiMetrics?.recentReviews || [];
@@ -59,18 +69,15 @@ const Index = () => {
   const { data: summaryResp, isLoading: summaryLoading } = useQuery({
     queryKey: ['reportSummary'],
     queryFn: async () => {
-      // Logic moved to single dashboard call, but keeping if specific endpoint needed later
-      // Using data from main hook if available
       return {
-        summary: null, // AI summary generation on demand or from stats
+        summary: null, 
         recommendations: apiMetrics.recommendations || []
       };
     },
-    enabled: !!data, // Only run if main data loaded
+    enabled: !!data, 
     retry: false
   });
 
-  // Pulse Logic: If last 5 reviews are ALL negative, trigger crisis mode
   const isCrisis = (assembled?.recentReviews || []).length >= 5 && (assembled.recentReviews || []).slice(0, 5).every(r => (r.sentiment || r.sentiment_label || '').toLowerCase() === 'negative');
 
   useEffect(() => {
@@ -107,13 +114,15 @@ const Index = () => {
             </div>
             <span className="text-sm font-medium text-sentinel-positive">Live Data Feed</span>
           </div>
+          {selectedProductId && products?.find(p => p.id === selectedProductId) && (
+              <span className="text-sm text-muted-foreground ml-auto">
+                  Viewing: {products.find(p => p.id === selectedProductId)?.name}
+              </span>
+          )}
         </div>
 
         {/* Controls Row */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <DateRangePicker />
-          <ExportButton />
-        </div>
+        <DashboardControls />
 
         {/* Key Metrics Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -196,11 +205,9 @@ const Index = () => {
 
         {/* Keywords & Credibility Report */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <KeywordCloud
-            keywords={assembled?.topKeywords ?? []}
-            isLoading={isLoadingLocal}
+          <ImageWordCloud
+            productId={selectedProductId}
           />
-
 
           <CredibilityReport
             report={assembled.credibilityReport}

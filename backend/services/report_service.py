@@ -1,6 +1,8 @@
 import os
 import json
 import csv
+import io
+import pandas as pd
 from datetime import datetime
 from typing import Dict, Any, List
 from services.ai_service import ai_service
@@ -23,6 +25,82 @@ class ReportService:
     def __init__(self):
         self.reports_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports")
         os.makedirs(self.reports_dir, exist_ok=True)
+
+    def generate_excel_report(self, product_id: str) -> str:
+        """
+        Generate an Excel report with multiple sheets: Summary, Reviews, Topics.
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"report_{product_id}_{timestamp}.xlsx"
+        filepath = os.path.join(self.reports_dir, filename)
+
+        # 1. Fetch Data
+        try:
+            # Reviews
+            resp = supabase.table("reviews").select("*, sentiment_analysis(*)").eq("product_id", product_id).execute()
+            reviews = resp.data or []
+            
+            # Topics
+            # Ideally filter by product_id if topics are linked, but currently topics are global or per-batch.
+            # We'll fetch top topics for context.
+            t_resp = supabase.table("topic_analysis").select("*").order("size", desc=True).limit(20).execute()
+            topics = t_resp.data or []
+        except Exception as e:
+            print(f"Error fetching data for Excel: {e}")
+            reviews = []
+            topics = []
+
+        # 2. Prepare DataFrames
+        # Reviews Sheet
+        review_rows = []
+        for r in reviews:
+            sa = r.get("sentiment_analysis", {})
+            if isinstance(sa, list) and sa: sa = sa[0] # Handle list return
+            
+            review_rows.append({
+                "Date": r.get("created_at"),
+                "Platform": r.get("platform"),
+                "Author": r.get("username"),
+                "Content": r.get("content"),
+                "Sentiment": sa.get("label", "NEUTRAL") if sa else "NEUTRAL",
+                "Score": sa.get("score", 0.5) if sa else 0.5,
+                "Credibility": sa.get("credibility", 0) if sa else 0,
+                "Likes": r.get("like_count", 0),
+                "Replies": r.get("reply_count", 0)
+            })
+        df_reviews = pd.DataFrame(review_rows)
+
+        # Topics Sheet
+        df_topics = pd.DataFrame(topics)
+
+        # Summary Sheet
+        summary_data = {
+            "Generated At": [datetime.now().isoformat()],
+            "Total Reviews": [len(reviews)],
+            "Average Sentiment": [df_reviews["Score"].mean() if not df_reviews.empty else 0],
+            "Positive Reviews": [len(df_reviews[df_reviews["Sentiment"] == "POSITIVE"]) if not df_reviews.empty else 0],
+            "Negative Reviews": [len(df_reviews[df_reviews["Sentiment"] == "NEGATIVE"]) if not df_reviews.empty else 0]
+        }
+        df_summary = pd.DataFrame(summary_data)
+
+        # 3. Write to Excel
+        try:
+            with pd.ExcelWriter(filepath, engine='xlsxwriter') as writer:
+                df_summary.to_excel(writer, sheet_name='Summary', index=False)
+                df_reviews.to_excel(writer, sheet_name='Reviews', index=False)
+                df_topics.to_excel(writer, sheet_name='Topics', index=False)
+                
+                # Optional: Add formatting with xlsxwriter workbook object
+                workbook = writer.book
+                worksheet = writer.sheets['Summary']
+                format1 = workbook.add_format({'num_format': '0.00'})
+                worksheet.set_column('C:C', None, format1)
+                
+        except Exception as e:
+            print(f"Excel write failed: {e}")
+            raise e
+            
+        return filepath
 
     def generate_pdf_report(self, product_id: str) -> str:
         """
@@ -53,18 +131,27 @@ class ReportService:
             return self._generate_empty_report(product_id)
 
         # Sentiment Stats
-        scores = [float(r.get("sentiment_analysis", {}).get("score", 0.5) if r.get("sentiment_analysis") else 0.5) for r in rows]
+        scores = []
+        verified_count = 0
+        suspicious_count = 0
+        pos_reviews = []
+        neg_reviews = []
+
+        for r in rows:
+            sa = r.get("sentiment_analysis")
+            if isinstance(sa, list) and sa: sa = sa[0]
+            
+            if sa:
+                scores.append(float(sa.get("score", 0.5)))
+                cred = float(sa.get("credibility", 0))
+                if cred > 0.7: verified_count += 1
+                elif cred < 0.4: suspicious_count += 1
+                
+                lbl = sa.get("label")
+                if lbl == "POSITIVE": pos_reviews.append(r)
+                elif lbl == "NEGATIVE": neg_reviews.append(r)
+
         avg_sent = sum(scores) / total if scores else 0
-        
-        # Credibility Audit
-        # Threshold: > 0.7 is Verified, < 0.4 is Suspicious
-        verified_count = sum(1 for r in rows if float(r.get("sentiment_analysis", {}).get("credibility", 0) if r.get("sentiment_analysis") else 0) > 0.7)
-        suspicious_count = sum(1 for r in rows if float(r.get("sentiment_analysis", {}).get("credibility", 0) if r.get("sentiment_analysis") else 0) < 0.4)
-        
-        # Engagement Impact
-        # Avg Likes for Positive vs Negative
-        pos_reviews = [r for r in rows if r.get("sentiment_analysis", {}).get("label") == "POSITIVE"]
-        neg_reviews = [r for r in rows if r.get("sentiment_analysis", {}).get("label") == "NEGATIVE"]
         
         avg_likes_pos = sum(r.get("like_count", 0) for r in pos_reviews) / len(pos_reviews) if pos_reviews else 0
         avg_likes_neg = sum(r.get("like_count", 0) for r in neg_reviews) / len(neg_reviews) if neg_reviews else 0
@@ -171,5 +258,28 @@ class ReportService:
         doc = SimpleDocTemplate(filepath, pagesize=letter)
         doc.build([Paragraph(f"No data available for {product_id}", getSampleStyleSheet()['Normal'])])
         return filepath
+
+    def generate_report(self, data: Dict[str, Any], format: str = "csv") -> str:
+        """
+        Legacy/CSV generation support.
+        data: Dict expect 'recent_reviews' list
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if format == "csv":
+            filename = f"report_legacy_{timestamp}.csv"
+            filepath = os.path.join(self.reports_dir, filename)
+            
+            reviews = data.get("recent_reviews", [])
+            if not reviews:
+                return filepath # Empty
+            
+            keys = reviews[0].keys()
+            with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=keys)
+                writer.writeheader()
+                writer.writerows(reviews)
+            return filepath
+        
+        raise ValueError(f"Unsupported format: {format}")
 
 report_service = ReportService()

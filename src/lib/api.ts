@@ -163,6 +163,53 @@ export const downloadReport = async (filename: string) => {
 
 
 
+export const getTopics = async (limit = 10, productId?: string) => {
+    try {
+        const params = new URLSearchParams({ limit: String(limit) });
+        if (productId) params.append("product_id", productId);
+        const response = await api.get(`/topics?${params.toString()}`);
+        return response.data?.data || [];
+    } catch (e) {
+        console.error("getTopics failed", e);
+        return [];
+    }
+};
+
+export const getWordCloud = async (productId: string) => {
+    try {
+        const response = await api.get(`/products/${productId}/wordcloud`);
+        return response.data?.data || {}; // { positive: base64, negative: base64, neutral: base64 }
+    } catch (e) {
+        console.error("getWordCloud failed", e);
+        return {};
+    }
+};
+
+export const exportReport = async (productId: string, format: 'pdf' | 'excel' | 'csv') => {
+    try {
+        // Direct download using blob
+        const response = await api.get(`/reports/export?product_id=${productId}&format=${format}`, {
+            responseType: 'blob'
+        });
+        
+        const contentType = response.headers['content-type'];
+        const blob = new Blob([response.data], { type: contentType });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const ext = format === 'excel' ? 'xlsx' : format;
+        a.download = `report_${productId}_${new Date().toISOString().split('T')[0]}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        return { success: true };
+    } catch (e) {
+        console.error("Export failed", e);
+        throw e;
+    }
+};
+
 export const deleteProduct = async (id: string) => {
     try {
         await api.delete(`/products/${id}`);

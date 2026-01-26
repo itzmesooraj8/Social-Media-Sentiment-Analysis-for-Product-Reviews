@@ -70,19 +70,15 @@ class DataPipelineService:
             text_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
             
             # 3. Prepare Review Data
+            # Mapped to match inferred schema (content, username)
             review_data = {
                 "product_id": product_id,
-                "content": content,
+                "content": content, 
                 "username": review.get("author") or review.get("username", "Anonymous"),
                 "platform": review.get("platform", "web_upload"),
                 "source_url": review.get("source_url", ""),
                 "text_hash": text_hash,
-                "created_at": review.get("created_at") or datetime.now().isoformat(),
-                # New Metrics
-                "like_count": metadata["like_count"],
-                "reply_count": metadata["reply_count"],
-                "retweet_count": metadata["retweet_count"],
-                "metadata": metadata
+                "created_at": review.get("created_at") or datetime.now().isoformat()
             }
             
             # 4. Save to Database
@@ -91,14 +87,20 @@ class DataPipelineService:
                 try:
                     res = supabase.table("reviews").insert(review_data).execute()
                 except Exception as e:
-                    # Retry without text_hash if schema issue (robustness)
-                    if "text_hash" in str(e):
+                    # Retry without text_hash if schema issue or duplicate (robustness)
+                    if "text_hash" in str(e) or "duplicate" in str(e):
                         del review_data["text_hash"]
-                        res = supabase.table("reviews").insert(review_data).execute()
+                        # If still fails, it might be unique constraint, so we skip
+                        try:
+                            res = supabase.table("reviews").insert(review_data).execute()
+                        except Exception:
+                            # Skip duplicate
+                            continue
                     else:
-                        raise e
+                        print(f"Insert error: {e}")
+                        continue # Skip to next review
 
-                review_id = res.data[0]["id"] if res.data else None
+                review_id = res.data[0]["id"] if (res.data and len(res.data) > 0) else None
                 
                 # Save analysis linked to review
                 if review_id:

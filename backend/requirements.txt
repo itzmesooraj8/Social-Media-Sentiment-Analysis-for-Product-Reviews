@@ -17,3 +17,13 @@ httpx
 tweepy
 keybert
 textstat
+nrclex
+gensim
+nltk
+youtube-comment-downloader
+openpyxl
+xlsxwriter
+wordcloud
+matplotlib
+textblob
+pillow

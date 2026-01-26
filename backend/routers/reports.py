@@ -9,9 +9,9 @@ from database import supabase
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 @router.get("/export")
-async def export_report(product_id: str = Query(...), format: str = Query("csv", regex="^(csv|pdf)$")):
+async def export_report(product_id: str = Query(...), format: str = Query("csv", regex="^(csv|pdf|excel)$")):
     """
-    Export product analysis report in CSV or PDF format.
+    Export product analysis report in CSV, PDF or Excel format.
     """
     try:
         # Check if product exists
@@ -23,6 +23,10 @@ async def export_report(product_id: str = Query(...), format: str = Query("csv",
             filepath = report_service.generate_pdf_report(product_id)
             media_type = "application/pdf"
             filename = f"report_{product_id}.pdf"
+        elif format == "excel":
+            filepath = report_service.generate_excel_report(product_id)
+            media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            filename = f"report_{product_id}.xlsx"
         else:
             # Prepare data for generic CSV export
             # We fetch reviews joined with sentiment
