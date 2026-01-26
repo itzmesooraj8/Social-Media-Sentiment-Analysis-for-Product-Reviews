@@ -19,10 +19,19 @@ export interface DashboardStats {
   totalReviews: number;
   sentimentScore: number;
   averageCredibility: number;
-  platformBreakdown: Record<string, number>;
+  platformBreakdown: PlatformBreakdown[];
   topKeywords: Array<{ text: string; value: number; sentiment?: string }>;
   recentReviews: Review[];
   credibilityReport?: CredibilityReport;
+}
+
+export interface PlatformBreakdown {
+  platform: string;
+  positive: number;
+  neutral: number;
+  negative: number;
+  count?: number; // Total count alias
+  total?: number; // Total count alias
 }
 
 export interface CredibilityReport {

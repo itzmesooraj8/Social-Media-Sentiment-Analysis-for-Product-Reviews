@@ -37,12 +37,18 @@ class TwitterScraperService:
             except Exception as e:
                 logger.error(f"Twitter: Tweepy auth failed: {e}")
         
-        if _NITTER_AVAILABLE:
+        # Nitter is lazy loaded to prevent startup hangs caused by 'aiohttp' session issues
+        self.nitter_client = None 
+
+    def _get_nitter(self):
+        if not _NITTER_AVAILABLE: return None
+        if not self.nitter_client:
             try:
                 self.nitter_client = Nitter(log_level=1, skip_instance_check=False)
-                logger.info("Twitter: Nitter scraper initialized")
+                logger.info("Twitter: Nitter scraper initialized (Lazy)")
             except Exception as e:
-                 logger.error(f"Twitter: Nitter init failed: {e}")
+                logger.error(f"Twitter: Nitter init failed: {e}")
+        return self.nitter_client
 
     async def search_tweets(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """
@@ -56,7 +62,7 @@ class TwitterScraperService:
                 logger.warning(f"Tweepy search failed, falling back to Nitter: {e}")
 
         # 2. Try Nitter (No-Auth)
-        if self.nitter_client:
+        if self._get_nitter():
             try:
                 return await asyncio.to_thread(self._run_nitter, query, limit)
             except Exception as e:
@@ -94,10 +100,14 @@ class TwitterScraperService:
     def _run_nitter(self, query: str, limit: int) -> List[Dict[str, Any]]:
         """Blocking Nitter call."""
         results = []
+        nitter = self._get_nitter()
+        if not nitter:
+            return []
+
         # Nitter scraping
         # mode='term' searches for the query
         # number is approx
-        scraped = self.nitter_client.get_tweets(query, mode='term', number=limit)
+        scraped = nitter.get_tweets(query, mode='term', number=limit)
         
         tweets = scraped.get('tweets', [])
         for t in tweets:

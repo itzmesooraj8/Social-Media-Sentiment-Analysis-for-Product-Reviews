@@ -32,7 +32,9 @@ load_dotenv(dotenv_path=env_path)
 sys.path.insert(0, str(Path(__file__).parent))
 
 from services.ai_service import ai_service
-from services import scrapers, reddit_scraper, twitter_scraper, youtube_scraper, data_pipeline, wordcloud_service, nlp_service, csv_import_service
+from services import scrapers, youtube_scraper, data_pipeline, wordcloud_service, nlp_service, csv_import_service
+# Disabling Reddit/Twitter for stability as requested
+# from services import reddit_scraper, twitter_scraper 
 from services.prediction_service import generate_forecast
 from routers import reports
 from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats, get_product_by_id, delete_product, get_sentiment_trends

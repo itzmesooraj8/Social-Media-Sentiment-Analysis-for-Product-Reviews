@@ -11,6 +11,8 @@ def run_migrations():
     try:
         # Load environment variables from .env file in the root directory
         from pathlib import Path
+        # script is in backend/scripts
+        # env is in backend/.env (parent of scripts is backend)
         env_path = Path(__file__).parent.parent / ".env"
         load_dotenv(dotenv_path=env_path)
 
@@ -50,7 +52,8 @@ def run_migrations():
         cursor = conn.cursor()
 
         # Get the list of SQL files to execute
-        sql_dir = os.path.join(os.path.dirname(__file__), 'sql')
+        # sql is in backend/sql (sibling of scripts)
+        sql_dir = Path(__file__).parent.parent / 'sql'
         sql_files = [
             '01_init_core.sql',
             '01_add_features.sql',

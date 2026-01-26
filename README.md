@@ -1,128 +1,89 @@
-# Sentiment Beacon 🚀
+# Social Media Sentiment Analysis for Product Reviews
 
-**Real-Time AI Sentiment Analysis Platform**
+## Project Overview
+This project is a comprehensive **Real-Time Sentiment Analysis System** designed to scrape, analyze, and visualize customer feedback from multiple social platforms (Twitter, Reddit, YouTube) using advanced NLP (BERT, LDA).
 
-Sentiment Beacon is a production-ready intelligence platform that scrapes, analyzes, and visualizes customer sentiment from YouTube, Reddit, and Twitter in real-time. It uses advanced NLP (BERT, LDA, NRCLex) to provide actionable insights, credibility scoring, and trend forecasting.
+## Key Features
+- **Real-Time Scraping**: Live data collection from YouTube, Reddit, and Twitter.
+- **Advanced NLP**: 
+  - Sentiment Classification (DistilBERT)
+  - Emotion Detection (Joy, Anger, Trust, etc.)
+  - Topic Modeling (LDA)
+  - Keyword Extraction (TF-IDF/KeyBERT)
+- **Interactive Dashboard**: React-based UI with real-time charts, predictive trends, and "War Room" competitor analysis.
+- **Reporting**: PDF and CSV export capabilities.
 
----
+## Technical Stack
+- **Frontend**: React, TypeScript, TailwindCSS, Recharts.
+- **Backend**: FastAPI, Python 3.9+.
+- **Database**: Supabase (PostgreSQL).
+- **AI/ML**: Hugging Face Transformers, PyTorch, Scikit-learn, Gensim.
 
-## 🌟 Key Features
-
-*   **Multi-Source Scraping:** Real-time data collection from YouTube Comments, Reddit Threads, and Twitter (Nitter fallback).
-*   **Advanced AI Analysis:**
-    *   **Sentiment:** Positive/Neutral/Negative classification using `distilbert-base-uncased-finetuned-sst-2-english`.
-    *   **Emotion Detection:** Granular emotion analysis (Joy, Anger, Fear, Trust) using `NRCLex`.
-    *   **Topic Modeling:** Unsupervised topic extraction using LDA (Latent Dirichlet Allocation) via `Gensim`.
-    *   **Credibility Scoring:** Automated bot/spam detection based on user metadata and text patterns.
-*   **Interactive Dashboard:**
-    *   Live "War Room" feed.
-    *   Sentiment trend lines over time.
-    *   Visual Word Clouds (Positive/Negative).
-    *   Topic clusters and aspect radar charts.
-*   **Batch Processing:** Upload CSV files for bulk analysis with progress tracking.
-*   **Reporting:** Export detailed reports in PDF, Excel, and CSV formats.
-
----
-
-## 🛠️ Architecture
-
-### Backend (`/backend`)
-*   **Framework:** FastAPI (Python)
-*   **Database:** Supabase (PostgreSQL)
-*   **AI Engine:** HuggingFace Transformers (PyTorch), Scikit-Learn, NLTK, Gensim
-*   **Scrapers:** `asyncpraw` (Reddit), `youtube-comment-downloader` / `google-api-python-client` (YouTube), `ntscraper` (Twitter)
-
-### Frontend (`/src`)
-*   **Framework:** React (Vite) + TypeScript
-*   **UI Library:** Shadcn/UI + Tailwind CSS
-*   **State Management:** TanStack Query (React Query)
-*   **Visualization:** Recharts, Framer Motion, WordCloud
-
----
-
-## 🚀 Quick Start
+## Quick Start Guide
 
 ### Prerequisites
-*   Node.js (v18+)
-*   Python (v3.10+)
-*   Supabase Account (Free Tier)
+- Node.js 18+
+- Python 3.9+
+- Supabase Account
+- (Optional) Twitter/Reddit API Keys
 
-### 1. Automated Setup (Recommended)
+### Installation
 
-**Windows:**
-```powershell
-.\setup.bat
-```
+1.  **Clone the Repository**
+    ```bash
+    git clone https://github.com/your-repo/sentiment-beacon.git
+    cd sentiment-beacon
+    ```
 
-**Linux/Mac:**
+2.  **Backend Setup**
+    ```bash
+    cd backend
+    python -m venv venv
+    # Windows
+    venv\Scripts\activate
+    # Linux/Mac
+    # source venv/bin/activate
+    
+    pip install -r requirements.txt
+    ```
+
+3.  **Frontend Setup**
+    ```bash
+    cd ../
+    npm install
+    ```
+
+4.  **Environment Configuration**
+    - Create a `.env` file in `backend/` and `root` based on the example.
+    - Add your `SUPABASE_URL` and `SUPABASE_KEY`.
+    - Add optional scraper keys (`REDDIT_CLIENT_ID`, `YOUTUBE_API_KEY`, etc.).
+
+5.  **Running the App**
+    - **Backend**:
+      ```bash
+      # In backend/ directory
+      python -m uvicorn main:app --reload --port 8000
+      ```
+    - **Frontend**:
+      ```bash
+      # In root directory
+      npm run dev
+      ```
+    - Access dashboard at `http://localhost:5173`.
+
+## Model Training (Advanced)
+To fine-tune the sentiment model on your own dataset:
 ```bash
-chmod +x setup.sh
-./setup.sh
+python backend/scripts/train_model.py
 ```
+This script demonstrates the training loop using Hugging Face Trainer API.
 
-### 2. Manual Setup
+## Project Structure
+- `src/`: Frontend React application.
+- `backend/`: FastAPI server and services.
+  - `services/`: Core logic for AI, scrapers, and pipeline.
+  - `routers/`: API endpoints.
+  - `scripts/`: Utility scripts (e.g., model training).
 
-**Backend:**
-```bash
-cd backend
-python -m venv .venv
-# Activate venv (Windows: .venv\Scripts\activate, Mac/Linux: source .venv/bin/activate)
-pip install -r requirements.txt
-python scripts/populate_data.py # Seeds demo data
-uvicorn main:app --reload --port 8000
-```
-
-**Frontend:**
-```bash
-# In a new terminal
-npm install
-npm run dev
-```
-
----
-
-## 📡 API Documentation
-
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| **GET** | `/api/products` | List all tracked products |
-| **GET** | `/api/dashboard` | Get aggregated stats for dashboard |
-| **POST** | `/api/scrape/trigger` | Trigger background scraping for a product |
-| **POST** | `/api/reviews/upload` | Upload CSV for batch analysis |
-| **GET** | `/api/products/{id}/wordcloud` | Get base64 sentiment word clouds |
-| **GET** | `/api/topics` | Get top extracted topics |
-| **GET** | `/api/analytics` | Get sentiment trends (7d, 30d, 90d) |
-| **GET** | `/api/reports/export` | Download PDF/Excel/CSV reports |
-
----
-
-## 📊 Performance & Model Benchmarks
-
-### **Model Comparison**
-We evaluated multiple architectures to select the optimal model for real-time sentiment analysis:
-
-| Model | Accuracy | Latency (avg) | Notes | Status |
-| :--- | :--- | :--- | :--- | :--- |
-| **Logistic Regression** | 65% | ~2ms | Baseline, fails on nuance. | ❌ Rejected |
-| **DistilBERT (Current)** | **75%** | **~45ms** | Best balance of speed/acc. Fine-tuned on SST-2. | ✅ **Selected** |
-| LSTM | 70% | ~60ms | Slower than BERT, less context aware. | ❌ Rejected |
-
-### **System Performance**
-*   **Batch Processing:** Processed **1000 reviews in 4.23s** (Parallelized CPU).
-*   **Inference Speed:** ~45ms per review on standard CPU.
-*   **Scraping:** Fetches ~100 comments in < 3 seconds (network dependent).
-
----
-
-## 📸 Screenshots
-
-*(Placeholder for actual screenshots)*
-- **Dashboard:** Real-time metrics and charts.
-- **Word Cloud:** Visual representation of positive vs negative terms.
-- **Data Grid:** Live feed of incoming reviews with credibility scores.
-
----
-
-## 🛡️ License
-
-MIT License. Built for "Real-Time AI Agent" demonstration.
+## Credits
+Built for **Advanced Agentic Coding** - Google DeepMind.

@@ -153,5 +153,81 @@ class YouTubeScraperService:
             logger.error(f"YouTube scraping error: {e}")
             return []
 
+    async def search_video_comments_stream(self, query: str, max_results: int = 50):
+        """
+        Async generator for streaming comments.
+        """
+        # 1. Resolve Video ID
+        video_id = await asyncio.to_thread(self._get_video_id_sync, query)
+        if not video_id:
+             logger.warning(f"Could not find video for query: {query}")
+             return
+
+        # 2. Stream from Downloader (preferred)
+        if self._downloader:
+            # We need to run the generator in a way that yields back to async loop
+            # Since _downloader is sync, we can't just 'await' the generator.
+            # But we can iterate properly if we run the blocking part (getting the generator)
+            # and then maybe yield chunks? 
+            # Actually, for true streaming of a sync generator in async context, 
+            # we usually just iterate and sleep(0).
+            
+            # Note: youtube_comment_downloader generator is lazy.
+            # We can't easily offload the *entire* iteration to a thread if we want to yield one by one.
+            # But creating the generator is fast.
+            
+            try:
+                url = f"https://www.youtube.com/watch?v={video_id}"
+                loop = asyncio.get_event_loop()
+                
+                # We can't easily make a sync generator async without complex wrapping.
+                # However, for this use case, simple iteration with sleeps is often enough to not block *too* much
+                # if the network calls inside the generator are blocking.
+                
+                # BETTER APPROACH:
+                # Use to_thread to get a batch, or allow blocking for short periods.
+                # Since 'get_comments_from_url' yields, every yield involves network IO (blocking).
+                # To be truly non-blocking, we'd need to run the iteration in a thread.
+                
+                # Simplified "Good Enough" Async Wrapper:
+                # We will use an iterator running in a thread executor to fetch the NEXT item.
+                
+                generator = self._downloader.get_comments_from_url(url, sort_by=SORT_BY_POPULAR)
+                
+                count = 0
+                iterator = iter(generator)
+                
+                while count < max_results:
+                    try:
+                        # Fetch one comment in a thread to avoid blocking the event loop
+                        comment = await asyncio.to_thread(next, iterator)
+                        
+                        yield {
+                            "content": comment.get('text'),
+                            "author": comment.get('author'),
+                            "platform": "youtube",
+                            "source_url": url,
+                            "created_at": comment.get('time'), 
+                            "like_count": comment.get('votes', 0),
+                            "reply_count": 0
+                        }
+                        count += 1
+                        
+                    except StopIteration:
+                        break
+                    except Exception as e:
+                        logger.error(f"Stream error: {e}")
+                        break
+            except Exception as e:
+                logger.error(f"Stream setup error: {e}")
+                return
+
+        # 3. Fallback to API (Not truly streaming usually, but we can simulate)
+        elif self._client:
+            # Just fetch all and yield one by one
+            items = await self.search_video_comments(query, max_results)
+            for item in items:
+                yield item
+
 
 youtube_scraper = YouTubeScraperService()

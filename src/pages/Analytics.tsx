@@ -76,7 +76,7 @@ const Analytics = () => {
   }
 
   const analyticsData = analyticsRes?.success ? analyticsRes.data : null;
-  const metrics = (dashboardData as any)?.data?.metrics || (dashboardData as any)?.metrics || {};
+  const metrics = (dashboardData as any)?.data || {}; // API returns flat stats structure
   // Prioritize analytics endpoint for trends
   const sentimentTrends = analyticsData?.sentimentTrends || (dashboardData as any)?.data?.sentimentTrends || [];
   const forecastData = (predictionRes?.success && predictionRes.data?.forecast) ? predictionRes.data.forecast : [];

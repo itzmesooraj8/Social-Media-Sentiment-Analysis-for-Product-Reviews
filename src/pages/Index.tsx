@@ -26,7 +26,7 @@ import { DashboardControls } from '@/components/dashboard/DashboardControls';
 
 const Index = () => {
   const { data, isLoading } = useDashboardData();
-  const { data: products } = useQuery({ queryKey: ['products'], queryFn: getProducts });
+  const { data: products, isLoading: productsLoading } = useQuery({ queryKey: ['products'], queryFn: getProducts });
 
   const [selectedProductId, setSelectedProductId] = useState<string | undefined>(undefined);
 
@@ -46,10 +46,8 @@ const Index = () => {
 
   const apiMetrics = data?.data || {};
   const recentReviews = apiMetrics?.recentReviews || [];
-  const rawPlatformBreakdown = apiMetrics?.platformBreakdown || {};
-  const platformBreakdown = Array.isArray(rawPlatformBreakdown)
-    ? rawPlatformBreakdown
-    : Object.entries(rawPlatformBreakdown || {}).map(([platform, vals]) => ({ platform, ...(vals as any) }));
+  const rawPlatformBreakdown = apiMetrics?.platformBreakdown || [];
+  const platformBreakdown = Array.isArray(rawPlatformBreakdown) ? rawPlatformBreakdown : [];
 
   const assembled = {
     metrics: {
@@ -100,7 +98,25 @@ const Index = () => {
     }
   }, [isCrisis]);
 
-  if (isLoadingLocal) {
+  /* Error State Handling */
+  if (data?.isError || (products === undefined && !productsLoading && !isLoadingLocal)) {
+    return (
+      <DashboardLayout lastUpdated={new Date()} isCrisis={false}>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4">
+          <Shield className="h-16 w-16 text-muted-foreground opacity-50" />
+          <h3 className="text-xl font-semibold">System Offline</h3>
+          <p className="text-muted-foreground max-w-md">
+            Unable to connect to Sentinel Engine. The backend service may be restarting or offline.
+          </p>
+          <button onClick={() => window.location.reload()} className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+            Retry Connection
+          </button>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (isLoadingLocal || productsLoading) {
     return (
       <DashboardLayout lastUpdated={new Date()} isCrisis={false}>
         <div className="p-6">

@@ -9,15 +9,8 @@ from datetime import timedelta
 router = APIRouter()
 
 # Demo User Database
-fake_users_db = {
-    "admin": {
-        "username": "admin",
-        "full_name": "Admin User",
-        "email": "admin@example.com",
-        "hashed_password": get_password_hash("admin"),
-        "disabled": False,
-    }
-}
+# Demo User Database removed - using Supabase Auth
+from database import supabase
 
 class User(BaseModel):
     username: str
@@ -25,32 +18,42 @@ class User(BaseModel):
     full_name: Optional[str] = None
     disabled: Optional[bool] = None
 
-class UserInDB(User):
-    hashed_password: str
-
 class LoginRequest(BaseModel):
     username: str
     password: str
 
-@router.post("/api/login", response_model=dict)
+@router.post("/api/login")
 async def login_for_access_token(form_data: LoginRequest):
-    user_dict = fake_users_db.get(form_data.username)
-    if not user_dict:
-         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    user = UserInDB(**user_dict)
-    if not verify_password(form_data.password, user.hashed_password):
+    """
+    Login using Supabase Auth.
+    Expects 'username' to be the email for Supabase.
+    """
+    if not supabase:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    try:
+        # Authenticate with Supabase Auth
+        # Note: form_data.username is used as email
+        res = supabase.auth.sign_in_with_password({
+            "email": form_data.username, 
+            "password": form_data.password
+        })
+        
+        if res.session:
+            return {
+                "token": res.session.access_token, 
+                "user": {
+                    "email": res.user.email,
+                    "id": res.user.id
+                }
+            }
+        else:
+             raise HTTPException(status_code=401, detail="Login failed")
+             
+    except Exception as e:
+        print(f"Auth error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    return {"token": access_token, "user": {"username": user.username, "email": user.email}}

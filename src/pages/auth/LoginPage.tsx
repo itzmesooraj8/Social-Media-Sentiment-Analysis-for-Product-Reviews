@@ -41,7 +41,7 @@ export default function LoginPage() {
             } catch (backendError) {
                 // connection refused or invalid creds?
                 // Fallback to Supabase if backend refused
-                console.log("Backend auth failed, trying Supabase", backendError);
+                // console.log("Backend auth failed, trying Supabase", backendError);
                 const { error } = await signIn(email, password);
                 if (error) throw error;
                 navigate('/dashboard');
@@ -76,8 +76,8 @@ export default function LoginPage() {
                                     <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                                     <Input
                                         id="email"
-                                        type="email"
-                                        placeholder="name@example.com"
+                                        type="text"
+                                        placeholder="username or email"
                                         className="pl-10"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}

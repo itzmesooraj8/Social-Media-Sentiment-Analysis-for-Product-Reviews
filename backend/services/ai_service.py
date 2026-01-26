@@ -10,28 +10,28 @@ try:
     _TRANSFORMERS_AVAILABLE = True
 except ImportError:
     _TRANSFORMERS_AVAILABLE = False
-    print("[Warning] Transformers not found. AI features will be limited.")
+    logger.warning("Transformers not found. AI features will be limited.")
 
 try:
     import textstat
     _TEXTSTAT_AVAILABLE = True
 except ImportError:
     _TEXTSTAT_AVAILABLE = False
-    print("[Warning] textstat not found. Credibility scoring will be limited.")
+    logger.warning("textstat not found. Credibility scoring will be limited.")
 
 try:
     from keybert import KeyBERT
     _KEYBERT_AVAILABLE = True
 except ImportError:
     _KEYBERT_AVAILABLE = False
-    print("[Warning] KeyBERT not found. Advanced keyphrase extraction will be limited.")
+    logger.warning("KeyBERT not found. Advanced keyphrase extraction will be limited.")
 
 try:
     from sklearn.feature_extraction.text import CountVectorizer
     _SKLEARN_AVAILABLE = True
 except ImportError:
     _SKLEARN_AVAILABLE = False
-    print("[Warning] sklearn not found. Topic extraction will be limited.")
+    logger.warning("sklearn not found. Topic extraction will be limited.")
 
 try:
     from nrclex import NRCLex
@@ -44,7 +44,7 @@ try:
     _NRC_AVAILABLE = True
 except ImportError:
     _NRC_AVAILABLE = False
-    print("[Warning] NRCLex/NLTK not found. Advanced emotion detection will be limited.")
+    logger.warning("NRCLex/NLTK not found. Advanced emotion detection will be limited.")
 
 try:
     import gensim
@@ -52,7 +52,7 @@ try:
     _GENSIM_AVAILABLE = True
 except ImportError:
     _GENSIM_AVAILABLE = False
-    print("[Warning] Gensim not found. LDA Topic modeling will be limited.")
+    logger.warning("Gensim not found. LDA Topic modeling will be limited.")
 
 # ----------------------------------
 
@@ -75,19 +75,19 @@ class AIService:
             return
 
         try:
-            print("[Loading] Sentiment Model (Lazy Load)...")
+            logger.info("Loading Sentiment Model (Lazy Load)...")
             self._sentiment_pipe = pipeline("sentiment-analysis", model=self.sentiment_model)
-            print("[Loading] Emotion Model (Lazy Load)...")
+            logger.info("Loading Emotion Model (Lazy Load)...")
             self._emotion_pipe = pipeline("text-classification", model=self.emotion_model, top_k=1)
             
             if _KEYBERT_AVAILABLE:
-                 print("[Loading] KeyBERT Model (Lazy Load)...")
+                 logger.info("Loading KeyBERT Model (Lazy Load)...")
                  self._keybert_model = KeyBERT()
 
-            print("[OK] AI Models Loaded.")
+            logger.info("AI Models Loaded.")
             self._models_loaded = True
         except Exception as e:
-            print(f"[ERROR] AI Init Error: {e}")
+            logger.error(f"AI Init Error: {e}")
             self._models_loaded = True # Prevent retry loop on failure
 
     def _normalize_label(self, raw_label: str) -> str:
@@ -160,7 +160,7 @@ class AIService:
                     label = self._normalize_label(top.get("label"))
                     score = float(top.get("score", 0.5))
             except Exception as e:
-                print(f"Sentiment error: {e}")
+                logger.error(f"Sentiment error: {e}")
 
         # 2. Emotion Logic (Transformers fallback + Custom)
         if label == "POSITIVE" and score > 0.8:
@@ -208,7 +208,7 @@ class AIService:
             results.sort(key=lambda x: x["score"], reverse=True)
             return results
         except Exception as e:
-            print(f"NRCLex error: {e}")
+            logger.error(f"NRCLex error: {e}")
             return []
 
     def analyze_text(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, any]:

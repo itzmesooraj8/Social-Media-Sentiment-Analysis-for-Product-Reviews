@@ -6,7 +6,9 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
 let supabase: any;
 
 if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_KEY in environment. Mocks are disallowed.');
+    console.warn('CRITICAL: Missing VITE_SUPABASE_URL or VITE_SUPABASE_KEY. Auth will fail.');
+    // Initialize with dummy values to prevent crash, requests will fail gracefully
+    supabase = createClient('https://placeholder.supabase.co', 'placeholder');
 } else {
     supabase = createClient(supabaseUrl, supabaseKey);
 }

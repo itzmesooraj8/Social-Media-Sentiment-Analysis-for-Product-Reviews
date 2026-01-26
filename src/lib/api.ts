@@ -2,7 +2,8 @@
 import axios from 'axios';
 import { supabase } from './supabase';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+const API_URL_RAW = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_URL = API_URL_RAW.endsWith('/api') ? API_URL_RAW : `${API_URL_RAW}/api`;
 
 const api = axios.create({
     baseURL: API_URL,

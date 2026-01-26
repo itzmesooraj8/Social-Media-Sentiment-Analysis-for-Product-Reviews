@@ -22,15 +22,25 @@ async def run_automated_scraping_job():
 
         total_new_reviews = 0
         
-        # Youtube Logic only now? The user said "Active Youtube" but scheduler usually runs passively.
-        # Since youtube scraper needs a specific video URL or query usually, passive scraping is harder without a "keywords" list loop.
-        # But we will disable Reddit here explicitly.
-        
-        print("ℹ️ Reddit scheduler disabled by user request. Automated scraping currently paused to save resources until YouTube auto-search is implemented.")
-        
-        # Future: Iterate products and search youtube? 
-        # for product in products:
-             # search_youtube(product.name) ...
+        # Scrape ALL active products
+        for product in products:
+            try:
+                p_id = product.get("id")
+                p_name = product.get("name")
+                keywords = product.get("keywords") or [p_name]
+                
+                print(f"  > Processing product: {p_name} ({p_id})")
+                
+                # Call scrapers (Reddit disabled per request, but others active)
+                # We pass None for 'url' to trigger auto-search mode in scrapers
+                res = await scrapers.scrape_all(keywords, p_id, url=None)
+                
+                # Count stats
+                if res and isinstance(res, dict):
+                    total_new_reviews += res.get("saved", 0)
+                    
+            except Exception as pe:
+                print(f"  ! Error processing product {product.get('name')}: {pe}")
                 
         print(f"[{datetime.now()}] ✅ Automation finished. Total new real reviews: {total_new_reviews}")
         

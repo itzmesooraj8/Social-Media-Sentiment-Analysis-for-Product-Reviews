@@ -34,21 +34,11 @@ export function LiveReviewAnalyzer() {
     setIsAnalyzing(true);
 
     try {
-      // Call the real backend AI analysis API
-      const response = await fetch('http://localhost:8000/api/analyze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text: reviewText }),
-      });
+      // Call the real backend AI analysis API using our authenticated client
+      const { analyzeText } = await import('@/lib/api');
+      const response = await analyzeText(reviewText);
 
-      if (!response.ok) {
-        throw new Error('Analysis failed');
-      }
-
-      const json = await response.json();
-      const analysisData = json.data || {};
+      const analysisData = response.data || {};
 
       // Map backend response to our result format
       const sentiment = (analysisData.label?.toLowerCase() || 'neutral') as 'positive' | 'neutral' | 'negative';

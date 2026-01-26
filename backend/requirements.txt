@@ -6,7 +6,8 @@ python-dotenv
 google-api-python-client
 asyncpraw
 ntscraper
-transformers
+transformers[torch]
+accelerate>=0.26.0
 torch
 scikit-learn
 pandas
@@ -27,3 +28,4 @@ wordcloud
 matplotlib
 textblob
 pillow
+psycopg2-binary

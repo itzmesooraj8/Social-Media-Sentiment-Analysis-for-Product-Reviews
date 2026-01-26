@@ -31,12 +31,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setSession(session);
                 setUser(session.user);
             } else {
-                // Check local token
-                const localToken = localStorage.getItem('access_token');
-                if (localToken) {
-                    // Fake session/user
-                    setUser({ id: 'admin', email: 'admin@sentinel.ai', aud: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: '' } as any);
-                }
+                setSession(null);
+                setUser(null);
             }
             setLoading(false);
         };
