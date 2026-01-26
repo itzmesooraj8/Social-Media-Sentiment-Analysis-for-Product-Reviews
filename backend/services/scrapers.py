@@ -1,6 +1,14 @@
 import asyncio
 import logging
-from services import youtube_scraper, reddit_scraper, twitter_scraper, data_pipeline
+
+try:
+    from services import youtube_scraper, reddit_scraper, twitter_scraper, data_pipeline
+except ImportError:
+    # Fallback if running from root without 'backend.' prefix in path
+    import youtube_scraper
+    import reddit_scraper
+    import twitter_scraper
+    import data_pipeline
 
 logger = logging.getLogger(__name__)
 

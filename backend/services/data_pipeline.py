@@ -63,6 +63,9 @@ class DataPipelineService:
                 print(f"AI Analysis failed for review: {e}")
                 # Fallback to neutral
                 analysis = {"label": "NEUTRAL", "score": 0.5, "emotions": [], "credibility": 0}
+            
+            if not analysis or "label" not in analysis:
+                analysis = {"label": "NEUTRAL", "score": 0.5, "emotions": [], "credibility": 0}
 
             text_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
             

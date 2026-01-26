@@ -8,15 +8,11 @@ import {
   Bell,
   Shield,
   Palette,
-  Database,
   Key,
   Globe,
-  Zap,
-  ChevronRight,
   Save,
   Mail,
   Smartphone,
-  Lock,
   Eye,
   EyeOff,
   Check
@@ -79,7 +75,6 @@ const Settings = () => {
   });
 
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: getProducts });
-  const firstProductId = products?.[0]?.id;
 
   // Profile State
   const [profile, setProfile] = useState({
@@ -91,11 +86,10 @@ const Settings = () => {
 
   useEffect(() => {
     if (settingsData) {
-      if (settingsData.theme) setTheme(settingsData.theme as any);
       if (settingsData.email_notifications !== undefined) setEmailNotifications(settingsData.email_notifications);
       if (settingsData.scraping_interval) setScrapingInterval(String(settingsData.scraping_interval));
     }
-  }, [settingsData, setTheme]);
+  }, [settingsData]);
 
   const saveSettingsMutation = useMutation({
     mutationFn: async (data: any) => {

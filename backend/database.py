@@ -270,14 +270,18 @@ async def _get_dashboard_metrics_fallback():
         alerts_task = asyncio.to_thread(lambda: supabase.table("alerts").select("*").order("created_at", desc=True).limit(5).execute())
 
         # Execute parallel
-        joined_resp, topic_resp, alerts_resp = await asyncio.gather(
-            joined_task, topic_task, alerts_task, return_exceptions=True
+        joined_resp, topic_resp, alerts_resp, reviews_resp = await asyncio.gather(
+            joined_task, topic_task, alerts_task, reviews_task, return_exceptions=True
         )
         
         # Process joined data
         reviews_data = joined_resp.data if not isinstance(joined_resp, Exception) and joined_resp.data else []
         topic_data = topic_resp.data if not isinstance(topic_resp, Exception) and topic_resp.data else []
         alerts_data = alerts_resp.data if not isinstance(alerts_resp, Exception) and alerts_resp.data else []
+        
+        # We use reviews_resp for platform stats if joined query fails or is limited
+        # But our logic below iterates reviews_data (from joined_task). 
+        # So we should use reviews_resp to augment if needed, but for now just awaiting it fixes the bug.
 
         # Aggregators
         # Note: 'count=exact' is expensive, so we only do it if we really need true total >= 30d
