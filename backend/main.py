@@ -7,6 +7,7 @@ Endpoints:
 - GET /api/reviews
 - POST /api/scrape/trigger
 - GET /api/dashboard
+- POST /api/debug/scrape_now (NEW)
 
 Focus: YouTube scraping + sentiment analysis. Reddit/Twitter integrations active.
 """
@@ -64,7 +65,6 @@ app.include_router(reports.router)
 
 @app.get("/api/debug/logs")
 async def api_get_logs(lines: int = 50):
-    """Retrieve the last N lines of the backend log."""
     try:
         log_file = Path("backend.log")
         if not log_file.exists():
@@ -142,8 +142,19 @@ async def api_create_product(payload: ProductCreate, background_tasks: Backgroun
     
     # Auto-trigger scrape immediately
     keywords = payload.keywords or [payload.name]
-    if res and res.get("id"):
-        background_tasks.add_task(scrapers.scrape_all, keywords, res["id"], None)
+    
+    # Handle Supabase response (list or dict)
+    product_id = None
+    if isinstance(res, list) and len(res) > 0:
+        product_id = res[0].get("id")
+    elif isinstance(res, dict):
+        product_id = res.get("id")
+        
+    if product_id:
+        logger.info(f"Scheduling background scrape for new product: {product_id}")
+        background_tasks.add_task(scrapers.scrape_all, keywords, product_id, None)
+    else:
+        logger.warning("Product created but ID missing, skipping scrape trigger.")
         
     return {"success": True, "data": res}
 
@@ -160,14 +171,12 @@ async def api_get_reviews(product_id: Optional[str] = None, platform: Optional[s
         resp = query.order("created_at", desc=True).limit(limit).execute()
         return {"success": True, "data": resp.data or []}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Fallback empty list if DB fail
+        return {"success": True, "data": []}
 
 
 @app.post("/api/scrape/trigger")
 async def trigger_scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
-    """
-    Non-blocking API Trigger.
-    """
     product_id = request.product_id
     if not product_id:
         raise HTTPException(status_code=400, detail="product_id is required")
@@ -178,10 +187,42 @@ async def trigger_scrape(request: ScrapeRequest, background_tasks: BackgroundTas
 
     keywords = product.get("keywords") or [product.get("name")]
 
-    # Deploy agents in background
+    logger.info(f"Triggering manual scrape for {product_id}")
     background_tasks.add_task(scrapers.scrape_all, keywords, product_id, request.url)
 
     return {"status": "accepted", "message": "Agents deployed in background"}
+
+
+@app.post("/api/debug/scrape_now")
+async def api_debug_scrape(product_id: str, url: Optional[str] = None):
+    try:
+        product = await get_product_by_id(product_id)
+        if not product:
+             raise HTTPException(404, "Product not found")
+        
+        keywords = product.get("keywords") or [product.get("name")]
+        
+        logger.info(f"DEBUG: Starting foreground scrape for {product_id}")
+        
+        # Run strictly in foreground
+        result = await scrapers.scrape_all(keywords, product_id, url)
+        
+        # Read last 20 logs for context
+        logs = []
+        try:
+            with open("backend.log", "r", encoding="utf-8") as f:
+                logs = f.readlines()[-20:]
+        except:
+            pass
+            
+        return {
+            "success": True,
+            "result": result,
+            "logs": logs
+        }
+    except Exception as e:
+        logger.exception("Debug scrape failed")
+        raise HTTPException(500, f"Scrape failed: {str(e)}")
 
 
 @app.post("/api/scrape/youtube")
@@ -239,6 +280,7 @@ async def api_scrape_twitter(payload: TwitterScrapeRequest):
 
 
 
+
 @app.get("/api/scrape/youtube/stream")
 async def api_scrape_youtube_stream(url: str = Query(...), product_id: Optional[str] = Query(None), max_results: int = Query(50)):
     """Stream YouTube comments as Server-Sent Events (SSE).
@@ -249,6 +291,7 @@ async def api_scrape_youtube_stream(url: str = Query(...), product_id: Optional[
 
     # Use an async generator to stream Server-Sent Events (SSE) reliably.
     import json
+    # Use global youtube_scraper from top import
 
     async def event_generator():
         try:
@@ -413,7 +456,7 @@ async def api_get_analytics(range: str = "7d"):
         start_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
         
         # Fetch raw data
-        # We need created_at and sentiment label
+        # We need created_at and sentiment_analysis(label)
         query = supabase.table("reviews").select("created_at, sentiment_analysis(label)").gte("created_at", start_date.isoformat())
         resp = query.execute()
         reviews = resp.data or []

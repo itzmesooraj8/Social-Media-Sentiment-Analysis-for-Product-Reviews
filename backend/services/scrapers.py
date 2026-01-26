@@ -1,10 +1,10 @@
 import asyncio
 import logging
+from typing import List, Any
 
 try:
     from services import youtube_scraper, reddit_scraper, twitter_scraper, data_pipeline
 except ImportError:
-    # Fallback if running from root without 'backend.' prefix in path
     import youtube_scraper
     import reddit_scraper
     import twitter_scraper
@@ -12,50 +12,90 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+async def _safe_execute(coro, source_name: str) -> List[Any]:
+    """
+    Execute a scraper task safely.
+    If it fails, log the exception and return an empty list.
+    This prevents one failure from crashing the entire batch.
+    """
+    try:
+        logger.info(f"Launching scraper: {source_name}")
+        results = await coro
+        if results:
+            logger.info(f"{source_name} returned {len(results)} items.")
+        else:
+            logger.warning(f"{source_name} returned no data.")
+        return results or []
+    except Exception as e:
+        logger.exception(f"CRITICAL: Scraper failed for {source_name}")
+        return []
+
 async def scrape_all(keywords: list, product_id: str, target_url: str = None):
-    logger.info(f"Starting scrape for {product_id} with keywords: {keywords}")
+    """
+    Orchestrate all scrapers in parallel with strict fault tolerance.
+    """
+    logger.info(f"Starting scrape job for Product={product_id} | Keywords={keywords}")
     tasks = []
     
     # 1. Direct URL Handling (Smart Scraping)
     if target_url:
         if "youtube.com" in target_url or "youtu.be" in target_url:
-            logger.info("Detected YouTube URL")
-            tasks.append(youtube_scraper.scrape_video_comments(target_url))
+            tasks.append(_safe_execute(
+                youtube_scraper.scrape_video_comments(target_url), 
+                "YouTube-Direct"
+            ))
         elif "reddit.com" in target_url:
-            logger.info("Detected Reddit URL")
-            # Using search_product_mentions as fallback for direct post scraping if specialized method missing
-            tasks.append(reddit_scraper.search_product_mentions(target_url))
+            tasks.append(_safe_execute(
+                reddit_scraper.search_product_mentions(target_url), 
+                "Reddit-Direct"
+            ))
     
     # 2. General Keyword Search (Parallel)
     for keyword in keywords:
         # YouTube
         if hasattr(youtube_scraper, 'search_video_comments'):
-            tasks.append(youtube_scraper.search_video_comments(keyword))
+            tasks.append(_safe_execute(
+                youtube_scraper.search_video_comments(keyword), 
+                f"YouTube-{keyword}"
+            ))
         
         # Reddit
         if hasattr(reddit_scraper, 'search_product_mentions'):
-            tasks.append(reddit_scraper.search_product_mentions(keyword))
+            tasks.append(_safe_execute(
+                reddit_scraper.search_product_mentions(keyword), 
+                f"Reddit-{keyword}"
+            ))
             
         # Twitter
         if hasattr(twitter_scraper, 'search_tweets'):
-            tasks.append(twitter_scraper.search_tweets(keyword))
+            tasks.append(_safe_execute(
+                twitter_scraper.search_tweets(keyword), 
+                f"Twitter-{keyword}"
+            ))
 
     # 3. Execute all agents simultaneously
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # We use gather, but exceptions are already caught in _safe_execute
+    results_lists = await asyncio.gather(*tasks)
     
-    # 4. Flatten and Save
+    # 4. Flatten Results
     flat_results = []
-    for res in results:
-        if isinstance(res, list):
-            flat_results.extend(res)
-        elif isinstance(res, Exception):
-            logger.error(f"Scraper error: {res}")
+    for r_list in results_lists:
+        if r_list and isinstance(r_list, list):
+            flat_results.extend(r_list)
 
-    logger.info(f"Scraping complete. Found {len(flat_results)} items.")
+    logger.info(f"Scraping complete. Total items found: {len(flat_results)}")
     
-    # 5. Send to AI Pipeline (Sentiment + Topic Modeling)
+    # 5. Send to AI Pipeline
     if flat_results:
-        # data_pipeline instance has process_reviews method
-        await data_pipeline.process_reviews(flat_results, product_id)
+        try:
+            logger.info("Sending data to AI pipeline...")
+            await data_pipeline.process_reviews(flat_results, product_id)
+            logger.info("AI pipeline processing started.")
+        except Exception as e:
+            logger.exception("AI Pipeline failed")
     
-    return {"status": "completed", "count": len(flat_results)}
+    return {
+        "status": "completed", 
+        "count": len(flat_results),
+        "product_id": product_id
+    }
