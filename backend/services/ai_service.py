@@ -91,10 +91,6 @@ class AIService:
         if _TEXTSTAT_AVAILABLE:
             try:
                 # Flesch Reading Ease: 0-100 (higher is easier). We normalize to 0-1.
-                # A good review is usually readable but not too simple.
-                # Let's say 30-70 is "credible" (complex but readable). 
-                # Actually, standard interpretation: 60-70 is standard. 
-                # Let's just normalize 0-100 to 0-1.
                 ease = textstat.flesch_reading_ease(text)
                 readability_val = max(0.0, min(1.0, ease / 100.0))
             except Exception:
@@ -104,36 +100,32 @@ class AIService:
         meta_val = 0.0
         if metadata:
             # Normalize likes/replies/retweets. 
-            # Simple heuristic: presence of engagement increases credibility (social proof).
             likes = metadata.get("like_count", 0)
             replies = metadata.get("reply_count", 0)
             retweets = metadata.get("retweet_count", 0)
             total_engagement = likes + replies + retweets
             
-            # Logarithmic scale or simple threshold
             if total_engagement > 100: meta_val = 1.0
             elif total_engagement > 10: meta_val = 0.7
             elif total_engagement > 0: meta_val = 0.4
-            else: meta_val = 0.1 # No engagement
+            else: meta_val = 0.1 
         else:
-             meta_val = 0.3 # default if no metadata available (e.g. direct text analysis)
+             meta_val = 0.3 
 
         final_score = (0.4 * conf_score) + (0.3 * readability_val) + (0.3 * meta_val)
         return round(final_score, 3)
 
-    # Note: lru_cache removed for analyze_text because metadata changes per call, making caching less effective/correct
-    # or we need to exclude metadata from cache key. For now, we prioritize correctness.
-    def analyze_text(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, any]:
-        """Synchronous analyze with Real Emotion & Aspect Detection."""
+    @lru_cache(maxsize=1000)
+    def _predict_sentiment_cached(self, text: str):
+        """Cached model inference."""
         self._ensure_models_loaded()
-
-        if not text or not text.strip():
-            return {"label": "NEUTRAL", "score": 0.5, "emotion": "neutral", "credibility": 0.1, "aspects": []}
-
+        
+        # Default values
         label = "NEUTRAL"
         score = 0.5
         emotion = "neutral"
-
+        final_emotion_score = 0.5
+        
         # 1. Sentiment Analysis
         if self._sentiment_pipe:
             try:
@@ -145,41 +137,28 @@ class AIService:
             except Exception as e:
                 print(f"Sentiment error: {e}")
 
-        # 2. Emotion Logic (Heuristic based on Sentiment Score)
-        # If score > 0.8 (Positive) -> "Joy/Excitement"
-        # If score < 0.2 (Negative) -> "Anger/Disappointment"
-        # Else -> "Neutral/Curiosity"
-        
-        # Note: 'score' from pipeline is confidence of the label. 
-        # We need to adjust it to a 0-1 scale where 1 is Positive, 0 is Negative.
-        # The pipeline returns label=POSITIVE/NEGATIVE and score=0.5-1.0 usually.
-        
-        adjusted_score = score
-        if label == "NEGATIVE":
-            adjusted_score = 1.0 - score  # High confidence negative -> low score (0.0 - 0.5)
-        elif label == "POSITIVE":
-            adjusted_score = 0.5 + (score * 0.5) # Map 0.5-1.0 confidence to roughly 0.75-1.0 range? 
-            # Actually, standard BERT output is: Label=POSITIVE, Score=0.99. 
-            # Let's treat it simply: if Positive and > 0.8 -> Joy.
-            
-        # Simplified Logic per prompt requirement:
-        # We'll use the raw score if it maps to positive/negative intensity
-        # But pipeline gives class probability.
-        
-        final_emotion_score = 0.0
-        
+        # 2. Emotion Logic
         if label == "POSITIVE" and score > 0.8:
             emotion = "Joy/Excitement"
             final_emotion_score = score
-        elif label == "NEGATIVE" and score > 0.8: # High confidence negative
+        elif label == "NEGATIVE" and score > 0.8: 
             emotion = "Anger/Disappointment"
             final_emotion_score = score
         else:
             emotion = "Neutral/Curiosity"
             final_emotion_score = 0.5
+            
+        return label, score, emotion, final_emotion_score
+
+    def analyze_text(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, any]:
+        """Synchronous analyze with Real Emotion & Aspect Detection."""
+        if not text or not text.strip():
+            return {"label": "NEUTRAL", "score": 0.5, "emotion": "neutral", "credibility": 0.1, "aspects": []}
+
+        # Call cached inference
+        label, score, emotion, final_emotion_score = self._predict_sentiment_cached(text)
 
         # 3. Aspect Logic
-        # Scan text for keywords and assign sentiment
         text_lower = text.lower()
         aspects_found = []
         
@@ -193,8 +172,6 @@ class AIService:
         for aspect_name, triggers in keywords.items():
             for trigger in triggers:
                 if trigger in text_lower:
-                    # Assign the overall text sentiment to this aspect
-                    # In a full version, we'd split sentences, but for now we use global sentiment
                     aspect_sentiment = "neutral"
                     if label == "POSITIVE": aspect_sentiment = "positive"
                     elif label == "NEGATIVE": aspect_sentiment = "negative"
@@ -204,11 +181,11 @@ class AIService:
                         "sentiment": aspect_sentiment,
                         "score": score
                     })
-                    break # Only count aspect once per review
+                    break 
 
         credibility = self._compute_credibility(text, score, metadata)
 
-        # 4. Topic/Keyword Extraction (Single Document)
+        # 4. Topic/Keyword Extraction
         topics = []
         if _SKLEARN_AVAILABLE:
              try:
@@ -218,7 +195,6 @@ class AIService:
              except Exception:
                  pass
         
-        # Fallback simple bigrams if sklearn fails or empty
         if not topics and len(text.split()) > 4:
              words = re.sub(r'[^\w\s]', '', text.lower()).split()
              topics = [f"{words[i]} {words[i+1]}" for i in range(len(words)-1) if len(words[i]) > 3 and len(words[i+1]) > 3][:5]

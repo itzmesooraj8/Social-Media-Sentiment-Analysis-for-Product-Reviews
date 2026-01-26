@@ -20,13 +20,15 @@ async def scrape_all(keywords: list, product_id: str, target_url: str = None):
     
     # 2. General Keyword Search (Parallel)
     for keyword in keywords:
-        # Note: Scrapers are async in this codebase, so we await them via gather, no to_thread needed for these specific methods
+        # YouTube
         if hasattr(youtube_scraper, 'search_video_comments'):
             tasks.append(youtube_scraper.search_video_comments(keyword))
         
+        # Reddit
         if hasattr(reddit_scraper, 'search_product_mentions'):
             tasks.append(reddit_scraper.search_product_mentions(keyword))
             
+        # Twitter
         if hasattr(twitter_scraper, 'search_tweets'):
             tasks.append(twitter_scraper.search_tweets(keyword))
 

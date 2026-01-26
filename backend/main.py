@@ -31,7 +31,7 @@ load_dotenv(dotenv_path=env_path)
 sys.path.insert(0, str(Path(__file__).parent))
 
 from services.ai_service import ai_service
-from services import scrapers, reddit_scraper, twitter_scraper
+from services import scrapers, reddit_scraper, twitter_scraper, youtube_scraper, data_pipeline
 from services.prediction_service import generate_forecast
 from routers import reports
 from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats, get_product_by_id, delete_product
@@ -192,8 +192,6 @@ async def api_scrape_youtube(payload: YoutubeScrapeRequest):
 
     max_results = payload.max_results or 50
     try:
-        # Assuming search_youtube_comments is still needed for direct URL scrapes
-        from services.youtube_scraper import youtube_scraper
         items = await youtube_scraper.search_video_comments(url, max_results=max_results)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -203,8 +201,6 @@ async def api_scrape_youtube(payload: YoutubeScrapeRequest):
 
     saved_count = 0
     if payload.product_id:
-        # Re-using the data pipeline for consistency
-        from services.data_pipeline import data_pipeline
         processed = await data_pipeline.process_reviews(items, payload.product_id)
         saved_count = len(processed)
 
@@ -218,7 +214,6 @@ async def api_scrape_reddit(payload: RedditScrapeRequest):
         raise HTTPException(status_code=400, detail="query is required")
 
     try:
-        from services.reddit_scraper import reddit_scraper
         items = await reddit_scraper.search_product_mentions(query, limit=payload.limit or 50)
         return {"success": True, "data": items, "count": len(items)}
     except Exception as e:
@@ -232,12 +227,10 @@ async def api_scrape_twitter(payload: TwitterScrapeRequest):
         raise HTTPException(status_code=400, detail="query is required")
 
     try:
-        from services.twitter_scraper import twitter_scraper
         items = await twitter_scraper.search_tweets(query, limit=payload.limit or 20)
         
         # If product_id, save them
         if payload.product_id and items:
-             from services.data_pipeline import data_pipeline
              await data_pipeline.process_reviews(items, payload.product_id)
 
         return {"success": True, "data": items, "count": len(items)}
@@ -255,8 +248,6 @@ async def api_scrape_youtube_stream(url: str = Query(...), product_id: Optional[
     """
 
     # Use an async generator to stream Server-Sent Events (SSE) reliably.
-    from services.youtube_scraper import youtube_scraper
-    from services.data_pipeline import data_pipeline
     import json
 
     async def event_generator():
