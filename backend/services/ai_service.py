@@ -4,6 +4,11 @@ from functools import lru_cache
 from typing import Dict, List, Any
 import logging
 
+
+from database import supabase
+
+logger = logging.getLogger(__name__)
+
 # --- Imports with Safety Checks ---
 try:
     from transformers import pipeline
@@ -55,10 +60,6 @@ except ImportError:
     logger.warning("Gensim not found. LDA Topic modeling will be limited.")
 
 # ----------------------------------
-
-from database import supabase
-
-logger = logging.getLogger(__name__)
 
 class AIService:
     def __init__(self):

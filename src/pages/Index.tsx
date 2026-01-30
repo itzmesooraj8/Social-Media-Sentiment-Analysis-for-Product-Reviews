@@ -30,11 +30,16 @@ const Index = () => {
 
   const [selectedProductId, setSelectedProductId] = useState<string | undefined>(undefined);
 
-  // Default to first product for visualization
+  // Default to first product for visualization - DISABLED for Overall View check
   useEffect(() => {
+    // If we want "Overall" by default, we don't auto-select.
+    // However, if the user explicitly wants to start with "Overall", we leave it undefined.
+    // Commenting out auto-select to support "Overall Dashboard".
+    /*
     if (products && products.length > 0 && !selectedProductId) {
       setSelectedProductId(products[0].id);
     }
+    */
   }, [products, selectedProductId]);
 
   const { data: insightsData, isLoading: insightsLoading } = useQuery({
@@ -141,9 +146,13 @@ const Index = () => {
             </div>
             <span className="text-sm font-medium text-sentinel-positive">Live Data Feed</span>
           </div>
-          {selectedProductId && products?.find(p => p.id === selectedProductId) && (
+          {selectedProductId && products?.find(p => p.id === selectedProductId) ? (
             <span className="text-sm text-muted-foreground ml-auto">
               Viewing: {products.find(p => p.id === selectedProductId)?.name}
+            </span>
+          ) : (
+            <span className="text-sm text-muted-foreground ml-auto">
+              Viewing: Overall Dashboard
             </span>
           )}
         </div>

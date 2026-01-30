@@ -2,7 +2,13 @@ import base64
 import io
 import re
 from typing import List, Dict, Optional, Any
-import matplotlib.pyplot as plt
+
+try:
+    import matplotlib.pyplot as plt
+    _MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    _MATPLOTLIB_AVAILABLE = False
+
 
 try:
     from wordcloud import WordCloud, STOPWORDS

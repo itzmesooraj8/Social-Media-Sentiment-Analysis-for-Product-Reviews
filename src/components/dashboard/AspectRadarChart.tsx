@@ -17,7 +17,8 @@ interface AspectRadarChartProps {
 
 const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
-    const data = payload[0].payload;
+    const data = payload?.[0]?.payload;
+    if (!data) return null;
     return (
       <div className="glass-card p-3 rounded-xl shadow-lg border border-border/50">
         <p className="font-semibold text-foreground">{data.aspect}</p>

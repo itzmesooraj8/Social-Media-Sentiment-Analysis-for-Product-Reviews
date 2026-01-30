@@ -10,6 +10,7 @@ const api = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
+    timeout: 120000, // increase default timeout to 120s for slow endpoints
 });
 
 // Sync Auth Token from Supabase or Local Storage
@@ -191,9 +192,10 @@ export const getTopics = async (limit = 10, productId?: string) => {
     }
 };
 
-export const getWordCloud = async (productId: string) => {
+export const getWordCloud = async (productId?: string) => {
     try {
-        const response = await api.get(`/products/${productId}/wordcloud`);
+        const url = productId ? `/products/${productId}/wordcloud` : `/wordcloud`;
+        const response = await api.get(url);
         return response.data?.data || {}; // { positive: base64, negative: base64, neutral: base64 }
     } catch (e) {
         console.error("getWordCloud failed", e);

@@ -22,11 +22,14 @@ const COLORS = {
 
 const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
+    const item = payload?.[0];
+    const d = item?.payload ?? item;
+    if (!d) return null;
     return (
       <div className="glass-card p-3 rounded-xl shadow-lg border border-border/50">
-        <p className="font-semibold text-foreground capitalize">{payload[0].name}</p>
+        <p className="font-semibold text-foreground capitalize">{d.name}</p>
         <p className="text-sm text-muted-foreground">
-          <span className="font-medium">{payload[0].value}%</span> of reviews
+          <span className="font-medium">{d.value}%</span> of reviews
         </p>
       </div>
     );

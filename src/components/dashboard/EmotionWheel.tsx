@@ -123,7 +123,8 @@ export function EmotionWheel({ isLoading, data }: EmotionWheelProps) {
             {!isEmpty && <Tooltip
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
-                  const d = payload[0].payload;
+                  const d = payload?.[0]?.payload;
+                  if (!d) return null;
                   return (
                     <div className="glass-card px-3 py-2 border border-white/10 shadow-xl backdrop-blur-xl bg-black/80">
                       <div className="flex items-center gap-2">

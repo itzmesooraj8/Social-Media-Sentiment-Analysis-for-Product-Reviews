@@ -14,6 +14,41 @@
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:description" content="Explore sentiment trends, extract keywords, and generate reports from social media product reviews." />
+    <script>
+      // Suppress unrelated browser extension errors (GiveFreely, etc.) to keep console clean
+      (function() {
+        const ignorePatterns = [
+          "giveFreely",
+          "browserPolyfillWrapper",
+          "production extension not found",
+          "Receiving end does not exist",
+          "fetchViaServiceWorker"
+        ];
+        
+        const originalError = console.error;
+        console.error = function(...args) {
+          const msg = args.map(String).join(' ');
+          if (ignorePatterns.some(p => msg.includes(p))) return;
+          originalError.apply(console, args);
+        };
+
+        window.addEventListener('error', (e) => {
+           if ((e.filename && ignorePatterns.some(p => e.filename.includes(p))) || 
+               (e.message && ignorePatterns.some(p => e.message.includes(p)))) {
+             e.preventDefault();
+             e.stopImmediatePropagation();
+           }
+        }, true);
+        
+        window.addEventListener('unhandledrejection', (e) => {
+           const reason = e.reason ? String(e.reason) : "";
+           if (ignorePatterns.some(p => reason.includes(p))) {
+             e.preventDefault();
+             e.stopImmediatePropagation();
+           }
+        }, true);
+      })();
+    </script>
   </head>
 
   <body>

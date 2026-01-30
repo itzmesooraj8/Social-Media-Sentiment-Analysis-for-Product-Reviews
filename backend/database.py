@@ -131,7 +131,7 @@ async def add_product(product_data: dict):
 async def get_reviews(product_id: str = None, limit: int = 100):
     if supabase is not None:
         try:
-            query = supabase.table("reviews").select("*")
+            query = supabase.table("reviews").select("*, sentiment_analysis(*)")
             if product_id:
                 query = query.eq("product_id", product_id)
             
@@ -265,7 +265,13 @@ async def get_dashboard_stats():
             for k, v in platforms.items()
         ]
 
+        # 4. Recent Reviews (Live Feed)
+        task_recent = asyncio.to_thread(lambda: supabase.table("reviews").select("*, sentiment_analysis(*)").order("created_at", desc=True).limit(10).execute())
+        resp_recent = await _safe_db_call(task_recent)
+        recent_reviews = resp_recent.data if resp_recent else []
+
         return {
+            "recentReviews": recent_reviews,
             "totalReviews": total_reviews,
             "sentimentScore": round(avg_score, 1),
             "sentimentDelta": sentiment_delta,
@@ -276,7 +282,6 @@ async def get_dashboard_stats():
                 "verifiedReviews": total_reviews - bots_detected, # approx
                 "botsDetected": bots_detected
             },
-            # Basic defaults for others to avoid crashes
             "sentimentTrends": [], 
             "topKeywords": [],
             "alerts": [] 
