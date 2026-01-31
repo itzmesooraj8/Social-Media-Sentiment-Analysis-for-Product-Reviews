@@ -30,6 +30,17 @@ else:
         logger.error(f"Error initializing Supabase client: {e}")
         supabase = None
 
+_LOCAL_DB_PATH = Path("local_db.json")
+
+def _read_local_db() -> dict:
+    if not _LOCAL_DB_PATH.exists():
+        return {}
+    try:
+        return json.loads(_LOCAL_DB_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.error(f"Failed to read local DB: {e}")
+        return {}
+
 def _write_local_db(data: dict):
     try:
         _LOCAL_DB_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -209,7 +220,49 @@ async def get_dashboard_stats():
         avg_score = 0
         bots_detected = 0
         avg_credibility = 0
-        sentiment_delta = 0.0 # Placeholder for now, requires historical comparison
+        sentiment_delta = 0.0 
+        
+        # Calculate Delta (Today vs Yesterday)
+        try:
+            now = datetime.now(timezone.utc)
+            one_day_ago = now - timedelta(days=1)
+            two_days_ago = now - timedelta(days=2)
+            
+            task_today = asyncio.to_thread(lambda: supabase.table("reviews").select("sentiment_analysis(score)")\
+                .gte("created_at", one_day_ago.isoformat())\
+                .execute())
+                
+            task_yesterday = asyncio.to_thread(lambda: supabase.table("reviews").select("sentiment_analysis(score)")\
+                .gte("created_at", two_days_ago.isoformat())\
+                .lt("created_at", one_day_ago.isoformat())\
+                .execute())
+                
+            resp_today, resp_yesterday = await asyncio.gather(
+                _safe_db_call(task_today),
+                _safe_db_call(task_yesterday)
+            )
+            
+            def calc_avg(resp):
+                if not resp or not resp.data: return 0.0
+                scores = []
+                for r in resp.data:
+                    sa = r.get("sentiment_analysis")
+                    if isinstance(sa, list) and sa: sa = sa[0]
+                    if isinstance(sa, dict) and sa.get("score") is not None:
+                        scores.append(float(sa.get("score")))
+                return (sum(scores) / len(scores)) * 100 if scores else 0.0
+
+            today_val = calc_avg(resp_today)
+            yesterday_val = calc_avg(resp_yesterday)
+            
+            # If no data yesterday, delta is 0 or just today's val (we'll use 0 to be safe)
+            if yesterday_val > 0:
+                sentiment_delta = today_val - yesterday_val
+            else:
+                sentiment_delta = 0.0
+
+        except Exception as ex:
+            logger.error(f"Delta calc failed: {ex}")
         
         rows = resp_stats.data if resp_stats else []
         if rows:
@@ -274,7 +327,7 @@ async def get_dashboard_stats():
             "recentReviews": recent_reviews,
             "totalReviews": total_reviews,
             "sentimentScore": round(avg_score, 1),
-            "sentimentDelta": sentiment_delta,
+            "sentimentDelta": round(sentiment_delta, 1),
             "averageCredibility": round(avg_credibility, 1),
             "platformBreakdown": platform_breakdown,
             "credibilityReport": {

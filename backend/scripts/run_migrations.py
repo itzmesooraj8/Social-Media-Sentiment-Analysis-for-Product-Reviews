@@ -64,7 +64,8 @@ def run_migrations():
             '05_add_youtube_comments.sql',
             '06_add_roles.sql',
             '07_add_engagement_metrics.sql',
-            'security.sql'
+            'security.sql',
+            '09_final_security_audit.sql'
         ]
 
         success = True

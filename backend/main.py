@@ -403,7 +403,7 @@ async def api_get_topics(limit: int = 10, product_id: Optional[str] = None):
 
 
 @app.get("/api/products/{product_id}/wordcloud")
-async def api_get_wordcloud(product_id: str):
+async def api_get_product_wordcloud(product_id: str):
     """
     Generate word clouds (base64 images).
     """
@@ -428,6 +428,33 @@ async def api_get_wordcloud(product_id: str):
         return {"success": True, "data": clouds}
     except Exception as e:
         logger.error(f"Wordcloud error: {e}")
+        return {"success": False, "detail": str(e)}
+
+
+@app.get("/api/wordcloud")
+async def api_get_global_wordcloud():
+    """
+    Generate global word clouds (base64 images) from all reviews.
+    """
+    try:
+        reviews = await get_reviews(None, limit=500)
+        
+        flat_reviews = []
+        for r in reviews:
+            sa = r.get("sentiment_analysis")
+            label = "NEUTRAL"
+            if isinstance(sa, list) and sa: label = sa[0].get("label")
+            elif isinstance(sa, dict): label = sa.get("label")
+            
+            flat_reviews.append({
+                "content": r.get("content"),
+                "sentiment_label": label
+            })
+            
+        clouds = wordcloud_service.wordcloud_service.generate_wordclouds(flat_reviews)
+        return {"success": True, "data": clouds}
+    except Exception as e:
+        logger.error(f"Global Wordcloud error: {e}")
         return {"success": False, "detail": str(e)}
 
 
@@ -612,49 +639,13 @@ async def api_create_alert(payload: AlertCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/products/{product_id}/wordcloud")
-async def api_get_product_wordcloud(product_id: str):
-    try:
-        reviews = await get_reviews(product_id, limit=200)
-        clouds = wordcloud_service.wordcloud_service.generate_wordclouds(reviews)
-        return {"success": True, "data": clouds}
-    except Exception as e:
-        logger.error(f"Wordcloud error: {e}")
-        return {"success": False, "data": {}}
 
-@app.get("/api/wordcloud")
-async def api_get_global_wordcloud():
-    """Global wordcloud from all reviews"""
-    try:
-        # Fetch generic latest reviews
-        reviews = await get_reviews(None, limit=500)
-        clouds = wordcloud_service.wordcloud_service.generate_wordclouds(reviews)
-        return {"success": True, "data": clouds}
-    except Exception as e:
-        logger.error(f"Global Wordcloud error: {e}")
-        return {"success": False, "data": {}}
 
-@app.get("/api/products/{product_id}/wordcloud")
-async def api_get_product_wordcloud(product_id: str):
-    try:
-        reviews = await get_reviews(product_id, limit=200)
-        clouds = wordcloud_service.wordcloud_service.generate_wordclouds(reviews)
-        return {"success": True, "data": clouds}
-    except Exception as e:
-        logger.error(f"Wordcloud error: {e}")
-        return {"success": False, "data": {}}
 
-@app.get("/api/wordcloud")
-async def api_get_global_wordcloud():
-    """Global wordcloud from all reviews"""
-    try:
-        # Fetch generic latest reviews
-        reviews = await get_reviews(None, limit=500)
-        clouds = wordcloud_service.wordcloud_service.generate_wordclouds(reviews)
-        return {"success": True, "data": clouds}
-    except Exception as e:
-        logger.error(f"Global Wordcloud error: {e}")
-        return {"success": False, "data": {}}
+
+
+
+
 
 
 @app.post("/api/alerts/{alert_id}/read")
