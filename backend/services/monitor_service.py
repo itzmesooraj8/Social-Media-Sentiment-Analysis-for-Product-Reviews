@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from database import supabase
+from database import supabase, create_alert_log
 
 class MonitorService:
     async def check_triggers(self, review: Dict[str, Any]):
@@ -53,7 +53,7 @@ class MonitorService:
                 "is_resolved": False,
                 "details": details
             }
-            supabase.table("alerts").insert(alert).execute()
+            await create_alert_log(alert)
         except Exception as e:
             print(f"Failed to insert alert: {e}")
 

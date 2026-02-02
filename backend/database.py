@@ -30,25 +30,10 @@ else:
         logger.error(f"Error initializing Supabase client: {e}")
         supabase = None
 
-_LOCAL_DB_PATH = Path("local_db.json")
 
-def _read_local_db() -> dict:
-    if not _LOCAL_DB_PATH.exists():
-        return {}
-    try:
-        return json.loads(_LOCAL_DB_PATH.read_text(encoding="utf-8"))
-    except Exception as e:
-        logger.error(f"Failed to read local DB: {e}")
-        return {}
-
-def _write_local_db(data: dict):
-    try:
-        _LOCAL_DB_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    except Exception as e:
-        logger.error(f"Failed to write local DB: {e}")
 
 # Safe DB Wrapper
-async def _safe_db_call(coroutine, timeout: float = 30.0) -> Any:
+async def _safe_db_call(coroutine, timeout: float = 10.0) -> Any:
     # ...
     try:
         return await asyncio.wait_for(coroutine, timeout=timeout)
@@ -58,6 +43,15 @@ async def _safe_db_call(coroutine, timeout: float = 30.0) -> Any:
     except Exception as e:
         logger.error(f"DB Call Error: {e}")
         return None
+
+# --- CACHE STORAGE ---
+# Simple in-memory cache for dashboard stats
+# Structure: {"data": dict, "expiry": timestamp}
+_DASHBOARD_CACHE = {
+    "data": {},
+    "expiry": 0.0
+}
+_CACHE_TTL = 60 # seconds
 
 
 async def get_sentiment_trends(product_id: str, days: int = 30) -> List[Dict[str, Any]]:
@@ -113,9 +107,7 @@ async def get_products():
         except Exception as e:
             logger.error(f"Supabase get_products failed: {e}")
     
-    # Fallback to local JSON
-    db = _read_local_db()
-    return db.get("products", [])
+    return []
 
 async def add_product(product_data: dict):
     """Add a new product to the database."""
@@ -129,15 +121,7 @@ async def add_product(product_data: dict):
         except Exception as e:
             logger.error(f"Supabase add_product failed: {e}")
 
-    # Fallback
-    import uuid
-    db = _read_local_db()
-    prod = {**product_data}
-    if not prod.get("id"):
-        prod["id"] = str(uuid.uuid4())
-    db.setdefault("products", []).append(prod)
-    _write_local_db(db)
-    return prod
+    return None
 
 async def get_reviews(product_id: str = None, limit: int = 100):
     if supabase is not None:
@@ -166,10 +150,6 @@ async def get_product_by_id(product_id: str):
         except Exception:
             pass
 
-    db = _read_local_db()
-    for p in db.get("products", []):
-        if str(p.get("id")) == str(product_id):
-            return p
     return None
 
 async def delete_product(product_id: str):
@@ -188,142 +168,175 @@ async def delete_product(product_id: str):
         except Exception:
             pass
 
-    # Fallback
-    db = _read_local_db()
-    prods = db.get("products", [])
-    new_prods = [p for p in prods if str(p.get("id")) != str(product_id)]
-    db["products"] = new_prods
-    reviews = db.get("reviews", [])
-    db["reviews"] = [r for r in reviews if str(r.get("product_id")) != str(product_id)]
-    _write_local_db(db)
-    return {"success": True, "deleted_id": product_id}
+    return {"success": False, "error": "Supabase not connected"}
 
 async def get_dashboard_stats():
     """
-    Fetch aggregated stats for the dashboard.
+    Fetch aggregated stats for the dashboard with Caching and Parallelism.
     """
     if not supabase:
         return {}
+        
+    # 1. Check Cache
+    import time
+    now_ts = time.time()
+    if _DASHBOARD_CACHE["data"] and now_ts < _DASHBOARD_CACHE["expiry"]:
+        return _DASHBOARD_CACHE["data"]
 
     try:
-        # 1. Total Reviews
-        # Using exact count for speed if table is large, or just normal count
-        task_count = asyncio.to_thread(lambda: supabase.table("reviews").select("id", count="exact").execute())
-        resp_count = await _safe_db_call(task_count)
-        total_reviews = resp_count.count if resp_count else 0
+        # Define tasks for parallel execution
         
-        # 2. Average Sentiment & Bot Count
-        # Fetching stats from sentiment_analysis table
-        task_stats = asyncio.to_thread(lambda: supabase.table("sentiment_analysis").select("score, label, credibility").limit(2000).execute())
-        resp_stats = await _safe_db_call(task_stats)
+        # Task 1: Total Reviews
+        async def fetch_count():
+            task = asyncio.to_thread(lambda: supabase.table("reviews").select("id", count="exact").execute())
+            resp = await _safe_db_call(task)
+            return resp.count if resp else 0
+            
+        # Task 2: Sentiment Stats (for avg score, credibility, bots, emotions)
+        async def fetch_stats():
+            task = asyncio.to_thread(lambda: supabase.table("sentiment_analysis").select("score, label, credibility, emotions").limit(200).execute())
+            resp = await _safe_db_call(task)
+            return resp.data if resp else []
+
+        # Task 3: Delta Calculation (Today vs Yesterday)
+        async def fetch_delta():
+            try:
+                now = datetime.now(timezone.utc)
+                one_day_ago = now - timedelta(days=1)
+                two_days_ago = now - timedelta(days=2)
+                
+                # Nested parallel tasks for dates - Limit to 200 to prevent timeout
+                t_today = asyncio.to_thread(lambda: supabase.table("reviews").select("sentiment_analysis(score)")\
+                    .gte("created_at", one_day_ago.isoformat()).limit(200).execute())
+                t_yesterday = asyncio.to_thread(lambda: supabase.table("reviews").select("sentiment_analysis(score)")\
+                    .gte("created_at", two_days_ago.isoformat()).lt("created_at", one_day_ago.isoformat()).limit(200).execute())
+                    
+                resp_today, resp_yesterday = await asyncio.gather(_safe_db_call(t_today), _safe_db_call(t_yesterday))
+                
+                # Helper for fallback structure parsing if API changes
+                def safe_extract_scores(resp):
+                    if not resp or not resp.data: return []
+                    s_list = []
+                    for r in resp.data:
+                        sa = r.get("sentiment_analysis")
+                        if isinstance(sa, list) and sa: sa = sa[0]
+                        if isinstance(sa, dict) and sa.get("score") is not None:
+                             s_list.append(float(sa.get("score")))
+                    return s_list
+
+                scores_today = safe_extract_scores(resp_today)
+                scores_yesterday = safe_extract_scores(resp_yesterday)
+                
+                val_today = (sum(scores_today)/len(scores_today))*100 if scores_today else 0.0
+                val_yesterday = (sum(scores_yesterday)/len(scores_yesterday))*100 if scores_yesterday else 0.0
+                
+                return val_today - val_yesterday if val_yesterday > 0 else 0.0
+            except Exception as e:
+                logger.error(f"Delta error: {e}")
+                return 0.0
+
+        # Task 4: Platform Breakdown
+        async def fetch_platforms():
+            task = asyncio.to_thread(lambda: supabase.table("reviews").select("platform, sentiment_analysis(label)").limit(200).execute())
+            resp = await _safe_db_call(task)
+            rows = resp.data if resp else []
+            
+            platforms = {}
+            for r in rows:
+                p = (r.get("platform") or "unknown").lower()
+                if p not in platforms: platforms[p] = {"positive":0,"neutral":0,"negative":0,"total":0}
+                platforms[p]["total"] += 1
+                
+                sa = r.get("sentiment_analysis")
+                if isinstance(sa, list) and sa: sa = sa[0]
+                label = (sa.get("label") or "neutral").lower() if sa else "neutral"
+                
+                if "positive" in label: platforms[p]["positive"] += 1
+                elif "negative" in label: platforms[p]["negative"] += 1
+                else: platforms[p]["neutral"] += 1
+            
+            return [{
+                "platform": k, "positive": v["positive"], "neutral": v["neutral"], 
+                "negative": v["negative"], "count": v["total"]
+            } for k, v in platforms.items()]
+
+        # Task 5: Recent Reviews
+        async def fetch_recent():
+            task = asyncio.to_thread(lambda: supabase.table("reviews").select("*, sentiment_analysis(*)").order("created_at", desc=True).limit(10).execute())
+            resp = await _safe_db_call(task)
+            return resp.data if resp else []
+
+        # Task 6: Top Keywords/Topics (God Tier)
+        async def fetch_keywords():
+             try:
+                 # Fetch topics
+                 resp = await asyncio.to_thread(lambda: supabase.table("topic_analysis").select("*").order("size", desc=True).limit(20).execute())
+                 if resp and resp.data:
+                     # Unique by name
+                     seen = set()
+                     unique = []
+                     for d in resp.data:
+                         if d["topic_name"] not in seen:
+                             unique.append({"text": d["topic_name"], "value": d.get("size", 10)})
+                             seen.add(d["topic_name"])
+                     return unique
+                 return []
+             except Exception:
+                 return []
+
+        # EXECUTE ALL IN PARALLEL
+        results = await asyncio.gather(
+            fetch_count(),
+            fetch_stats(),
+            fetch_delta(),
+            fetch_platforms(),
+            fetch_recent(),
+            fetch_keywords()
+        )
         
+        total_reviews, stats_rows, sentiment_delta, platform_breakdown, recent_reviews, top_keywords = results
+
+        # Process stats
         avg_score = 0
-        bots_detected = 0
         avg_credibility = 0
-        sentiment_delta = 0.0 
+        bots_detected = 0
+        emotion_counts = {}
         
-        # Calculate Delta (Today vs Yesterday)
-        try:
-            now = datetime.now(timezone.utc)
-            one_day_ago = now - timedelta(days=1)
-            two_days_ago = now - timedelta(days=2)
-            
-            task_today = asyncio.to_thread(lambda: supabase.table("reviews").select("sentiment_analysis(score)")\
-                .gte("created_at", one_day_ago.isoformat())\
-                .execute())
+        if stats_rows:
+            scores = []
+            creds = []
+            for r in stats_rows:
+                s = r.get("score")
+                c = r.get("credibility")
+                if s is not None: scores.append(float(s))
+                if c is not None: creds.append(float(c))
                 
-            task_yesterday = asyncio.to_thread(lambda: supabase.table("reviews").select("sentiment_analysis(score)")\
-                .gte("created_at", two_days_ago.isoformat())\
-                .lt("created_at", one_day_ago.isoformat())\
-                .execute())
-                
-            resp_today, resp_yesterday = await asyncio.gather(
-                _safe_db_call(task_today),
-                _safe_db_call(task_yesterday)
-            )
+                # God Tier Emotion Aggregation
+                # Check for detailed 'emotions' list first
+                emos = r.get("emotions")
+                if emos and isinstance(emos, list) and len(emos) > 0:
+                    # emos is [{"name": "joy", "score": 90}]
+                    primary = emos[0].get("name")
+                    if primary:
+                        emotion_counts[primary] = emotion_counts.get(primary, 0) + 1
+                else:
+                    # Fallback to label
+                    label = r.get("label")
+                    if label:
+                         emo = "Neutral"
+                         if label == "POSITIVE": emo = "Joy"
+                         elif label == "NEGATIVE": emo = "Sadness"
+                         emotion_counts[emo] = emotion_counts.get(emo, 0) + 1
             
-            def calc_avg(resp):
-                if not resp or not resp.data: return 0.0
-                scores = []
-                for r in resp.data:
-                    sa = r.get("sentiment_analysis")
-                    if isinstance(sa, list) and sa: sa = sa[0]
-                    if isinstance(sa, dict) and sa.get("score") is not None:
-                        scores.append(float(sa.get("score")))
-                return (sum(scores) / len(scores)) * 100 if scores else 0.0
-
-            today_val = calc_avg(resp_today)
-            yesterday_val = calc_avg(resp_yesterday)
-            
-            # If no data yesterday, delta is 0 or just today's val (we'll use 0 to be safe)
-            if yesterday_val > 0:
-                sentiment_delta = today_val - yesterday_val
-            else:
-                sentiment_delta = 0.0
-
-        except Exception as ex:
-            logger.error(f"Delta calc failed: {ex}")
-        
-        rows = resp_stats.data if resp_stats else []
-        if rows:
-            scores = [r.get("score") for r in rows if r.get("score") is not None]
-            creds = [r.get("credibility") for r in rows if r.get("credibility") is not None]
-            
-            if scores: avg_score = (sum(scores) / len(scores)) * 100 # 0-100 scale
+            if scores: avg_score = (sum(scores) / len(scores)) * 100
             if creds: avg_credibility = (sum(creds) / len(creds)) * 100
-            
-            # Simple bot detection logic (credibility < 0.4)
             bots_detected = sum(1 for c in creds if c < 0.4)
-            
-        # 3. Platform Breakdown
-        # We need to group by platform. Supabase JS/Py client doesn't do 'group by' easily without RPC.
-        # We'll fetch 'platform' from reviews and aggregation in python for now (limit 2000).
-        # 3. Platform Breakdown (with Sentiment)
-        task_platform = asyncio.to_thread(lambda: supabase.table("reviews").select("platform, sentiment_analysis(label)").limit(2000).execute())
-        resp_platform = await _safe_db_call(task_platform)
-        platform_rows = resp_platform.data if resp_platform else []
-        
-        platforms = {}
-        # platforms structure: { 'twitter': { 'positive': 10, 'neutral': 5, 'negative': 2, 'count': 17 } }
 
-        for r in platform_rows:
-            p = r.get("platform") or "unknown"
-            p = p.lower()
-            
-            if p not in platforms:
-                platforms[p] = {"positive": 0, "neutral": 0, "negative": 0, "total": 0}
-            
-            platforms[p]["total"] += 1
-            
-            # Extract sentiment label
-            sa = r.get("sentiment_analysis")
-            if isinstance(sa, list) and sa: sa = sa[0] # Handle list return
-            label = (sa.get("label") or "neutral").lower() if sa else "neutral"
-            
-            if "positive" in label:
-                platforms[p]["positive"] += 1
-            elif "negative" in label:
-                platforms[p]["negative"] += 1
-            else:
-                platforms[p]["neutral"] += 1
-            
-        platform_breakdown = [
-            {
-                "platform": k, 
-                "positive": v["positive"], 
-                "neutral": v["neutral"], 
-                "negative": v["negative"],
-                "count": v["total"]
-            } 
-            for k, v in platforms.items()
-        ]
+        # Better Emotion Breakdown (Normalized)
+        total_emotions = sum(emotion_counts.values()) or 1
+        emotion_breakdown = [{"name": k, "value": v, "percentage": round((v/total_emotions)*100, 1)} for k,v in emotion_counts.items()]
 
-        # 4. Recent Reviews (Live Feed)
-        task_recent = asyncio.to_thread(lambda: supabase.table("reviews").select("*, sentiment_analysis(*)").order("created_at", desc=True).limit(10).execute())
-        resp_recent = await _safe_db_call(task_recent)
-        recent_reviews = resp_recent.data if resp_recent else []
-
-        return {
+        final_data = {
             "recentReviews": recent_reviews,
             "totalReviews": total_reviews,
             "sentimentScore": round(avg_score, 1),
@@ -332,19 +345,73 @@ async def get_dashboard_stats():
             "platformBreakdown": platform_breakdown,
             "credibilityReport": {
                 "overallScore": round(avg_credibility, 1),
-                "verifiedReviews": total_reviews - bots_detected, # approx
+                "verifiedReviews": total_reviews - bots_detected,
                 "botsDetected": bots_detected
             },
             "sentimentTrends": [], 
-            "topKeywords": [],
+            "topKeywords": top_keywords,
+            "emotionBreakdown": emotion_breakdown,
             "alerts": [] 
         }
+        
+        # Save to Cache
+        _DASHBOARD_CACHE["data"] = final_data
+        _DASHBOARD_CACHE["expiry"] = time.time() + _CACHE_TTL
+        
+        return final_data
 
     except Exception as e:
         logger.error(f"get_dashboard_stats failed: {e}")
-        return {}
+        # Return default structure to prevent Frontend Crash
+        return {
+            "recentReviews": [],
+            "totalReviews": 0,
+            "sentimentScore": 0,
+            "sentimentDelta": 0,
+            "averageCredibility": 0,
+            "platformBreakdown": [],
+            "credibilityReport": {
+                "overallScore": 0,
+                "verifiedReviews": 0,
+                "botsDetected": 0
+            },
+            "sentimentTrends": [], 
+            "topKeywords": [],
+            "emotionBreakdown": [],
+            "alerts": [] 
+        }
 
 async def save_sentiment_analysis(analysis_data: dict):
     if supabase:
         task = asyncio.to_thread(lambda: supabase.table("sentiment_analysis").insert(analysis_data).execute())
+        await _safe_db_call(task)
+
+async def save_review(review_data: dict):
+    """Async wrapper for saving review."""
+    if supabase is not None:
+        try:
+            task = asyncio.to_thread(lambda: supabase.table("reviews").insert(review_data).execute())
+            resp = await _safe_db_call(task)
+            if resp and resp.data:
+                return resp.data[0]
+        except Exception as e:
+            # Handle duplicate or constraint errors generally
+            # Caller might want to know specific error, but for now log and return None
+            # If we want to allow caller to retry (duplicate), we should re-raise or return specific error.
+            # But the caller in data_pipeline checks for 'duplicate' in string.
+            # We can re-raise exception if it occurs in _safe_db_call? 
+            # _safe_db_call returns None on error.
+            # We should probably modify _safe_db_call or just implement simple logic here.
+            logger.error(f"save_review failed: {e}")
+            raise e # Let caller handle logic
+    return None
+
+async def save_topic(topic_data: dict):
+    if supabase:
+        task = asyncio.to_thread(lambda: supabase.table("topic_analysis").insert(topic_data).execute())
+        await _safe_db_call(task)
+
+async def create_alert_log(alert_data: dict):
+    if supabase:
+        task = asyncio.to_thread(lambda: supabase.table("alerts").insert(alert_data).execute())
         await _safe_db_call(task)

@@ -16,8 +16,7 @@ import {
   Users,
   Package,
   Link2,
-  HelpCircle,
-  Swords
+  HelpCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -42,7 +41,7 @@ const navItems = [
   { icon: FileText, label: 'Reports', path: '/reports' },
   { icon: Bell, label: 'Alerts', path: '/alerts' },
   { icon: Package, label: 'Products', path: '/products' },
-  { icon: Swords, label: 'Competitors', path: '/competitors' },
+
   { icon: Link2, label: 'Integrations', path: '/integrations' },
   { icon: Settings, label: 'Settings', path: '/settings' },
   { icon: HelpCircle, label: 'Help', path: '/help' },

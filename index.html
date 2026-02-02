@@ -1,58 +1,125 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Social Media Sentiment Analysis for Product Reviews</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="description" content="Social Media Sentiment Analysis for Product Reviews — an interactive dashboard and API for aggregating and analyzing product review sentiment across social platforms." />
-    <meta name="author" content="Sentiment Beacon" />
 
-    <meta property="og:title" content="Social Media Sentiment Analysis for Product Reviews" />
-    <meta property="og:description" content="Visualize and analyze sentiment from product reviews across Twitter, Reddit, YouTube, and more." />
-    <meta property="og:type" content="website" />
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Social Media Sentiment Analysis for Product Reviews</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="description"
+    content="Social Media Sentiment Analysis for Product Reviews — an interactive dashboard and API for aggregating and analyzing product review sentiment across social platforms." />
+  <meta name="author" content="Sentiment Beacon" />
 
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:description" content="Explore sentiment trends, extract keywords, and generate reports from social media product reviews." />
-    <script>
-      // Suppress unrelated browser extension errors (GiveFreely, etc.) to keep console clean
-      (function() {
-        const ignorePatterns = [
-          "giveFreely",
-          "browserPolyfillWrapper",
-          "production extension not found",
-          "Receiving end does not exist",
-          "fetchViaServiceWorker"
-        ];
-        
-        const originalError = console.error;
-        console.error = function(...args) {
-          const msg = args.map(String).join(' ');
-          if (ignorePatterns.some(p => msg.includes(p))) return;
-          originalError.apply(console, args);
-        };
+  <meta property="og:title" content="Social Media Sentiment Analysis for Product Reviews" />
+  <meta property="og:description"
+    content="Visualize and analyze sentiment from product reviews across Twitter, Reddit, YouTube, and more." />
+  <meta property="og:type" content="website" />
 
-        window.addEventListener('error', (e) => {
-           if ((e.filename && ignorePatterns.some(p => e.filename.includes(p))) || 
-               (e.message && ignorePatterns.some(p => e.message.includes(p)))) {
-             e.preventDefault();
-             e.stopImmediatePropagation();
-           }
-        }, true);
-        
-        window.addEventListener('unhandledrejection', (e) => {
-           const reason = e.reason ? String(e.reason) : "";
-           if (ignorePatterns.some(p => reason.includes(p))) {
-             e.preventDefault();
-             e.stopImmediatePropagation();
-           }
-        }, true);
-      })();
-    </script>
-  </head>
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:description"
+    content="Explore sentiment trends, extract keywords, and generate reports from social media product reviews." />
+  <script>
+    // Suppress unrelated browser extension errors (GiveFreely, etc.) to keep console clean
+    (function () {
+      const ignorePatterns = [
+        "giveFreely",
+        "browserPolyfillWrapper",
+        "production extension not found",
+        "Receiving end does not exist",
+        "fetchViaServiceWorker"
+      ];
 
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+      const originalError = console.error;
+      console.error = function (...args) {
+        const msg = args.map(String).join(' ');
+        if (ignorePatterns.some(p => msg.includes(p))) return;
+        originalError.apply(console, args);
+      };
+
+      window.addEventListener('error', (e) => {
+        if ((e.filename && ignorePatterns.some(p => e.filename.includes(p))) ||
+          (e.message && ignorePatterns.some(p => e.message.includes(p)))) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      }, true);
+
+      window.addEventListener('unhandledrejection', (e) => {
+        const reason = e.reason ? String(e.reason) : "";
+        if (ignorePatterns.some(p => reason.includes(p))) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      }, true);
+    })();
+  </script>
+</head>
+
+<body>
+  <div id="root">
+    <style>
+      .initial-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background-color: #ffffff;
+        z-index: 9999;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #000;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+      }
+
+      .loader-text {
+        font-size: 14px;
+        color: #666;
+        letter-spacing: 0.5px;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .initial-loader {
+          background-color: #09090b;
+        }
+
+        .spinner {
+          border-color: #27272a;
+          border-top-color: #fff;
+        }
+
+        .loader-text {
+          color: #a1a1aa;
+        }
+      }
+    </style>
+    <div class="initial-loader">
+      <div class="spinner"></div>
+      <div class="loader-text">Initializing Sentinel...</div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>

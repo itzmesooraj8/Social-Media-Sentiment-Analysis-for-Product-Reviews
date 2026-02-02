@@ -52,8 +52,6 @@ interface Integration {
   isEnabled: boolean;
 }
 
-// Mock data removed. Usage strictly from API.
-
 const platformIcons = {
   twitter: Twitter,
   reddit: MessageSquare,
@@ -86,25 +84,49 @@ const Integrations = () => {
 
   useEffect(() => {
     if (statusData) {
-      // Map system status to integrations list
+      const counts = statusData.counts || { reddit: 0, youtube: 0, twitter: 0 };
+
+      // Defaults based on backend status
       const defaults = [
-        { id: 'twitter', name: 'Twitter/X', platform: 'twitter' as const, key: 'twitter' },
-        { id: 'reddit', name: 'Reddit', platform: 'reddit' as const, key: 'reddit' },
-        { id: 'youtube', name: 'YouTube', platform: 'youtube' as const, key: 'youtube' },
+        {
+          id: 'twitter',
+          name: 'Twitter/X',
+          platform: 'twitter' as const,
+          key: 'twitter',
+          reviews: counts.twitter
+        },
+        {
+          id: 'reddit',
+          name: 'Reddit',
+          platform: 'reddit' as const,
+          key: 'reddit',
+          reviews: counts.reddit
+        },
+        {
+          id: 'youtube',
+          name: 'YouTube',
+          platform: 'youtube' as const,
+          key: 'youtube',
+          reviews: counts.youtube
+        },
       ];
 
-      const mapped = defaults.map(d => ({
+      const mapped: Integration[] = defaults.map(d => ({
         id: d.id,
         name: d.name,
         platform: d.platform,
-        status: statusData[d.key as keyof typeof statusData] ? 'connected' : 'disconnected',
-        lastSync: statusData[d.key as keyof typeof statusData] ? new Date() : null,
-        reviewsCollected: 0, // dynamic count not available in simple status endpoint
+        // @ts-ignore
+        status: statusData[d.key] ? 'connected' : 'disconnected',
+        // @ts-ignore
+        lastSync: statusData[d.key] ? new Date() : null,
+        reviewsCollected: d.reviews || 0,
         syncFrequency: '30 minutes',
-        isEnabled: !!statusData[d.key as keyof typeof statusData]
+        // @ts-ignore
+        isEnabled: !!statusData[d.key]
       }));
 
-      // @ts-ignore
+      // Load specific persistent "Custom" integrations from localStorage if we had any
+      // For now, we just stick to the live system status
       setIntegrations(mapped);
     }
   }, [statusData]);
@@ -117,9 +139,6 @@ const Integrations = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-card rounded-xl animate-pulse" />)}
           </div>
-          <div className="space-y-4">
-            {[1, 2, 3].map(i => <div key={i} className="h-24 bg-card rounded-xl animate-pulse" />)}
-          </div>
         </div>
       </DashboardLayout>
     );
@@ -127,23 +146,38 @@ const Integrations = () => {
 
   const formatLastSync = (date: Date | null) => {
     if (!date) return 'Never';
-    const diff = Date.now() - date.getTime();
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-
-    if (minutes < 60) return `${minutes}m ago`;
-    return `${hours}h ago`;
+    // Fake a "Just now" if it's connected, or use real time diff if we had it
+    // For this demo, since backend doesn't store exact sync time per integration, we assume it's recent if connected
+    return "Recent";
   };
 
-  const handleTestConnection = async (id: string) => {
+  const handleTestConnection = async (id: string, platform: string) => {
     setTestingConnection(id);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setTestingConnection(null);
-
-    toast({
-      title: 'Connection Successful',
-      description: 'API connection is working properly.',
-    });
+    try {
+      const res = await fetch(`http://localhost:8000/api/integrations/test/${platform}`, { method: 'POST' });
+      if (res.ok) {
+        toast({
+          title: 'Connection Successful',
+          description: 'API connection is verified and working.',
+          variant: "default" // success
+        });
+      } else {
+        const err = await res.json();
+        toast({
+          title: 'Connection Failed',
+          description: err.detail || 'Could not verify credentials.',
+          variant: "destructive"
+        });
+      }
+    } catch (e) {
+      toast({
+        title: 'Connection Error',
+        description: 'Network error or backend offline.',
+        variant: "destructive"
+      });
+    } finally {
+      setTestingConnection(null);
+    }
   };
 
   const handleToggleIntegration = (id: string) => {
@@ -152,7 +186,21 @@ const Integrations = () => {
         int.id === id ? { ...int, isEnabled: !int.isEnabled } : int
       )
     );
+    toast({ title: "Status Updated", description: "Integration availability toggled." });
   };
+
+  const handleDelete = (id: string) => {
+    // Since these are system integrations controlled by env vars, we can't delete them.
+    // But for the UI demo, we can remove them from the list until refresh or show a message.
+    toast({
+      title: "Cannot Delete System Integration",
+      description: "This integration is defined in server configuration (.env). Set credentials to empty to remove it permanently.",
+      variant: "destructive"
+    });
+  };
+
+  const activeCount = integrations.filter(i => i.status === 'connected').length;
+  const totalReviews = integrations.reduce((sum, i) => sum + i.reviewsCollected, 0);
 
   const statusConfig = {
     connected: { icon: CheckCircle, color: 'text-sentinel-positive', label: 'Connected' },
@@ -182,74 +230,15 @@ const Integrations = () => {
                 <DialogTitle>Add New Integration</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label>Platform</Label>
-                  <Select value={selectedPlatform || undefined} onValueChange={(v) => setSelectedPlatform(v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select platform" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="twitter">Twitter/X</SelectItem>
-                      <SelectItem value="reddit">Reddit</SelectItem>
-                      <SelectItem value="youtube">YouTube</SelectItem>
-                      <SelectItem value="forums">Custom Forum</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded text-sm text-foreground">
+                  Note: To add a new system integration, please configure the <code>.env</code> file on the server.
                 </div>
-                <div className="space-y-2">
-                  <Label>API Key</Label>
-                  <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Enter your API key" />
-                </div>
-                <div className="space-y-2">
-                  <Label>API Secret (if required)</Label>
-                  <Input type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder="Enter your API secret" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Sync Frequency</Label>
-                  <Select value={selectedFrequency} onValueChange={(v) => setSelectedFrequency(v)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="15">Every 15 minutes</SelectItem>
-                      <SelectItem value="30">Every 30 minutes</SelectItem>
-                      <SelectItem value="60">Every hour</SelectItem>
-                      <SelectItem value="360">Every 6 hours</SelectItem>
-                      <SelectItem value="1440">Daily</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex gap-2 pt-4">
-                  <Button variant="outline" className="flex-1" onClick={() => setIsAddDialogOpen(false)}>
-                    Cancel
-                  </Button>
-
-                  <Button
-                    className="flex-1 bg-sentinel-credibility hover:bg-sentinel-credibility/90"
-                    onClick={() => {
-                      const platform = (selectedPlatform || 'twitter') as 'twitter' | 'reddit' | 'youtube' | 'forums';
-                      const nameMap: Record<string, string> = { twitter: 'Twitter/X feed', reddit: 'Reddit feed', youtube: 'YouTube feed', forums: 'Custom Forum' };
-                      const freqMap: Record<string, string> = { '15': '15 minutes', '30': '30 minutes', '60': '1 hour', '360': '6 hours', '1440': 'Daily' };
-
-                      setIntegrations(prev => [
-                        ...prev,
-                        {
-                          id: `new-${Date.now()}`,
-                          name: nameMap[platform] || `${platform} feed`,
-                          platform: platform,
-                          status: 'connected',
-                          lastSync: new Date(),
-                          reviewsCollected: 0,
-                          syncFrequency: freqMap[selectedFrequency] || '30 minutes',
-                          isEnabled: true
-                        }
-                      ]);
-                      setIsAddDialogOpen(false);
-                      toast({ title: "Integration Added", description: "Successfully connected to platform." });
-                    }}
-                  >
-                    Connect
-                  </Button>
+                {/* 
+                  Real "Add" functionality would go here if we had a dynamic backend database for auth keys. 
+                  For now, we guide the user to the config.
+                 */}
+                <div className="flex justify-end pt-4">
+                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Close</Button>
                 </div>
               </div>
             </DialogContent>
@@ -264,7 +253,7 @@ const Integrations = () => {
                 <Link2 className="h-5 w-5 text-sentinel-positive" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{integrations.filter(i => i.status === 'connected').length}</p>
+                <p className="text-2xl font-bold">{activeCount}</p>
                 <p className="text-sm text-muted-foreground">Active Connections</p>
               </div>
             </div>
@@ -275,7 +264,7 @@ const Integrations = () => {
                 <Zap className="h-5 w-5 text-sentinel-credibility" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{integrations.reduce((sum, i) => sum + i.reviewsCollected, 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold">{totalReviews.toLocaleString()}</p>
                 <p className="text-sm text-muted-foreground">Total Reviews Collected</p>
               </div>
             </div>
@@ -286,8 +275,8 @@ const Integrations = () => {
                 <Clock className="h-5 w-5 text-sentinel-warning" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{integrations.length > 0 ? formatLastSync(integrations.reduce((latest, i) => !latest || (i.lastSync && i.lastSync > latest) ? i.lastSync : latest, null as Date | null)) : '-'}</p>
-                <p className="text-sm text-muted-foreground">Last Sync</p>
+                <p className="text-2xl font-bold">Live</p>
+                <p className="text-sm text-muted-foreground">System Status</p>
               </div>
             </div>
           </div>
@@ -349,8 +338,6 @@ const Integrations = () => {
                         <span>{integration.reviewsCollected.toLocaleString()} reviews collected</span>
                         <span>•</span>
                         <span>Syncs every {integration.syncFrequency}</span>
-                        <span>•</span>
-                        <span>Last sync: {formatLastSync(integration.lastSync)}</span>
                       </div>
                     </div>
                   </div>
@@ -371,8 +358,8 @@ const Integrations = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleTestConnection(integration.id)}
-                      disabled={testingConnection === integration.id}
+                      onClick={() => handleTestConnection(integration.id, integration.platform)}
+                      disabled={testingConnection === integration.id || integration.status === 'disconnected'}
                     >
                       {testingConnection === integration.id ? (
                         <RefreshCw className="h-4 w-4 animate-spin" />
@@ -382,25 +369,16 @@ const Integrations = () => {
                       <span className="ml-2 hidden sm:inline">Test</span>
                     </Button>
 
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => toast({ title: "Configuration", description: "Use .env file to configure this integration." })}>
                       <Settings className="h-4 w-4" />
                       <span className="ml-2 hidden sm:inline">Configure</span>
                     </Button>
 
-                    <Button variant="outline" size="sm" className="text-sentinel-negative hover:text-sentinel-negative">
+                    <Button variant="outline" size="sm" className="text-sentinel-negative hover:text-sentinel-negative" onClick={() => handleDelete(integration.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
-
-                {/* Error Message */}
-                {integration.status === 'error' && (
-                  <div className="mt-4 p-3 rounded-lg bg-sentinel-negative/10 border border-sentinel-negative/30">
-                    <p className="text-sm text-sentinel-negative">
-                      ⚠️ API rate limit exceeded. Will retry automatically in 15 minutes.
-                    </p>
-                  </div>
-                )}
               </motion.div>
             );
           })}

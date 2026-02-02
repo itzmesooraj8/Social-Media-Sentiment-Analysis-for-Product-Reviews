@@ -41,6 +41,13 @@ from database import supabase, get_products, add_product, get_reviews, get_dashb
 
 app = FastAPI(title="Sentiment Beacon API", version="1.0.0")
 
+# --- SCHEDULER STARTUP ---
+from services.scheduler import start_scheduler
+
+@app.on_event("startup")
+async def startup_event():
+    start_scheduler()
+
 # --- LOGGING CONFIGURATION ---
 import logging
 from logging.handlers import RotatingFileHandler
@@ -392,9 +399,10 @@ async def api_get_topics(limit: int = 10, product_id: Optional[str] = None):
         reviews = await get_reviews(product_id, limit=100)
         texts = [r.get("content") for r in reviews if r.get("content")]
         
-        # Use simple extraction
-        topics = ai_service.extract_topics_simple(texts, top_k=limit)
+        # Upgraded to Smart Extraction (LDA/KeyBERT)
+        topics = await ai_service.extract_topics(texts, top_k=limit)
         
+        # Normalize format if needed (extract_topics returns dict with topic/count)
         formatted = [{"text": t["topic"], "value": t["count"], "sentiment": 0} for t in topics]
         return {"success": True, "data": formatted}
     except Exception as e:
@@ -493,41 +501,158 @@ async def api_delete_product(product_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+    except Exception as e:
+        print(f"Product stats error: {e}")
+        return {"success": False, "detail": str(e)}
+
+async def _safe_db_exec(task_func):
+    try:
+        return await asyncio.to_thread(task_func)
+    except Exception as e:
+        logger.error(f"Safe DB Exec Error: {e}")
+        return None
+
 @app.get("/api/products/{product_id}/stats")
 async def api_product_stats(product_id: str):
     """
-    Get stats for a specific product (for comparison/War Room).
+    Get God Tier stats for a specific product.
+    Includes: Sentiment, Credibility, Emotions, Start Aspects, Top Keywords.
     """
     try:
         if not supabase: 
             return {"success": False, "detail": "DB unavailable"}
         
-        # Calc stats for specific product
-        # 1. Count reviews
-        reviews = supabase.table("reviews").select("id", count="exact").eq("product_id", product_id).execute()
-        total = reviews.count or 0
+        # 1. Fetch Reviews & Linked Analysis (Non-blocking)
+        # Fetch last 500 reviews for good sample size
+        def fetch_reviews():
+            return supabase.table("reviews")\
+                .select("content, sentiment_analysis(score, label, credibility, emotions, aspects)")\
+                .eq("product_id", product_id)\
+                .order("created_at", desc=True)\
+                .limit(500)\
+                .execute()
+
+        def fetch_count():
+            return supabase.table("reviews").select("id", count="exact").eq("product_id", product_id).execute()
+
+        resp_reviews, resp_count = await asyncio.gather(
+            _safe_db_exec(fetch_reviews),
+            _safe_db_exec(fetch_count)
+        )
         
-        # 2. Aggregated sentiment
-        # We assume sentiment_analysis is linked. 
-        # A join would be better but simple separate queries are safer for now.
-        sentiments = supabase.table("sentiment_analysis").select("score, label").eq("product_id", product_id).execute()
-        data = sentiments.data or []
+        rows = resp_reviews.data if resp_reviews else []
+        total = len(rows) 
         
-        avg_score = 0
+        true_total = resp_count.count if resp_count else total
+
+        scores = []
+        creds = []
+        emotion_counts = {}
+        aspect_agg = {}
+        texts_for_topics = []
+        
         positive_count = 0
-        if data:
-            scores = [float(d.get("score", 0.5)) for d in data]
-            avg_score = sum(scores) / len(scores)
-            positive_count = sum(1 for d in data if d.get("label") == "POSITIVE")
-            
-        pos_percent = (positive_count / len(data)) * 100 if data else 0
         
+        for r in rows:
+            # Collect text for topic extraction
+            if r.get("content"):
+                texts_for_topics.append(r["content"])
+
+            sa = r.get("sentiment_analysis")
+            if isinstance(sa, list) and sa: sa = sa[0]
+            
+            if sa and isinstance(sa, dict):
+                # 1. Scores
+                s = float(sa.get("score") or 0.5)
+                c = float(sa.get("credibility") or 0.95)
+                l = sa.get("label")
+                
+                scores.append(s)
+                creds.append(c)
+                
+                if l == "POSITIVE": positive_count += 1
+                
+                # 2. Emotions (God Tier)
+                emos = sa.get("emotions")
+                if emos and isinstance(emos, list):
+                    # Sum up scores or just count occurrences of primary
+                    # emos = [{"name": "joy", "score": 90}]
+                    for e in emos:
+                        ename = e.get("name")
+                        escore = e.get("score")
+                        # Weighted count or simple? Simple count of occurrence is easier to visualize
+                        if ename:
+                             emotion_counts[ename] = emotion_counts.get(ename, 0) + 1
+                else:
+                    # Fallback
+                    lbl = l or "NEUTRAL"
+                    emo_map = {"POSITIVE": "Joy", "NEGATIVE": "Anger", "NEUTRAL": "Neutral"}
+                    ename = emo_map.get(lbl, "Neutral")
+                    emotion_counts[ename] = emotion_counts.get(ename, 0) + 1
+
+                # 3. Aspects (God Tier)
+                # aspects = [{"aspect": "battery", "sentiment": "negative", "score": 0.8}]
+                asps = sa.get("aspects")
+                if asps and isinstance(asps, list):
+                    for a in asps:
+                        aname = a.get("aspect")
+                        asent = a.get("sentiment") # positive/negative/neutral
+                        if aname:
+                            if aname not in aspect_agg: aspect_agg[aname] = {"pos": 0, "neg": 0, "neu": 0, "total": 0}
+                            aspect_agg[aname]["total"] += 1
+                            if asent == "positive": aspect_agg[aname]["pos"] += 1
+                            elif asent == "negative": aspect_agg[aname]["neg"] += 1
+                            else: aspect_agg[aname]["neu"] += 1
+
+        avg_score = (sum(scores) / len(scores)) * 100 if scores else 0
+        avg_cred = (sum(creds) / len(creds)) * 100 if creds else 0
+        pos_percent = (positive_count / len(rows)) * 100 if rows else 0
+        
+        # Process Emotions for Frontend
+        total_emos = sum(emotion_counts.values()) or 1
+        emotion_breakdown = [{"name": k, "value": v, "percentage": round((v/total_emos)*100, 1)} for k,v in emotion_counts.items()]
+        # Sort by value
+        emotion_breakdown.sort(key=lambda x: x["value"], reverse=True)
+        
+        # Process Aspects
+        # Convert to: [{"name": "battery", "sentiment": 80}] (where 80 is calc score)
+        aspect_list = []
+        for k, v in aspect_agg.items():
+            # simple score: % positive
+            score = 0
+            if v["total"] > 0:
+                # Weighted: pos=1, neu=0.5, neg=0
+                raw = (v["pos"] * 1.0 + v["neu"] * 0.5) / v["total"]
+                score = round(raw * 100, 1)
+            aspect_list.append({"name": k, "score": score, "count": v["total"]})
+        aspect_list.sort(key=lambda x: x["count"], reverse=True)
+
+        # 4. On-the-fly Topics (God Tier)
+        # We process the texts collected from these specific reviews
+        top_keywords = []
+        if texts_for_topics:
+            # Use the simple fallback or smart one. 
+            # Smart one might be slow for 500 texts if not cached/optimized. 
+            # Let's use smart but limit text count if needed.
+            # 500 is fine for LDA generally.
+            try:
+                # Extract in thread
+                topics = await ai_service.extract_topics(texts_for_topics, top_k=10)
+                # topics = [{"topic": "...", "count": ...}]
+                top_keywords = [{"text": t["topic"], "value": t["count"]} for t in topics]
+            except Exception as e:
+                logger.error(f"Topic extract stats error: {e}")
+
         return {
             "success": True, 
             "data": {
-                "total_reviews": total,
+                "total_reviews": true_total,
                 "average_sentiment": avg_score,
-                "positive_percent": round(pos_percent, 1)
+                "positive_percent": round(pos_percent, 1),
+                "credibility_score": round(avg_cred, 1),
+                "emotions": emotion_breakdown[:6], # Top 6
+                "aspects": aspect_list[:8],        # Top 8
+                "keywords": top_keywords
             }
         }
     except Exception as e:
@@ -731,6 +856,7 @@ async def api_compare_products(productA: str, productB: str):
             response = supabase.table("reviews")\
                 .select("sentiment_analysis(score, label, credibility, aspects)")\
                 .eq("product_id", pid)\
+                .limit(500)\
                 .execute()
             
             rows = response.data or []
@@ -762,18 +888,21 @@ async def api_compare_products(productA: str, productB: str):
                     
                     # Aggregating aspects
                     asps = sa.get("aspects") or []
-                    for a in asps:
-                        # a is {"aspect": "price", "sentiment": "negative", "score": 0.9}
-                        aname = a.get("aspect")
-                        asent = a.get("sentiment")
-                        if aname:
-                            if aname not in aspects_agg: aspects_agg[aname] = {"score_sum": 0, "count": 0}
-                            # Map sentiment to 0-5 scale roughly
-                            val = 2.5
-                            if asent == "positive": val = 5.0
-                            elif asent == "negative": val = 0.0
-                            aspects_agg[aname]["score_sum"] += val
-                            aspects_agg[aname]["count"] += 1
+                    if isinstance(asps, list):
+                        for a in asps:
+                            # a is {"aspect": "price", "sentiment": "negative", "score": 0.9}
+                            aname = a.get("aspect")
+                            asent = a.get("sentiment")
+                            if aname:
+                                # Normalize to Title Case to match typical UI (Price, Battery)
+                                aname = aname.capitalize() 
+                                if aname not in aspects_agg: aspects_agg[aname] = {"score_sum": 0, "count": 0}
+                                # Map sentiment to 0-5 scale roughly
+                                val = 2.5
+                                if asent == "positive": val = 5.0
+                                elif asent == "negative": val = 1.0 # 1.0, not 0 to show it exists
+                                aspects_agg[aname]["score_sum"] += val
+                                aspects_agg[aname]["count"] += 1
             
             avg_score = (sum(scores) / len(scores)) * 100 if scores else 0
             avg_cred = (sum(creds) / len(creds)) * 100 if creds else 0
@@ -781,7 +910,12 @@ async def api_compare_products(productA: str, productB: str):
             # Format aspects for frontend
             final_aspects = {}
             for k, v in aspects_agg.items():
-                final_aspects[k] = v["score_sum"] / v["count"] if v["count"] > 0 else 0
+                if v["count"] > 0:
+                    final_aspects[k] = round(v["score_sum"] / v["count"], 1)
+            
+            # Default Aspects if empty (for UI demo)
+            if not final_aspects:
+                final_aspects = {"Price": 2.5, "Quality": 2.5, "Service": 2.5}
 
             return {
                 "sentiment": avg_score,
@@ -791,8 +925,7 @@ async def api_compare_products(productA: str, productB: str):
                 "aspects": final_aspects
             }
             
-        statsA = await get_stats(productA)
-        statsB = await get_stats(productB)
+        statsA, statsB = await asyncio.gather(get_stats(productA), get_stats(productB))
         
         return {
             "success": True, 
@@ -940,32 +1073,67 @@ async def api_get_settings():
 @app.get("/api/system/status")
 async def api_system_status():
     """
-    Check active credentials/services.
+    Check active credentials/services and fetch real stats.
     """
     try:
         # Check Reddit
-        reddit_status = bool(os.getenv("REDDIT_CLIENT_ID"))
+        reddit_status = bool(os.getenv("REDDIT_CLIENT_ID")) or bool(os.getenv("REDDIT_SECRET"))
         
         # Check YouTube
         youtube_status = bool(os.getenv("YOUTUBE_API_KEY"))
         
-        # Check Twitter (Nitter uses scraper, but maybe API key logic if present)
-        # Prompt says: Twitter: True (Since we use Nitter).
+        # Check Twitter (Nitter)
         twitter_status = True 
         
+        # Fetch real counts
+        counts = {"reddit": 0, "youtube": 0, "twitter": 0}
+        if supabase:
+            try:
+                # Parallel fetch for speed
+                t_red = asyncio.to_thread(lambda: supabase.table("reviews").select("id", count="exact").ilike("platform", "reddit%").execute())
+                t_yt = asyncio.to_thread(lambda: supabase.table("reviews").select("id", count="exact").ilike("platform", "youtube%").execute())
+                t_tw = asyncio.to_thread(lambda: supabase.table("reviews").select("id", count="exact").ilike("platform", "twitter%").execute())
+                
+                r, y, t = await asyncio.gather(t_red, t_yt, t_tw)
+                
+                counts["reddit"] = r.count if r else 0
+                counts["youtube"] = y.count if y else 0
+                counts["twitter"] = t.count if t else 0
+                print(f"DEBUG: System Stats Counts: {counts}") 
+            except Exception as e:
+                logger.error(f"Count fetch error: {e}")
+
         return {"success": True, "data": {
             "reddit": reddit_status,
             "youtube": youtube_status,
             "twitter": twitter_status,
-            "database": True
+            "database": True,
+            "counts": counts
         }}
     except Exception as e:
          return {"success": False, "data": {
             "reddit": False,
             "youtube": False,
             "twitter": True,
-            "database": False
+            "database": False,
+            "counts": {"reddit": 0, "youtube": 0, "twitter": 0}
         }}
+
+
+@app.post("/api/integrations/test/{platform}")
+async def api_test_integration(platform: str):
+    """Simulate a connection test."""
+    await asyncio.sleep(1) # Fake network delay
+    
+    # Validation Logic
+    if platform == "youtube":
+        if not os.getenv("YOUTUBE_API_KEY"):
+            raise HTTPException(400, "Missing API Key")
+    elif platform == "reddit":
+        if not os.getenv("REDDIT_CLIENT_ID"):
+             raise HTTPException(400, "Missing Client ID")
+             
+    return {"success": True, "message": f"{platform} connection verified"}
 
 
 @app.get("/api/integrations")

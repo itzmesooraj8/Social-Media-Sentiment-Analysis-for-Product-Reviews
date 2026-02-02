@@ -102,13 +102,17 @@ class YouTubeScraperService:
             logger.warning(f"Could not find video for query: {query}")
             return []
 
-        # 2. If we have downloader, prefer it for comments (cheaper/better)
+        # 2. If we have downloader, try it first
         if self._downloader:
-            return self._sync_scrape_ycd(f"https://www.youtube.com/watch?v={video_id}", max_results)
+            ycd_results = self._sync_scrape_ycd(f"https://www.youtube.com/watch?v={video_id}", max_results)
+            if ycd_results:
+                return ycd_results
+            else:
+                logger.warning("Downloader returned no results, falling back to API.")
 
-        # 3. Fallback to API if downloader missing
+        # 3. Fallback to API
         if not self._client:
-            logger.warning("YouTube API missing and Downloader missing.")
+            logger.warning("YouTube API missing and Downloader failed/missing.")
             return []
 
         try:

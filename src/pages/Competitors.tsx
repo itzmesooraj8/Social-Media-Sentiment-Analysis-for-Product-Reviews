@@ -1,14 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
-import { getCompare, getProducts as apiGetProducts, getReviews } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { getCompare, getProducts as apiGetProducts, triggerScrape } from '@/lib/api';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Swords, TrendingUp, Trophy, AlertTriangle } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { SentimentDistribution } from '@/components/dashboard/SentimentDistribution';
+import { Swords, Trophy, AlertTriangle, RefreshCw } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 interface ComparisonData {
     aspects: { subject: string; A: number; B: number; fullMark: number }[];
@@ -24,19 +25,27 @@ const Competitors = () => {
     const [selectedA, setSelectedA] = useState<string>('');
     const [selectedB, setSelectedB] = useState<string>('');
     const [data, setData] = useState<ComparisonData | null>(null);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+    const { toast } = useToast();
+    const queryClient = useQueryClient();
 
     // Fetch Products List via React Query
-    const { data: productList = [], isLoading: productsLoading } = useQuery({ queryKey: ['products'], queryFn: apiGetProducts });
+    const { data: productList = [] } = useQuery({ queryKey: ['products'], queryFn: apiGetProducts });
 
     useEffect(() => {
         if (Array.isArray(productList)) setProducts(productList as any[]);
     }, [productList]);
 
+    // Aggressive Polling Mode: 1s interval when analyzing
+    const pollInterval = isAnalyzing ? 1000 : 0;
+
     // Server-side Comparison
-    const { data: compareRes, isLoading: isCompareLoading } = useQuery({
+    const { data: compareRes } = useQuery({
         queryKey: ['compare', selectedA, selectedB],
         queryFn: () => getCompare(selectedA, selectedB),
-        enabled: !!selectedA && !!selectedB
+        enabled: !!selectedA && !!selectedB,
+        refetchInterval: pollInterval
     });
 
     useEffect(() => {
@@ -44,21 +53,19 @@ const Competitors = () => {
 
         const metrics = compareRes.data.metrics;
         if (!metrics) return;
-
-        if (!metrics?.productA || !metrics?.productB) return;
+        if (!metrics.productA || !metrics.productB) return;
 
         const mA = metrics.productA;
         const mB = metrics.productB;
 
-        // Use real aspect data if available, otherwise default to empty to avoid fake data
+        // Use real aspect data if available
         const subjects = new Set([...Object.keys(mA.aspects || {}), ...Object.keys(mB.aspects || {})]);
-        // Default subjects if none found
         if (subjects.size === 0) {
-            ['Price', 'Quality', 'Service'].forEach(s => subjects.add(s.toLowerCase()));
+            ['Price', 'Quality', 'Service'].forEach(s => subjects.add(s));
         }
 
         const aspects = Array.from(subjects).map((subject) => ({
-            subject: subject.charAt(0).toUpperCase() + subject.slice(1),
+            subject: subject,
             A: mA.aspects?.[subject] || 0,
             B: mB.aspects?.[subject] || 0,
             fullMark: 5
@@ -91,15 +98,56 @@ const Competitors = () => {
         return null;
     };
 
+    const handleLiveAnalysis = async () => {
+        if (!selectedA || !selectedB) {
+            toast({ title: "Select Products", description: "Please select two contenders first.", variant: "destructive" });
+            return;
+        }
+        setIsAnalyzing(true);
+        toast({ title: "War Room Activated", description: "Deploying agents for both contenders..." });
+
+        try {
+            await Promise.all([triggerScrape(selectedA), triggerScrape(selectedB)]);
+            queryClient.invalidateQueries({ queryKey: ['compare', selectedA, selectedB] });
+
+            // Poll for 30s
+            setTimeout(() => {
+                setIsAnalyzing(false);
+                toast({ title: "Analysis Complete", description: "Refresh completed." });
+            }, 30000);
+
+        } catch (e) {
+            setIsAnalyzing(false);
+            toast({ title: "Error", description: "Failed to start scraping.", variant: "destructive" });
+        }
+    };
+
     return (
         <DashboardLayout>
             <div className="space-y-6">
-                <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <Swords className="h-6 w-6 text-sentinel-credibility" />
-                        Competitor War Room
-                    </h1>
-                    <p className="text-muted-foreground">Head-to-head product comparison</p>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-2xl font-bold flex items-center gap-2">
+                            <Swords className="h-6 w-6 text-sentinel-credibility" />
+                            Competitor War Room
+                            {isAnalyzing && (
+                                <span className="text-xs bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded animate-pulse border border-yellow-500/20">
+                                    ⚡ Syncing...
+                                </span>
+                            )}
+                        </h1>
+                        <p className="text-muted-foreground">Head-to-head product comparison</p>
+                    </div>
+                    <div>
+                        <Button
+                            variant="outline"
+                            disabled={!selectedA || !selectedB || isAnalyzing}
+                            onClick={handleLiveAnalysis}
+                        >
+                            <RefreshCw className={`mr-2 h-4 w-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                            {isAnalyzing ? 'Analyzing...' : 'Live Analysis'}
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Selection Controls */}
@@ -156,7 +204,7 @@ const Competitors = () => {
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                             {/* Radar Chart */}
-                            <Card className="glass-card border-border/50">
+                            <Card className={`glass-card border-border/50 ${isAnalyzing ? 'border-yellow-500/20' : ''}`}>
                                 <CardHeader>
                                     <CardTitle>Aspect Battle</CardTitle>
                                 </CardHeader>
@@ -192,7 +240,7 @@ const Competitors = () => {
                             </Card>
 
                             {/* Bar Chart: Counts */}
-                            <Card className="glass-card border-border/50">
+                            <Card className={`glass-card border-border/50 ${isAnalyzing ? 'border-yellow-500/20' : ''}`}>
                                 <CardHeader><CardTitle>Sentiment Volume Comparison</CardTitle></CardHeader>
                                 <CardContent>
                                     <div className="h-[300px]">
@@ -214,7 +262,7 @@ const Competitors = () => {
                         </div>
 
                         {/* Detailed Comparison Table */}
-                        <Card className="glass-card border-border/50">
+                        <Card className={`glass-card border-border/50 ${isAnalyzing ? 'border-yellow-500/20' : ''}`}>
                             <CardHeader>
                                 <CardTitle>Head-to-Head Stats</CardTitle>
                             </CardHeader>

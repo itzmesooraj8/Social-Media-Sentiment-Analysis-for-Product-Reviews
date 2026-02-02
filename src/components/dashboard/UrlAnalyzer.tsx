@@ -126,7 +126,12 @@ export const UrlAnalyzer: React.FC<UrlAnalyzerProps> = ({ onAnalysisComplete, se
           <div className="mt-4 p-4 border rounded bg-surface">
             <h3 className="text-sm font-semibold mb-2">Product details</h3>
             <div className="flex gap-2">
-              <Input placeholder="Product name" value={productName} onChange={(e) => setProductName(e.target.value)} />
+              <Input
+                placeholder="Product name"
+                value={productName}
+                onChange={(e) => setProductName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSubmitProduct()}
+              />
               <Button onClick={handleSubmitProduct} disabled={isLoading || !productName} className="bg-green-600 hover:bg-green-700 text-white">Create & Analyze</Button>
               <Button onClick={() => setShowProductForm(false)} variant="ghost">Cancel</Button>
             </div>

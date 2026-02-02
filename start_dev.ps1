@@ -5,7 +5,7 @@ Write-Host "🚀 STARTING SENTIMENT BEACON..." -ForegroundColor Cyan
 # 1. Verify Database
 Write-Host "1️⃣  Verifying Database & Seeding..." -ForegroundColor Yellow
 try {
-    & "backend\.venv\Scripts\python.exe" "backend\run_migrations.py"
+    & "backend\.venv\Scripts\python.exe" "backend\scripts\run_migrations.py"
     if ($LASTEXITCODE -ne 0) {
         Write-Host "❌ Database verification failed. Please check the logs above." -ForegroundColor Red
         Write-Host "⚠️  Did you run the SQL script in Supabase?" -ForegroundColor Red

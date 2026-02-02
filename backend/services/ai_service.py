@@ -41,11 +41,6 @@ except ImportError:
 try:
     from nrclex import NRCLex
     import nltk
-    # Ensure necessary NLTK data is available for NRCLex
-    try:
-        nltk.data.find('tokenizers/punkt')
-    except LookupError:
-        nltk.download('punkt', quiet=True)
     _NRC_AVAILABLE = True
 except ImportError:
     _NRC_AVAILABLE = False
@@ -72,7 +67,22 @@ class AIService:
         self._models_loaded = False
 
     def _ensure_models_loaded(self):
-        if self._models_loaded or not _TRANSFORMERS_AVAILABLE:
+        if self._models_loaded:
+            return
+
+        # 0. Ensure NLTK Data (Lazy Download)
+        if _NRC_AVAILABLE:
+             try:
+                 nltk.data.find('tokenizers/punkt')
+             except LookupError:
+                 logger.info("Downloading NLTK data...")
+                 try:
+                     nltk.download('punkt', quiet=True)
+                 except Exception as nl_e:
+                     logger.warning(f"NLTK Download failed: {nl_e}")
+
+        if not _TRANSFORMERS_AVAILABLE:
+            self._models_loaded = True
             return
 
         try:
@@ -215,65 +225,108 @@ class AIService:
     def analyze_text(self, text: str, metadata: Dict[str, Any] = None) -> Dict[str, any]:
         """Synchronous analyze with Real Emotion & Aspect Detection."""
         if not text or not text.strip():
-            return {"label": "NEUTRAL", "score": 0.5, "emotion": "neutral", "credibility": 0.1, "aspects": []}
+            return {"label": "NEUTRAL", "score": 0.5, "emotion": "neutral", "credibility": 0.1, "aspects": [], "topics": []}
 
-        # Call cached inference
-        label, score, emotion, final_emotion_score = self._predict_sentiment_cached(text)
-        
-        # Get advanced emotions if available
-        nrc_emotions = self._analyze_emotions_nrc(text)
-        
-        # Combine primary emotion with NRC results if needed, or just use NRC as details
-        # For now, we return the primary model emotion as the main one, and nrc as details if we extended the schema
-        # But the current return schema expects a list for 'emotions'. 
-        
-        emotions_list = [{"name": emotion, "score": int(final_emotion_score * 100)}]
-        if nrc_emotions:
-            # Merge or append? Let's append unique ones or keep top NRC
-            for nrc_e in nrc_emotions[:3]: # Top 3 NRC
-                if nrc_e["name"].lower() != emotion.lower():
-                     emotions_list.append(nrc_e)
-
-        # 3. Aspect Logic
-        text_lower = text.lower()
+        # Safe defaults
+        label, score, emotion = "NEUTRAL", 0.5, "neutral"
+        final_emotion_score = 0.5
+        emotions_list = []
         aspects_found = []
-        
-        keywords = {
-            "price": ["cost", "expensive", "cheap", "value", "$"],
-            "quality": ["build", "break", "material", "feel"],
-            "shipping": ["delivery", "arrive", "late", "fast"],
-            "service": ["support", "refund", "rude", "helpful"]
-        }
-        
-        for aspect_name, triggers in keywords.items():
-            for trigger in triggers:
-                if trigger in text_lower:
-                    aspect_sentiment = "neutral"
-                    if label == "POSITIVE": aspect_sentiment = "positive"
-                    elif label == "NEGATIVE": aspect_sentiment = "negative"
-                    
-                    aspects_found.append({
-                        "aspect": aspect_name,
-                        "sentiment": aspect_sentiment,
-                        "score": score
-                    })
-                    break 
-
-        credibility = self._compute_credibility(text, score, metadata)
-
-        # 4. Topic/Keyword Extraction (Simple per-text)
+        credibility = 0.5
         topics = []
-        if _SKLEARN_AVAILABLE:
-             try:
-                 vectorizer = CountVectorizer(ngram_range=(2, 2), stop_words='english', max_features=5)
-                 vectorizer.fit_transform([text])
-                 topics = vectorizer.get_feature_names_out().tolist()
-             except Exception:
-                 pass
-        
-        if not topics and len(text.split()) > 4:
-             words = re.sub(r'[^\w\s]', '', text.lower()).split()
-             topics = [f"{words[i]} {words[i+1]}" for i in range(len(words)-1) if len(words[i]) > 3 and len(words[i+1]) > 3][:5]
+
+        # 1. Prediction
+        try:
+             # Call cached inference
+             label, score, emotion, final_emotion_score = self._predict_sentiment_cached(text)
+        except Exception as e:
+             logger.error(f"Prediction error: {e}")
+
+        # 2. Emotions
+        try:
+            # Get advanced emotions if available
+            nrc_emotions = self._analyze_emotions_nrc(text)
+            
+            emotions_list = [{"name": str(emotion), "score": int(final_emotion_score * 100)}]
+            if nrc_emotions:
+                for nrc_e in nrc_emotions[:3]: # Top 3 NRC
+                    if nrc_e["name"].lower() != emotion.lower():
+                         emotions_list.append(nrc_e)
+        except Exception as e:
+            logger.error(f"Emotion extraction error: {e}")
+
+        # 3. Aspects (God Tier V2)
+        try:
+            text_lower = text.lower()
+            
+            # Expanded Domain Dictionaries (inline for safety)
+            aspect_domains = {
+                "tech": {
+                    "battery": ["battery", "charge", "power", "drain", "mAh", "life"],
+                    "screen": ["screen", "display", "pixel", "brightness", "resolution", "touch"],
+                    "performance": ["speed", "lag", "crash", "processor", "ram", "smooth", "fast", "slow", "hang"],
+                    "camera": ["camera", "photo", "video", "lens", "shutter", "focus", "quality", "low light"],
+                    "audio": ["sound", "speaker", "mic", "volume", "bass", "treble", "audio", "noise"],
+                    "connectivity": ["wifi", "bluetooth", "signal", "connection", "pair", "network", "5g", "4g"],
+                    "build": ["build", "design", "material", "plastic", "metal", "glass", "sturdy", "fragile"],
+                },
+                "fashion": {
+                    "fit": ["fit", "size", "large", "small", "tight", "loose", "length"],
+                    "comfort": ["comfortable", "itchy", "soft", "rough", "cozy", "wear"],
+                    "material": ["fabric", "cotton", "polyester", "quality", "material", "texture"],
+                    "appearance": ["look", "color", "style", "design", "pattern", "beautiful", "ugly"],
+                },
+                "service": {
+                    "shipping": ["shipping", "delivery", "arrive", "package", "box", "mail", "late", "ontime"],
+                    "support": ["support", "service", "representative", "response", "rude", "helpful", "refund", "return"],
+                    "price": ["price", "cost", "value", "expensive", "cheap", "deal", "worth"],
+                }
+            }
+            
+            found_aspects_set = set()
+
+            for domain, aspects in aspect_domains.items():
+                for aspect_name, triggers in aspects.items():
+                    for trigger in triggers:
+                        if trigger in text_lower:
+                            # Use regex for basic boundary check
+                            if re.search(r'\b' + re.escape(str(trigger)) + r'\b', text_lower):
+                                aspect_sentiment = "neutral"
+                                if label == "POSITIVE": aspect_sentiment = "positive"
+                                elif label == "NEGATIVE": aspect_sentiment = "negative"
+                                
+                                if aspect_name not in found_aspects_set:
+                                    aspects_found.append({
+                                        "aspect": str(aspect_name),
+                                        "sentiment": aspect_sentiment,
+                                        "score": float(score)
+                                    })
+                                    found_aspects_set.add(aspect_name)
+                                break 
+        except Exception as e:
+             logger.error(f"Aspect extraction error: {e}")
+
+        # 4. Credibility
+        try:
+             credibility = self._compute_credibility(text, float(score), metadata)
+        except Exception as e:
+             logger.error(f"Credibility error: {e}")
+
+        # 5. Topics
+        try:
+            if _SKLEARN_AVAILABLE:
+                 try:
+                     vectorizer = CountVectorizer(ngram_range=(2, 2), stop_words='english', max_features=5)
+                     vectorizer.fit_transform([text])
+                     topics = vectorizer.get_feature_names_out().tolist()
+                 except Exception:
+                     pass
+            
+            if not topics and len(text.split()) > 4:
+                 words = re.sub(r'[^\w\s]', '', text.lower()).split()
+                 topics = [f"{words[i]} {words[i+1]}" for i in range(len(words)-1) if len(words[i]) > 3 and len(words[i+1]) > 3][:5]
+        except Exception as e:
+             logger.error(f"Topic extraction error: {e}")
 
         return {
             "label": label,
@@ -288,12 +341,27 @@ class AIService:
         """Async wrapper."""
         return await asyncio.to_thread(self.analyze_text, text, metadata)
 
-    def extract_topics_lda(self, texts: List[str], num_topics: int = 5, num_words: int = 4) -> List[Dict[str, Any]]:
+    async def extract_topics(self, texts: List[str], top_k: int = 10) -> List[Dict[str, any]]:
         """
-        Extract topics using LDA (Delegates to NLPService).
+        Smart Topic Extraction. 
+        Tries LDA (God Tier), then KeyBERT, then Simple (Fallback).
         """
-        from services.nlp_service import nlp_service
-        return nlp_service.extract_topics_lda(texts, num_topics, num_words)
+        if not texts: return []
+        
+        # 1. Try LDA via NLP Service
+        try:
+             # Lazy import
+             from services.nlp_service import nlp_service
+             # Use a larger window extraction
+             lda_results = nlp_service.extract_topics_lda(texts, num_topics=top_k)
+             if lda_results:
+                 # Normalize output
+                 return [{"topic": r["topic"], "count": 10, "method": "lda"} for r in lda_results]
+        except Exception as e:
+             logger.warning(f"LDA failed, falling back: {e}")
+
+        # 2. Simple Fallback
+        return self.extract_topics_simple(texts, top_k)
 
     def extract_topics_simple(self, texts: List[str], top_k: int = 5) -> List[Dict[str, any]]:
         """

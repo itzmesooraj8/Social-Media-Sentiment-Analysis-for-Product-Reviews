@@ -4,10 +4,10 @@ import re
 import asyncio
 from typing import List, Dict, Any
 from datetime import datetime
-from database import supabase, save_sentiment_analysis
+from database import supabase, save_sentiment_analysis, save_review, save_topic
 from services.ai_service import ai_service
 from services.monitor_service import monitor_service
-from services.utils import anonymize_user
+
 
 class DataPipelineService:
     def _clean_text(self, text: str) -> str:
@@ -72,28 +72,46 @@ class DataPipelineService:
             
             # 3. Prepare Review Data
             # Mapped to match inferred schema (content, username)
+            
+            created_at = review.get("created_at")
+            # Handle relative dates like "3 months ago" using dateparser if available, or simple logic
+            if created_at and "ago" in str(created_at).lower():
+                 try:
+                     import dateparser
+                     dt = dateparser.parse(str(created_at))
+                     if dt: created_at = dt.isoformat()
+                 except ImportError:
+                     # Fallback: simple logic or just use current time if lib missing
+                     # For now, if we can't parse, we use now() to avoid DB error
+                     created_at = datetime.now().isoformat()
+            
+            if not created_at:
+                created_at = datetime.now().isoformat()
+
             review_data = {
                 "product_id": product_id,
                 "content": content, 
-                "username": anonymize_user(review.get("author") or review.get("username", "Anonymous")),
+                "username": review.get("author") or review.get("username", "Anonymous"),
                 "platform": review.get("platform", "web_upload"),
                 "source_url": review.get("source_url", ""),
                 "text_hash": text_hash,
-                "created_at": review.get("created_at") or datetime.now().isoformat()
+                "created_at": created_at 
             }
             
             # 4. Save to Database
             try:
                 # Save review
                 try:
-                    res = supabase.table("reviews").insert(review_data).execute()
+                    res_data = await save_review(review_data)
+                    review_id = res_data["id"] if res_data else None
                 except Exception as e:
                     # Retry without text_hash if schema issue or duplicate (robustness)
                     if "text_hash" in str(e) or "duplicate" in str(e):
                         del review_data["text_hash"]
                         # If still fails, it might be unique constraint, so we skip
                         try:
-                            res = supabase.table("reviews").insert(review_data).execute()
+                             res_data = await save_review(review_data)
+                             review_id = res_data["id"] if res_data else None
                         except Exception:
                             # Skip duplicate
                             continue
@@ -101,7 +119,7 @@ class DataPipelineService:
                         print(f"Insert error: {e}")
                         continue # Skip to next review
 
-                review_id = res.data[0]["id"] if (res.data and len(res.data) > 0) else None
+
                 
                 # Save analysis linked to review
                 if review_id:
@@ -143,14 +161,14 @@ class DataPipelineService:
                 # Save topics to 'topic_analysis' table
                 for t in topics:
                     topic_data = {
-                        "topic_name": t["topic"], 
+                        "topic_name": t.get("topic") if isinstance(t, dict) else str(t), 
                         "sentiment": 0, 
-                        "size": t["count"],       
-                        "keywords": t["topic"].split(),
+                        "size": t.get("count", 1) if isinstance(t, dict) else 1,       
+                        "keywords": (t.get("topic") or "").split() if isinstance(t, dict) else [],
                         "created_at": datetime.now().isoformat()
                     }
                     try:
-                         supabase.table("topic_analysis").insert(topic_data).execute()
+                         await save_topic(topic_data)
                     except Exception as e:
                         # silently ignore dupes/errors in background
                         pass

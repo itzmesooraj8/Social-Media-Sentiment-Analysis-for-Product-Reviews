@@ -1,2 +1,0 @@
-Benchmark Result: 1000 reviews in 167.81s
-Timestamp: Mon Jan 26 20:05:36 2026

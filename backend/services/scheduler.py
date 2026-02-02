@@ -1,7 +1,8 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-# from services.reddit_scraper import reddit_scraper # Disabled per user request
+from services.reddit_scraper import reddit_scraper
 from services.data_pipeline import process_scraped_reviews
+from services import scrapers
 from database import get_products
 import asyncio
 from datetime import datetime
@@ -12,7 +13,7 @@ async def run_automated_scraping_job():
     """
     Background job to scrape REAL reviews for all active products.
     """
-    print(f"[{datetime.now()}] 🔄 Starting automated scraping job (REAL DATA ONLY)...")
+    print(f"[{datetime.now()}] [START] Starting automated scraping job (REAL DATA ONLY)...")
     
     try:
         products = await get_products()
@@ -31,9 +32,9 @@ async def run_automated_scraping_job():
                 
                 print(f"  > Processing product: {p_name} ({p_id})")
                 
-                # Call scrapers (Reddit disabled per request, but others active)
-                # We pass None for 'url' to trigger auto-search mode in scrapers
-                res = await scrapers.scrape_all(keywords, p_id, url=None)
+                # Call scrapers (Reddit ACTIVE)
+                # We pass None for 'target_url' to trigger auto-search mode in scrapers
+                res = await scrapers.scrape_all(keywords, p_id, target_url=None)
                 
                 # Count stats
                 if res and isinstance(res, dict):
@@ -42,10 +43,10 @@ async def run_automated_scraping_job():
             except Exception as pe:
                 print(f"  ! Error processing product {product.get('name')}: {pe}")
                 
-        print(f"[{datetime.now()}] ✅ Automation finished. Total new real reviews: {total_new_reviews}")
+        print(f"[{datetime.now()}] [DONE] Automation finished. Total new real reviews: {total_new_reviews}")
         
     except Exception as e:
-        print(f"[{datetime.now()}] ❌ Automated scraping job failed: {e}")
+        print(f"[{datetime.now()}] [ERROR] Automated scraping job failed: {e}")
 
 def start_scheduler():
     scheduler.add_job(
@@ -66,4 +67,4 @@ def start_scheduler():
     )
     
     scheduler.start()
-    print("✓ Real-time background scheduler active (30 min interval) - REDDIT DISABLED")
+    print("Checked Real-time background scheduler active (30 min interval) - REDDIT ACTIVE")

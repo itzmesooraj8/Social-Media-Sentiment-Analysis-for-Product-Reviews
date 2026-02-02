@@ -81,19 +81,33 @@ export const ReviewFeed: React.FC<ReviewFeedProps> = ({ reviews }) => {
                         <div className="p-1 rounded-md bg-white/5">
                           {getPlatformIcon(review.platform)}
                         </div>
-                        <span className="text-xs font-semibold text-foreground/90">{review.username}</span>
+                        <span className="text-xs font-semibold text-foreground/90">
+                          {review.author || review.username || 'Anonymous'}
+                        </span>
                         <span className="text-[10px] text-muted-foreground">
-                          {review.timestamp ? formatDistanceToNow(new Date(review.timestamp), { addSuffix: true }) : 'Just now'}
+                          {(review.created_at || review.timestamp) ? formatDistanceToNow(new Date(review.created_at || review.timestamp || new Date()), { addSuffix: true }) : 'Just now'}
                         </span>
                       </div>
-                      <div className={cn("text-[10px] font-medium px-2 py-0.5 rounded border uppercase tracking-wider", getSentimentStyles(review.sentiment || review.sentiment_label || ''))}>
-                        {review.sentiment_label || review.sentiment || 'NEUTRAL'}
+                      <div className={cn("text-[10px] font-medium px-2 py-0.5 rounded border uppercase tracking-wider", getSentimentStyles(
+                        review.sentiment_label ||
+                        review.sentiment ||
+                        (review.sentiment_analysis as any)?.[0]?.label ||
+                        (review.sentiment_analysis as any)?.label ||
+                        'NEUTRAL'
+                      ))}>
+                        {
+                          review.sentiment_label ||
+                          review.sentiment ||
+                          (review.sentiment_analysis as any)?.[0]?.label ||
+                          (review.sentiment_analysis as any)?.label ||
+                          'NEUTRAL'
+                        }
                       </div>
                     </div>
 
                     {/* Content */}
                     <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
-                      {review.text}
+                      {review.content || review.text}
                     </p>
 
                     {/* Footer Metrics */}
@@ -112,8 +126,8 @@ export const ReviewFeed: React.FC<ReviewFeedProps> = ({ reviews }) => {
                         <span className="flex items-center gap-1"><Heart className="h-3 w-3" /> {review.like_count || 0}</span>
                       </div>
 
-                      {review.sourceUrl && (
-                        <a href={review.sourceUrl} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-white transition-colors">
+                      {(review.source_url || review.sourceUrl) && (
+                        <a href={review.source_url || review.sourceUrl} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-white transition-colors">
                           <ExternalLink className="h-3 w-3" />
                         </a>
                       )}
