@@ -14,7 +14,7 @@ import ProductDetails from "./pages/ProductDetails";
 import Integrations from "./pages/Integrations";
 import Competitors from "./pages/Competitors";
 import Help from "./pages/Help";
-import NotFound from "./pages/NotFound";
+
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import { AuthProvider } from "@/context/AuthContext";
 import LoginPage from "./pages/auth/LoginPage";
@@ -57,7 +57,7 @@ const App = () => {
                 <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
                 <Route path="/competitors" element={<ProtectedRoute><Competitors /></ProtectedRoute>} />
 
-                <Route path="*" element={<NotFound />} />
+                <Route path="*" element={<ProtectedRoute><Index /></ProtectedRoute>} />
               </Routes>
             </BrowserRouter>
           </AuthProvider>

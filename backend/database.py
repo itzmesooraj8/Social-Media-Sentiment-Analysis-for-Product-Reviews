@@ -54,7 +54,7 @@ _DASHBOARD_CACHE = {
 _CACHE_TTL = 60 # seconds
 
 
-async def get_sentiment_trends(product_id: str, days: int = 30) -> List[Dict[str, Any]]:
+async def get_sentiment_trends(product_id: str = None, days: int = 30) -> List[Dict[str, Any]]:
     """
     Fetch sentiment trend data for a specific period.
     Returns list of {created_at, score, label}
@@ -66,9 +66,11 @@ async def get_sentiment_trends(product_id: str, days: int = 30) -> List[Dict[str
             # Efficient join query
             query = supabase.table("reviews")\
                 .select("created_at, sentiment_analysis(score, label)")\
-                .eq("product_id", product_id)\
                 .gte("created_at", start_date.isoformat())\
                 .order("created_at", desc=False)
+            
+            if product_id:
+                query = query.eq("product_id", product_id)
                 
             task = asyncio.to_thread(lambda: query.execute())
             resp = await _safe_db_call(task)
@@ -284,17 +286,43 @@ async def get_dashboard_stats():
              except Exception:
                  return []
 
-        # EXECUTE ALL IN PARALLEL
-        results = await asyncio.gather(
-            fetch_count(),
-            fetch_stats(),
-            fetch_delta(),
-            fetch_platforms(),
-            fetch_recent(),
-            fetch_keywords()
-        )
+        # EXECUTE SEQUENTIALLY TO DEBUG HANGING
+        logger.info("Starting dashboard stats fetch (sequential)...")
         
-        total_reviews, stats_rows, sentiment_delta, platform_breakdown, recent_reviews, top_keywords = results
+        # 1. Count
+        total_reviews = await fetch_count()
+        logger.info(f"Got count: {total_reviews}")
+        
+        # 2. Stats
+        stats_rows = await fetch_stats()
+        logger.info(f"Got stats: {len(stats_rows)} rows")
+        
+        # 3. Delta
+        sentiment_delta = await fetch_delta()
+        logger.info(f"Got delta: {sentiment_delta}")
+        
+        # 4. Platforms
+        platform_breakdown = await fetch_platforms()
+        logger.info("Got platforms")
+        
+        # 5. Recent
+        recent_reviews = await fetch_recent()
+        logger.info("Got recent")
+        
+        # 6. Keywords
+        top_keywords = await fetch_keywords()
+        logger.info("Got keywords")
+        
+        # results = await asyncio.gather(
+        #     fetch_count(),
+        #     fetch_stats(),
+        #     fetch_delta(),
+        #     fetch_platforms(),
+        #     fetch_recent(),
+        #     fetch_keywords()
+        # )
+        
+        # total_reviews, stats_rows, sentiment_delta, platform_breakdown, recent_reviews, top_keywords = results
 
         # Process stats
         avg_score = 0

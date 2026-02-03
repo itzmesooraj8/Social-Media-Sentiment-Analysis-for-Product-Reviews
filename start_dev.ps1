@@ -2,19 +2,8 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "🚀 STARTING SENTIMENT BEACON..." -ForegroundColor Cyan
 
-# 1. Verify Database
-Write-Host "1️⃣  Verifying Database & Seeding..." -ForegroundColor Yellow
-try {
-    & "backend\.venv\Scripts\python.exe" "backend\scripts\run_migrations.py"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "❌ Database verification failed. Please check the logs above." -ForegroundColor Red
-        Write-Host "⚠️  Did you run the SQL script in Supabase?" -ForegroundColor Red
-        exit 1
-    }
-} catch {
-    Write-Host "❌ Failed to run verification script: $_" -ForegroundColor Red
-    exit 1
-}
+# 1. Database Verification Skipped (Migration script removed per requirements)
+Write-Host "1️⃣  Database Verification: Skipped (Pre-configured)" -ForegroundColor Yellow
 
 # 2. Kill Old Backend
 Write-Host "2️⃣  Cleaning up old processes..." -ForegroundColor Yellow

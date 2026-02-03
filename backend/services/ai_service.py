@@ -405,7 +405,7 @@ class AIService:
         return results
 
     # Alias for backward compatibility if needed, or just cleaner naming
-    extract_topics = extract_topics_simple
+
 
     async def analyze_batch(self, texts: List[str]) -> List[Dict[str, Any]]:
         """

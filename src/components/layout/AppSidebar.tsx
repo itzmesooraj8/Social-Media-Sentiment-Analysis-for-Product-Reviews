@@ -198,16 +198,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
                   </Select>
                 </div>
 
-                {/* Product ID Input */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Product ID</Label>
-                  <Input
-                    value={productId}
-                    onChange={(e) => setProductId(e.target.value)}
-                    placeholder="SKU-12345"
-                    className="glass-card border-border/50 h-9 text-sm"
-                  />
-                </div>
+
               </div>
             </motion.div>
           )}

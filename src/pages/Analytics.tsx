@@ -133,7 +133,7 @@ const Analytics = () => {
               </TabsTrigger>
               <TabsTrigger value="trends">Historical Trends</TabsTrigger>
               <TabsTrigger value="platforms">Platform Split</TabsTrigger>
-              <TabsTrigger value="topics">Topic Cloud</TabsTrigger>
+
             </TabsList>
 
             {/* TAB: AI FORECAST */}
@@ -208,10 +208,7 @@ const Analytics = () => {
               </Card>
             </TabsContent>
 
-            {/* TAB: TOPICS (WORD CLOUD) */}
-            <TabsContent value="topics">
-              <WordCloudPanel topics={(dashboardData as any)?.data?.topKeywords || []} isLoading={isDashboardLoading} />
-            </TabsContent>
+
 
             {/* TAB: PLATFORMS */}
             <TabsContent value="platforms">

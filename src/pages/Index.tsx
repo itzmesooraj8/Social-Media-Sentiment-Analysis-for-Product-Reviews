@@ -92,15 +92,18 @@ const Index = () => {
     retry: false
   });
 
-  const isCrisis = (assembled?.recentReviews || []).length >= 5 && (assembled.recentReviews || []).slice(0, 5).every(r => (r.sentiment || r.sentiment_label || '').toLowerCase() === 'negative');
+  // Disable Crisis Alert to prevent false positives/fake feeling
+  const isCrisis = false; // (assembled?.recentReviews || []).length >= 5 && ...
 
   useEffect(() => {
+    /*
     if (isCrisis) {
       toast.error("CRISIS ALERT: Negative Sentiment Spike Detected!", {
         description: "The last 5 reviews were negative. Use the War Room to investigate.",
         duration: 8000,
       });
     }
+    */
   }, [isCrisis]);
 
   /* Error State Handling */
@@ -206,11 +209,7 @@ const Index = () => {
           <InsightCard isLoading={isLoading || summaryLoading || insightsLoading} summary={summaryResp?.summary} recommendations={insightsData || []} />
         </div>
 
-        {/* Sentiment Trend Chart */}
-        <SentimentTrendChart
-          data={assembled?.sentimentTrends ?? []}
-          isLoading={isLoadingLocal}
-        />
+
 
         {/* Review Feed & Emotions */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
