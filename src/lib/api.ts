@@ -257,7 +257,7 @@ export const getCompare = async (idA: string, idB: string) => {
         const response = await api.get(`/competitors/compare?productA=${idA}&productB=${idB}`);
         return { success: true, data: response.data?.data || { metrics: {} } };
     } catch (e) {
-        // Return empty comparison if endpoint not available
+        // Return empty comparison if endpoint not available or error
         return { success: false, data: { metrics: {} } };
     }
 };

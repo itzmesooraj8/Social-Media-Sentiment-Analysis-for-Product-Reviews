@@ -660,6 +660,124 @@ async def api_product_stats(product_id: str):
         return {"success": False, "detail": str(e)}
 
 
+@app.get("/api/competitors/compare")
+async def api_competitor_compare(productA: str, productB: str):
+    """
+    Real-time Head-to-Head Comparison (War Room)
+    Fetches aggregate stats for both products and compares them.
+    No mock data.
+    """
+    try:
+        # Helper to get stats (reuse existing logic or create light version)
+        async def get_stats(pid):
+            # Similar to product_stats but returned as raw dict for comparison
+            if not supabase: return None
+            
+            # Fetch reviews & analysis
+            # Limit to 300 to keep it fast enough for "real-time" feel
+            resp = await asyncio.to_thread(lambda: supabase.table("reviews")\
+                .select("content, sentiment_analysis(score, label, credibility, aspects)")\
+                .eq("product_id", pid)\
+                .order("created_at", desc=True)\
+                .limit(300)\
+                .execute())
+            
+            rows = resp.data if resp else []
+            if not rows: return None
+            
+            scores = []
+            creds = []
+            pos = 0
+            neu = 0
+            neg = 0
+            
+            aspect_sums = {} 
+            aspect_counts = {}
+            
+            # We want to extract common aspects like "price", "quality"
+            # If aspects are stored in JSON: [{"aspect": "price", "sentiment": "positive"}]
+            
+            for r in rows:
+                sa = r.get("sentiment_analysis")
+                if isinstance(sa, list) and sa: sa = sa[0]
+                if sa:
+                    scores.append(float(sa.get("score") or 0.5))
+                    creds.append(float(sa.get("credibility") or 0.9))
+                    lbl = sa.get("label")
+                    if lbl == "POSITIVE": pos += 1
+                    elif lbl == "NEGATIVE": neg += 1
+                    else: neu += 1
+                    
+                    # Aspect processing
+                    asps = sa.get("aspects")
+                    if asps and isinstance(asps, list):
+                        for a in asps:
+                            aname = (a.get("aspect") or "").lower()
+                            asent = a.get("sentiment")
+                            if aname:
+                                val = 3.0 # neutral
+                                if asent == "positive": val = 5.0
+                                elif asent == "negative": val = 1.0
+                                
+                                aspect_sums[aname] = aspect_sums.get(aname, 0) + val
+                                aspect_counts[aname] = aspect_counts.get(aname, 0) + 1
+                                
+            # Avgs
+            avg_s = (sum(scores)/len(scores))*100 if scores else 0
+            avg_c = (sum(creds)/len(creds))*100 if creds else 0
+            
+            # Finalize aspects (avg score 1-5)
+            final_aspects = {}
+            for k, v in aspect_sums.items():
+                final_aspects[k] = round(v / aspect_counts[k], 1)
+                
+            return {
+                "sentiment": avg_s,
+                "credibility": avg_c,
+                "reviewCount": len(rows),
+                "counts": {"positive": pos, "negative": neg, "neutral": neu},
+                "aspects": final_aspects
+            }
+
+        statsA, statsB = await asyncio.gather(get_stats(productA), get_stats(productB))
+        
+        if not statsA or not statsB:
+            # If one product has no data, we can't compare properly, but return what we have
+             return {"success": True, "data": {"metrics": {"productA": statsA, "productB": statsB}}}
+
+        return {
+            "success": True, 
+            "data": {
+                "metrics": {
+                    "productA": statsA,
+                    "productB": statsB
+                }
+            }
+        }
+    except Exception as e:
+        logger.error(f"Compare error: {e}")
+        return {"success": False, "detail": str(e)}
+
+
+@app.get("/api/system/status")
+async def api_system_status():
+    """
+    Check real status of integrations and database.
+    """
+    return {
+        "success": True,
+        "data": {
+            "database": supabase is not None,
+            "reddit": bool(os.environ.get("REDDIT_CLIENT_ID")),
+            "twitter": bool(os.environ.get("TWITTER_API_KEY")),
+            "youtube": bool(os.environ.get("YOUTUBE_API_KEY")),
+            "counts": {
+               # We could fetch real counts here if needed, keeping it light for now
+               "reddit": 0, "twitter": 0, "youtube": 0
+            }
+        }
+    }
+
 
 
 

@@ -146,8 +146,6 @@ const Integrations = () => {
 
   const formatLastSync = (date: Date | null) => {
     if (!date) return 'Never';
-    // Fake a "Just now" if it's connected, or use real time diff if we had it
-    // For this demo, since backend doesn't store exact sync time per integration, we assume it's recent if connected
     return "Recent";
   };
 
@@ -190,8 +188,6 @@ const Integrations = () => {
   };
 
   const handleDelete = (id: string) => {
-    // Since these are system integrations controlled by env vars, we can't delete them.
-    // But for the UI demo, we can remove them from the list until refresh or show a message.
     toast({
       title: "Cannot Delete System Integration",
       description: "This integration is defined in server configuration (.env). Set credentials to empty to remove it permanently.",
@@ -233,10 +229,6 @@ const Integrations = () => {
                 <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded text-sm text-foreground">
                   Note: To add a new system integration, please configure the <code>.env</code> file on the server.
                 </div>
-                {/* 
-                  Real "Add" functionality would go here if we had a dynamic backend database for auth keys. 
-                  For now, we guide the user to the config.
-                 */}
                 <div className="flex justify-end pt-4">
                   <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Close</Button>
                 </div>

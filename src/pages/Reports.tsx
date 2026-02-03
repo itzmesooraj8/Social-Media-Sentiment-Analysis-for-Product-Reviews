@@ -91,7 +91,6 @@ const Reports = () => {
                         <h1 className="text-2xl font-bold">Reports</h1>
                         <p className="text-muted-foreground">Generate and manage your analysis reports</p>
                     </div>
-                    {/* Simplified create dialog for demo */}
                     <Button className="bg-sentinel-positive hover:bg-sentinel-positive/90 text-black" onClick={() => setIsCreateOpen(true)}>
                         <Plus className="h-4 w-4 mr-2" />
                         Create Report
