@@ -444,4 +444,98 @@ class AIService:
         
         return results
 
+    def generate_insights(self, reviews: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        """
+        Generate "Smart Insights" and actionable recommendations based on review data.
+        Uses rule-based AI to synthesize sentiment, aspects, and emotions into executive summaries.
+        """
+        if not reviews:
+            return [{"type": "neutral", "text": "No data available for analysis. Start scraping to generate insights."}]
+
+        insights = []
+        
+        # 1. Aggregate Data
+        total = len(reviews)
+        positive_count = sum(1 for r in reviews if r.get("sentiment_analysis", {}).get("label") == "POSITIVE")
+        negative_count = sum(1 for r in reviews if r.get("sentiment_analysis", {}).get("label") == "NEGATIVE")
+        
+        pos_ratio = positive_count / total
+        neg_ratio = negative_count / total
+        
+        # 2. Extract Aspects & Emotions
+        aspect_sentiments = {} # "Battery": {"pos": 0, "neg": 0}
+        all_emotions = {}
+        
+        for r in reviews:
+            sa = r.get("sentiment_analysis", {})
+            if isinstance(sa, list) and sa: sa = sa[0]
+            
+            # Aspects
+            for a in sa.get("aspects", []):
+                name = a.get("name") or a.get("aspect")
+                if not name: continue
+                name = name.capitalize()
+                if name not in aspect_sentiments: aspect_sentiments[name] = {"pos": 0, "neg": 0, "total": 0}
+                aspect_sentiments[name]["total"] += 1
+                
+                sent = a.get("sentiment")
+                if sent == "positive": aspect_sentiments[name]["pos"] += 1
+                elif sent == "negative": aspect_sentiments[name]["neg"] += 1
+            
+            # Emotions
+            emos = sa.get("emotions", [])
+            if emos:
+                primary = emos[0].get("name")
+                if primary: all_emotions[primary] = all_emotions.get(primary, 0) + 1
+        
+        # 3. Generate High-Level Summary
+        if pos_ratio > 0.8:
+            insights.append({"type": "positive", "text": f"Overwhelmingly positive reception ({int(pos_ratio*100)}%). Users are highly satisfied."})
+        elif neg_ratio > 0.4:
+            insights.append({"type": "warning", "text": f"Critical negative sentiment detected ({int(neg_ratio*100)}%). Urgent attention required."})
+        elif pos_ratio > 0.5:
+            insights.append({"type": "positive", "text": "Generally positive outlook, though some mixed feedback exists."})
+        else:
+            insights.append({"type": "neutral", "text": "Mixed or neutral market response. No clear consensus yet."})
+
+        # 4. Aspect-Based Insights
+        # Find top negative aspects (Pain Points)
+        pain_points = []
+        delighters = []
+        
+        for name, stats in aspect_sentiments.items():
+            if stats["total"] < 3: continue # Ignore noise
+            
+            neg_pct = stats["neg"] / stats["total"]
+            pos_pct = stats["pos"] / stats["total"]
+            
+            if neg_pct > 0.4:
+                pain_points.append(name)
+            elif pos_pct > 0.7:
+                delighters.append(name)
+                
+        if pain_points:
+            probl = ", ".join(pain_points[:3])
+            insights.append({"type": "negative", "text": f"Users are complaining about: {probl}. Improve these areas to boost retention."})
+            # Generate recommendation
+            insights.append({"type": "available", "text": f"Strategic Recommendation: prioritize fixes for {pain_points[0]} in the next sprint."})
+            
+        if delighters:
+            wins = ", ".join(delighters[:3])
+            insights.append({"type": "positive", "text": f"Key selling points identified: {wins}. Highlight these in marketing campaigns."})
+
+        # 5. Emotional DNA Insight
+        if all_emotions:
+            top_emo = max(all_emotions.items(), key=lambda x: x[1])[0]
+            if top_emo in ["Anger", "Disgust", "Fear"]:
+                insights.append({"type": "warning", "text": f"Dominant emotional response is {top_emo}. PR intervention may be needed."})
+            elif top_emo in ["Joy", "Trust"]:
+                insights.append({"type": "positive", "text": f"Strong emotional connection: {top_emo} is the driving sentiment."})
+
+        # 6. Fallback if empty
+        if len(insights) < 2:
+            insights.append({"type": "neutral", "text": "Continue monitoring to gather more granular aspect data."})
+
+        return insights
+
 ai_service = AIService()

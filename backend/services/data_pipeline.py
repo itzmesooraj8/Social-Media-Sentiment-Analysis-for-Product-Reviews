@@ -91,7 +91,7 @@ class DataPipelineService:
             review_data = {
                 "product_id": product_id,
                 "content": content, 
-                "username": review.get("author") or review.get("username", "Anonymous"),
+                "username": review.get("author") or review.get("username") or "Unknown User",
                 "platform": review.get("platform", "web_upload"),
                 "source_url": review.get("source_url", ""),
                 "text_hash": text_hash,

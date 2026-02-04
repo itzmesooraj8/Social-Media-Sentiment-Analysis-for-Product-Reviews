@@ -1,37 +1,37 @@
 import { useQuery } from '@tanstack/react-query';
 import { getDashboardStats, getTopics, getAnalytics } from '@/lib/api';
 
-export const useRealtimeDashboard = () => {
+export const useRealtimeDashboard = (productId?: string) => {
   return useQuery({
-    queryKey: ['dashboard-aggregated'],
+    queryKey: ['dashboard-aggregated', productId],
     queryFn: async () => {
       const [stats, topics, analytics] = await Promise.all([
-        getDashboardStats(),
-        getTopics(15),
-        getAnalytics('7d')
+        getDashboardStats(productId),
+        getTopics(15, productId),
+        getAnalytics('7d', productId)
       ]);
 
       // Merge data
       return {
         ...stats,
         data: {
-          ...(stats?.data || {}),
-          recentReviews: (stats?.data?.recentReviews || []).map((r: any) => {
+          ...(stats || {}),
+          recentReviews: (stats?.recentReviews || []).map((r: any) => {
             const sa = Array.isArray(r.sentiment_analysis) ? r.sentiment_analysis[0] : r.sentiment_analysis;
             return {
               id: r.id,
               text: r.content || "",
               platform: r.platform || "unknown",
-              username: r.username || r.author || "Anonymous",
+              username: r.username || r.author || "Unknown",
               timestamp: r.created_at,
               sentiment: (sa?.label || 'neutral').toLowerCase(),
               sentiment_label: sa?.label || 'NEUTRAL',
-              sourceUrl: r.url || "",
+              sourceUrl: r.url || r.source_url || "",
               credibility: sa?.credibility,
               like_count: r.likes || r.like_count || 0
             };
           }),
-          topKeywords: topics || [], // Map topics to keywords
+          topKeywords: stats?.topKeywords || topics || [],
           sentimentTrends: analytics?.data?.sentimentTrends || []
         }
       };

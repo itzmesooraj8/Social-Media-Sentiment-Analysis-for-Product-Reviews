@@ -21,12 +21,12 @@ const CustomTooltip = ({ active, payload }: any) => {
     if (!data) return null;
     return (
       <div className="glass-card p-3 rounded-xl shadow-lg border border-border/50">
-        <p className="font-semibold text-foreground">{data.aspect}</p>
+        <p className="font-semibold text-foreground">{data?.aspect || 'Unknown'}</p>
         <p className="text-sm text-muted-foreground">
-          Score: <span className="font-medium text-sentinel-positive">{data.score.toFixed(1)}</span>
+          Score: <span className="font-medium text-sentinel-positive">{(data?.score || 0).toFixed(1)}</span>
         </p>
         <p className="text-xs text-muted-foreground">
-          {data.reviewCount.toLocaleString()} reviews
+          {(data?.reviewCount || 0).toLocaleString()} reviews
         </p>
       </div>
     );

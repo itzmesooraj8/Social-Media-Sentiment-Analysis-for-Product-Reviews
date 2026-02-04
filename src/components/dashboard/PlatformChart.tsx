@@ -64,8 +64,10 @@ export function PlatformChart({ data, isLoading }: PlatformChartProps) {
 
   const chartData = data.map(item => ({
     ...item,
-    name: platformLabels[item.platform],
+    name: platformLabels[item.platform] || item.platform || 'Unknown',
   }));
+
+  const isEmpty = !data || data.length === 0;
 
   return (
     <motion.div
@@ -75,67 +77,74 @@ export function PlatformChart({ data, isLoading }: PlatformChartProps) {
       className="glass-card p-6"
     >
       <h3 className="text-lg font-semibold mb-4">Platform Breakdown</h3>
-      
-      <div className="h-[220px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={chartData}
-            layout="vertical"
-            margin={{ top: 5, right: 30, left: 60, bottom: 5 }}
-          >
-            <CartesianGrid 
-              strokeDasharray="3 3" 
-              stroke="hsl(var(--border))" 
-              opacity={0.3}
-              horizontal={true}
-              vertical={false}
-            />
-            <XAxis 
-              type="number" 
-              domain={[0, 100]}
-              tickFormatter={(value) => `${value}%`}
-              stroke="hsl(var(--muted-foreground))"
-              fontSize={12}
-              tickLine={false}
-              axisLine={false}
-            />
-            <YAxis 
-              type="category" 
-              dataKey="name"
-              stroke="hsl(var(--muted-foreground))"
-              fontSize={12}
-              tickLine={false}
-              axisLine={false}
-              width={70}
-            />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--accent) / 0.3)' }} />
-            <Legend 
-              verticalAlign="top"
-              height={36}
-              iconType="circle"
-            />
-            <Bar 
-              dataKey="positive" 
-              name="Positive"
-              stackId="sentiment"
-              fill="hsl(157, 100%, 50%)"
-              radius={[0, 0, 0, 0]}
-            />
-            <Bar 
-              dataKey="neutral" 
-              name="Neutral"
-              stackId="sentiment"
-              fill="hsl(220, 9%, 46%)"
-            />
-            <Bar 
-              dataKey="negative" 
-              name="Negative"
-              stackId="sentiment"
-              fill="hsl(0, 100%, 58%)"
-              radius={[0, 4, 4, 0]}
-            />
-          </BarChart>
-        </ResponsiveContainer>
+
+      <div className="h-[220px] w-full flex items-center justify-center">
+        {isEmpty ? (
+          <div className="text-center text-muted-foreground">
+            <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-20" />
+            <p className="text-sm">No platform data available</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={chartData}
+              layout="vertical"
+              margin={{ top: 5, right: 30, left: 60, bottom: 5 }}
+            >
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="hsl(var(--border))"
+                opacity={0.3}
+                horizontal={true}
+                vertical={false}
+              />
+              <XAxis
+                type="number"
+                domain={[0, 100]}
+                tickFormatter={(value) => `${value}%`}
+                stroke="hsl(var(--muted-foreground))"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+              />
+              <YAxis
+                type="category"
+                dataKey="name"
+                stroke="hsl(var(--muted-foreground))"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+                width={70}
+              />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--accent) / 0.3)' }} />
+              <Legend
+                verticalAlign="top"
+                height={36}
+                iconType="circle"
+              />
+              <Bar
+                dataKey="positive"
+                name="Positive"
+                stackId="sentiment"
+                fill="hsl(157, 100%, 50%)"
+                radius={[0, 0, 0, 0]}
+              />
+              <Bar
+                dataKey="neutral"
+                name="Neutral"
+                stackId="sentiment"
+                fill="hsl(220, 9%, 46%)"
+              />
+              <Bar
+                dataKey="negative"
+                name="Negative"
+                stackId="sentiment"
+                fill="hsl(0, 100%, 58%)"
+                radius={[0, 4, 4, 0]}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </motion.div>
   );

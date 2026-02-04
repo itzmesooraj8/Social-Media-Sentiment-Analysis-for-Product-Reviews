@@ -103,10 +103,22 @@ export const sentinelApi = {
 };
 
 
-export const getDashboardStats = sentinelApi.getDashboardStats;
-export const getAnalytics = async (range: string) => {
+// Re-implementing to support arguments
+export const getDashboardStats = async (productId?: string) => {
     try {
-        const response = await api.get(`/analytics?range=${range}`);
+        const url = productId ? `/dashboard?product_id=${productId}` : '/dashboard';
+        const response = await api.get(url);
+        return response.data?.data;
+    } catch (e) {
+        return null;
+    }
+};
+
+export const getAnalytics = async (range: string, productId?: string) => {
+    try {
+        let url = `/analytics?range=${range}`;
+        if (productId) url += `&product_id=${productId}`;
+        const response = await api.get(url);
         return response.data;
     } catch (e) {
         console.error("Analytics fetch failed", e);

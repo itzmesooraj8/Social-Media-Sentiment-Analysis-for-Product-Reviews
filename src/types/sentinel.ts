@@ -62,3 +62,10 @@ export interface Alert {
   is_read?: boolean;
 }
 
+export interface SentimentDataPoint {
+  date: string;
+  positive: number;
+  neutral: number;
+  negative: number;
+}
+

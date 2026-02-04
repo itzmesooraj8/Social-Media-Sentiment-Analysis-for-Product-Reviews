@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAlerts, resolveAlert as apiResolveAlert, createAlert } from '@/lib/api';
+import { getAlerts, resolveAlert as apiResolveAlert, createAlert, getProducts } from '@/lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -141,6 +141,21 @@ const Alerts = () => {
     useEffect(() => {
         if (alertsDataResp) setAlerts(alertsDataResp);
     }, [alertsDataResp]);
+
+    // Fetch Products for Dropdown
+    const [products, setProducts] = useState<any[]>([]);
+    const [selectedProductId, setSelectedProductId] = useState<string>("all");
+
+    useQuery({
+        queryKey: ['products-simple-list'],
+        queryFn: async () => {
+            const p = await getProducts();
+            setProducts(p);
+            return p;
+        },
+        staleTime: 1000 * 60 * 5
+    });
+
     const [selectedAlert, setSelectedAlert] = useState<AlertItem | null>(null);
 
     const filteredAlerts = alerts.filter(alert => {
@@ -190,7 +205,8 @@ const Alerts = () => {
         createMutation.mutate({
             keyword: newAlertKeyword,
             threshold: parseFloat(newAlertThreshold),
-            email: newAlertEmail
+            email: newAlertEmail,
+            product_id: selectedProductId === 'all' ? null : selectedProductId
         });
     };
 
@@ -232,7 +248,7 @@ const Alerts = () => {
                     <div className="flex gap-2">
                         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                             <DialogTrigger asChild>
-                                <Button className="gap-2 bg-sentinel-primary text-black hover:bg-sentinel-primary/90">
+                                <Button className="gap-2 bg-sentinel-gradient text-white hover:opacity-90 shadow-lg shadow-sentinel-credibility/20 font-semibold border-none transition-all hover:scale-105">
                                     <Plus className="h-4 w-4" />
                                     Create Alert
                                 </Button>
@@ -245,6 +261,20 @@ const Alerts = () => {
                                     </DialogDescription>
                                 </DialogHeader>
                                 <div className="space-y-4 py-4">
+                                    <div className="space-y-2">
+                                        <Label>Target Product (Optional)</Label>
+                                        <Select value={selectedProductId} onValueChange={setSelectedProductId}>
+                                            <SelectTrigger className="glass-card border-border/50">
+                                                <SelectValue placeholder="Select a product" />
+                                            </SelectTrigger>
+                                            <SelectContent className="glass-card border-border/50">
+                                                <SelectItem value="all">All Products (Global)</SelectItem>
+                                                {products.map(p => (
+                                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="keyword">Keyword</Label>
                                         <Input
@@ -286,7 +316,7 @@ const Alerts = () => {
                                 </DialogFooter>
                             </DialogContent>
                         </Dialog>
-                        
+
                         <Button variant="outline" className="gap-2">
                             <Settings className="h-4 w-4" />
                             Alert Settings

@@ -1,11 +1,11 @@
 import { motion } from 'framer-motion';
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   Legend
 } from 'recharts';
@@ -49,6 +49,8 @@ export function SentimentTrendChart({ data, isLoading }: SentimentTrendChartProp
     );
   }
 
+  const isEmpty = !data || data.length === 0;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -57,91 +59,103 @@ export function SentimentTrendChart({ data, isLoading }: SentimentTrendChartProp
       className="glass-card p-6"
     >
       <h3 className="text-lg font-semibold mb-4">Sentiment Trends</h3>
-      
-      <div className="h-[350px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart
-            data={data}
-            margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-          >
-            <defs>
-              <linearGradient id="positiveGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="hsl(157, 100%, 50%)" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="hsl(157, 100%, 50%)" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="negativeGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="hsl(0, 100%, 58%)" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="hsl(0, 100%, 58%)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            
-            <CartesianGrid 
-              strokeDasharray="3 3" 
-              stroke="hsl(var(--border))" 
-              opacity={0.3}
-              vertical={false}
-            />
-            
-            <XAxis 
-              dataKey="date" 
-              stroke="hsl(var(--muted-foreground))"
-              fontSize={12}
-              tickLine={false}
-              axisLine={false}
-              dy={10}
-            />
-            
-            <YAxis 
-              stroke="hsl(var(--muted-foreground))"
-              fontSize={12}
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={(value) => `${value}%`}
-              domain={[0, 100]}
-              dx={-10}
-            />
-            
-            <Tooltip content={<CustomTooltip />} />
-            
-            <Legend 
-              verticalAlign="top" 
-              height={36}
-              iconType="circle"
-              wrapperStyle={{ paddingBottom: '10px' }}
-            />
-            
-            <Line
-              type="monotone"
-              dataKey="positive"
-              name="Positive"
-              stroke="hsl(157, 100%, 50%)"
-              strokeWidth={3}
-              dot={false}
-              activeDot={{ r: 6, strokeWidth: 2 }}
-            />
-            
-            <Line
-              type="monotone"
-              dataKey="neutral"
-              name="Neutral"
-              stroke="hsl(220, 9%, 46%)"
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 5, strokeWidth: 2 }}
-              strokeDasharray="5 5"
-            />
-            
-            <Line
-              type="monotone"
-              dataKey="negative"
-              name="Negative"
-              stroke="hsl(0, 100%, 58%)"
-              strokeWidth={3}
-              dot={false}
-              activeDot={{ r: 6, strokeWidth: 2 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+
+      <div className="h-[350px] w-full flex items-center justify-center">
+        {isEmpty ? (
+          <div className="text-center text-muted-foreground">
+            <div className="w-12 h-12 rounded-full bg-muted/30 mx-auto mb-3 flex items-center justify-center">
+              <svg className="w-6 h-6 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
+            </div>
+            <p className="text-sm">Not enough data to show trends</p>
+            <p className="text-xs text-muted-foreground/50 mt-1">Collecting real-time data...</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart
+              data={data}
+              margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+            >
+              <defs>
+                <linearGradient id="positiveGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(157, 100%, 50%)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(157, 100%, 50%)" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="negativeGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(0, 100%, 58%)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(0, 100%, 58%)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="hsl(var(--border))"
+                opacity={0.3}
+                vertical={false}
+              />
+
+              <XAxis
+                dataKey="date"
+                stroke="hsl(var(--muted-foreground))"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+                dy={10}
+              />
+
+              <YAxis
+                stroke="hsl(var(--muted-foreground))"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(value) => `${value}%`}
+                domain={[0, 100]}
+                dx={-10}
+              />
+
+              <Tooltip content={<CustomTooltip />} />
+
+              <Legend
+                verticalAlign="top"
+                height={36}
+                iconType="circle"
+                wrapperStyle={{ paddingBottom: '10px' }}
+              />
+
+              <Line
+                type="monotone"
+                dataKey="positive"
+                name="Positive"
+                stroke="hsl(157, 100%, 50%)"
+                strokeWidth={3}
+                dot={false}
+                activeDot={{ r: 6, strokeWidth: 2 }}
+              />
+
+              <Line
+                type="monotone"
+                dataKey="neutral"
+                name="Neutral"
+                stroke="hsl(220, 9%, 46%)"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 5, strokeWidth: 2 }}
+                strokeDasharray="5 5"
+              />
+
+              <Line
+                type="monotone"
+                dataKey="negative"
+                name="Negative"
+                stroke="hsl(0, 100%, 58%)"
+                strokeWidth={3}
+                dot={false}
+                activeDot={{ r: 6, strokeWidth: 2 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </motion.div>
   );

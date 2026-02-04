@@ -58,33 +58,60 @@ export function InsightCard({ isLoading, summary, recommendations }: InsightCard
       <div className="space-y-3">
         {hasContent ? (
           <>
-             {recommendations && recommendations.slice(0, 3).map((rec, i) => (
+            {recommendations && recommendations.slice(0, 3).map((rec: any, i) => {
+              const text = typeof rec === 'string' ? rec : rec.text;
+              const type = typeof rec === 'string' ? 'recommendation' : (rec.type || 'recommendation');
+
+              let Icon = Lightbulb;
+              let color = 'text-purple-400';
+              let bg = 'bg-purple-400/10';
+              let border = 'border-purple-400/30';
+              let title = `Insight #${i + 1}`;
+
+              if (type === 'positive') {
+                Icon = CheckCircle;
+                color = 'text-green-400';
+                bg = 'bg-green-400/10';
+                border = 'border-green-400/30';
+                title = 'Positive Highlight';
+              } else if (type === 'warning' || type === 'negative') {
+                Icon = AlertTriangle;
+                color = 'text-amber-400';
+                bg = 'bg-amber-400/10';
+                border = 'border-amber-400/30';
+                title = 'Attention Required';
+              } else if (type === 'available') {
+                title = 'Strategic Recommendation';
+              }
+
+              return (
                 <motion.div
                   key={i}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.1 }}
-                  className={cn('p-4 rounded-lg border bg-background/50', insightConfig.recommendation.border)}
+                  className={cn('p-4 rounded-lg border bg-background/50', border)}
                 >
                   <div className="flex items-start gap-3">
-                    <div className={cn('p-2 rounded-lg flex-shrink-0', insightConfig.recommendation.bg)}>
-                      <Lightbulb className={cn('h-4 w-4', insightConfig.recommendation.color)} />
+                    <div className={cn('p-2 rounded-lg flex-shrink-0', bg)}>
+                      <Icon className={cn('h-4 w-4', color)} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
-                        <h4 className="font-medium text-sm">Recommendation #{i + 1}</h4>
+                        <h4 className="font-medium text-sm text-foreground/80">{title}</h4>
                       </div>
-                      <p className="text-sm text-foreground leading-relaxed font-medium">{rec}</p>
+                      <p className="text-sm text-foreground leading-relaxed font-medium">{text}</p>
                     </div>
                   </div>
                 </motion.div>
-             ))}
-             
-             {!recommendations?.length && summary && (
-                <div className="p-4 rounded-lg border bg-background/50">
-                    <p className="text-sm text-muted-foreground">{summary}</p>
-                </div>
-             )}
+              );
+            })}
+
+            {!recommendations?.length && summary && (
+              <div className="p-4 rounded-lg border bg-background/50">
+                <p className="text-sm text-muted-foreground">{summary}</p>
+              </div>
+            )}
           </>
         ) : (
           <div className="text-center p-4 text-muted-foreground text-sm">

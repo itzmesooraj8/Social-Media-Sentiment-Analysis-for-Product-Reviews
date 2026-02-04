@@ -34,7 +34,14 @@ const Competitors = () => {
     const { data: productList = [] } = useQuery({ queryKey: ['products'], queryFn: apiGetProducts });
 
     useEffect(() => {
-        if (Array.isArray(productList)) setProducts(productList as any[]);
+        if (Array.isArray(productList)) {
+            setProducts(productList as any[]);
+            // Auto-select first two products for instant value
+            if (productList.length >= 2 && !selectedA && !selectedB) {
+                setSelectedA(productList[0].id);
+                setSelectedB(productList[1].id);
+            }
+        }
     }, [productList]);
 
     // Aggressive Polling Mode: 1s interval when analyzing
