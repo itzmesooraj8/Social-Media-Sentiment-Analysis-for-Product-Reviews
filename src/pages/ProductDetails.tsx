@@ -10,7 +10,7 @@ import { MetricCard } from '@/components/dashboard/MetricCard';
 import { FileText, BarChart3, Shield } from 'lucide-react';
 import { ReviewFeed } from '@/components/dashboard/ReviewFeed';
 import { SentimentTrendChart } from '@/components/dashboard/SentimentTrendChart';
-import { getProductStats, triggerScrape } from '@/lib/api';
+import { getProductStats, triggerScrape, getReviews } from '@/lib/api';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useToast } from '@/hooks/use-toast';
 
@@ -28,9 +28,8 @@ export default function ProductDetails() {
   const { data: reviewsData } = useQuery({
     queryKey: ['reviews', id],
     queryFn: async () => {
-      const res = await fetch(`http://localhost:8000/api/reviews?product_id=${id}&limit=50`);
-      if (!res.ok) throw new Error('Failed to fetch reviews');
-      return res.json();
+      const data = await getReviews(id!, 50);
+      return { data };
     },
     refetchInterval: pollInterval
   });
@@ -45,8 +44,12 @@ export default function ProductDetails() {
   const reviews = reviewsData?.data || [];
 
   // Use real aggregated stats from backend
-  const totalReviews = statsData?.total_reviews || 0;
-  const avgSentiment = statsData?.average_sentiment || 0; // 0-100 scale from backend
+  const backendCount = statsData?.totalReviews ?? statsData?.total_reviews ?? 0;
+  const listCount = reviews.length;
+  // Fallback to list count if backend count is missing or suspiciously zero while list has items
+  const totalReviews = backendCount > 0 ? backendCount : listCount;
+
+  const avgSentiment = statsData?.avgSentiment ?? statsData?.average_sentiment ?? 0; // 0-100 scale from backend
   const displayScore = (avgSentiment / 100).toFixed(2);
 
   // Analyze emotions from the new model (Most recent review)

@@ -25,6 +25,20 @@ except ImportError:
     _NITTER_AVAILABLE = False
 
 class TwitterScraperService:
+    async def reload_config(self):
+        """Hot reload credentials from environment."""
+        self.bearer_token = os.environ.get("TWITTER_BEARER_TOKEN")
+        self.tweepy_client = None
+        
+        if _TWEEPY_AVAILABLE and self.bearer_token:
+            try:
+                self.tweepy_client = tweepy.Client(bearer_token=self.bearer_token)
+                logger.info("Twitter: Re-authenticated with Tweepy (Hot Reload)")
+            except Exception as e:
+                logger.error(f"Twitter: Tweepy re-auth failed: {e}")
+        else:
+             logger.warning("Twitter: Config reloaded but credentials still missing.")
+
     def __init__(self) -> None:
         self.bearer_token = os.environ.get("TWITTER_BEARER_TOKEN")
         self.tweepy_client = None

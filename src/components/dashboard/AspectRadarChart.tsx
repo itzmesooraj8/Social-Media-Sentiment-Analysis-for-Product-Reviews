@@ -68,11 +68,11 @@ export function AspectRadarChart({ data, isLoading }: AspectRadarChartProps) {
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart
             data={isEmpty ? [
-              { aspect: 'Price', value: 100 },
-              { aspect: 'Quality', value: 100 },
-              { aspect: 'Service', value: 100 },
-              { aspect: 'Usability', value: 100 },
-              { aspect: 'Features', value: 100 },
+              { aspect: '', value: 100 },
+              { aspect: ' ', value: 100 },
+              { aspect: '  ', value: 100 },
+              { aspect: '   ', value: 100 },
+              { aspect: '    ', value: 100 },
             ] : chartData}
             margin={{ top: 20, right: 30, bottom: 20, left: 30 }}
           >

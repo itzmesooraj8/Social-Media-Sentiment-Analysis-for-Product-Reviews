@@ -62,10 +62,11 @@ export function DashboardLayout({ children, lastUpdated, isCrisis }: DashboardLa
                 >
                   <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5 shrink-0" />
                   <div className="flex-1">
-                    <h3 className="text-sm font-medium text-yellow-500">Configuration Missing</h3>
-                    <p className="text-sm text-yellow-500/80 mt-1">
-                      API keys are missing for the following platforms: <strong>{missingIntegrations.join(", ")}</strong>.
-                      Data collection will be disabled for these sources until you configure them in Settings.
+                    <h3 className="text-sm font-medium text-yellow-500">Partial Integration Configured</h3>
+                    <p className="text-sm text-yellow-500/90 mt-1">
+                      API keys are missing for <strong>{missingIntegrations.join(", ")}</strong>.
+                      <br />
+                      The system will skip these sources but <span className="font-semibold underline">will continue to collect data</span> from your active integrations.
                     </p>
                   </div>
                   <button

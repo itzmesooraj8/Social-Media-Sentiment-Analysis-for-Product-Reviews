@@ -170,7 +170,48 @@ class IntegrationConfig(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    """
+    Comprehensive Health Check for Load Balancers and Frontend.
+    Checks:
+    1. System Uptime (Basic)
+    2. Database Connectivity (Supabase)
+    3. AI Model Readiness (DistilBERT loaded)
+    """
+    status = {
+        "status": "initializing", 
+        "database": "unknown", 
+        "ai_models": "unknown",
+        "version": "1.2.0"
+    }
+    
+    # 1. Check Database
+    try:
+        # Lightweight check - just limit 1
+        response = supabase.table("products").select("id", count="exact").limit(1).execute()
+        status["database"] = "connected"
+    except Exception as e:
+        status["database"] = "disconnected"
+        logger.error(f"Health Check DB Fail: {e}")
+
+    # 2. Check AI Models
+    # ai_service is initialized on import, but models load lazily or on startup
+    if ai_service._models_loaded:
+        status["ai_models"] = "ready"
+    else:
+        status["ai_models"] = "loading"
+        # Trigger load in background if not loaded? 
+        # Better to just report state.
+    
+    # Determined overall status
+    if status["database"] == "connected" and status["ai_models"] == "ready":
+        status["status"] = "healthy"
+    elif status["database"] == "connected":
+        # AI loading is fine, app is usable
+        status["status"] = "degraded" # Frontend should show "AI Warming Up"
+    else:
+        status["status"] = "unhealthy"
+        
+    return status
 
 
 @app.get("/api/products")
@@ -559,10 +600,11 @@ async def api_system_status():
 async def api_configure_integration(config: IntegrationConfig):
     """
     Real-time configuration of integration secrets.
-    Writes to .env and updates running process.
+    Writes to .env and updates running process + Hot Reloads Scrapers.
     """
     try:
         platform = config.platform.lower()
+        updated_keys = False
         
         for k, v in config.credentials.items():
              key = ""
@@ -579,6 +621,15 @@ async def api_configure_integration(config: IntegrationConfig):
                  os.environ[key] = v
                  # 2. Write to .env file
                  set_key(env_path, key, v)
+                 updated_keys = True
+        
+        # 3. Hot Reload Services
+        if updated_keys:
+            if platform == "twitter":
+                # Access the instance within the module
+                await twitter_scraper.twitter_scraper.reload_config()
+                logger.info("Twitter Scraper reloaded.")
+            # Add Reddit/YouTube reload logic here as needed
         
         return {"success": True, "message": f"{platform.capitalize()} configuration updated successfully."}
     except Exception as e:

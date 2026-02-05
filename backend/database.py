@@ -652,11 +652,14 @@ async def get_product_stats_full(product_id: str):
 
         return {
             "total_reviews": len(rows),
+            "totalReviews": len(rows), # Alias for frontend safety
             "average_sentiment": round(avg_score, 1),
+            "avgSentiment": round(avg_score, 1),
             "positive_percent": round(pos_percent, 1),
             "credibility_score": round(avg_cred, 1),
-            "emotions": formatted_emotions[:6], # Top 6
-            "aspects": formatted_aspects[:6],   # Top 6
+            "credibilityScore": round(avg_cred, 1),
+            "emotions": formatted_emotions[:6],
+            "aspects": formatted_aspects[:6],
             "keywords": keywords
         }
     except Exception as e:

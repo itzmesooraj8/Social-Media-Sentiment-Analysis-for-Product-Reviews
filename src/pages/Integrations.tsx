@@ -31,7 +31,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogFooter
+  DialogFooter,
+  DialogDescription
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -336,6 +337,11 @@ const Integrations = () => {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{isAddDialogOpen ? "Add Integration" : `Configure ${selectedIntegration?.name}`}</DialogTitle>
+              <DialogDescription>
+                {isAddDialogOpen
+                  ? "Connect a new platform to start gathering reviews."
+                  : "Update API keys and settings for this integration."}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               {isAddDialogOpen && (

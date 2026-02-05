@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { motion } from 'framer-motion';
 import {
   Settings as SettingsIcon,
@@ -35,7 +36,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useTheme } from '@/components/ThemeProvider';
-import { getSettings, updateSettings, getProducts } from '@/lib/api';
+import { getSettings, updateSettings, getProducts, getSystemStatus } from '@/lib/api';
 import { useToast } from "@/hooks/use-toast";
 
 const containerVariants = {
@@ -77,12 +78,24 @@ const Settings = () => {
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: getProducts });
 
   // Profile State
+  // Profile State (Real Data)
   const [profile, setProfile] = useState({
-    firstName: "Sentinel",
-    lastName: "Admin",
-    email: "admin@sentinel.ai",
-    org: "Sentinel Engine Inc."
+    firstName: user?.user_metadata?.first_name || "",
+    lastName: user?.user_metadata?.last_name || "",
+    email: user?.email || "",
+    org: user?.user_metadata?.org || ""
   });
+
+  useEffect(() => {
+    if (user) {
+      setProfile({
+        firstName: user.user_metadata?.first_name || "",
+        lastName: user.user_metadata?.last_name || "",
+        email: user.email || "",
+        org: user.user_metadata?.org || ""
+      });
+    }
+  }, [user]);
 
   useEffect(() => {
     if (settingsData) {
@@ -93,14 +106,44 @@ const Settings = () => {
 
   const saveSettingsMutation = useMutation({
     mutationFn: async (data: any) => {
+      // 1. Update Backend Settings
       await updateSettings(data);
+
+      // 2. Update Real Supabase Profile
+      if (user) {
+        const { error } = await supabase.auth.updateUser({
+          data: {
+            first_name: profile.firstName,
+            last_name: profile.lastName,
+            org: profile.org
+          }
+        });
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast({ title: "Saved", description: "Settings and Profile updated successfully." });
+    },
+    onError: (err) => {
+      toast({ title: "Error", description: "Failed to save: " + err.message, variant: "destructive" });
     }
   });
+
+  const { data: statusData } = useQuery<any>({
+    queryKey: ['systemStatus'],
+    queryFn: getSystemStatus,
+    refetchInterval: 30000 // Real-time update
+  });
+
+  const totalReviews = statusData?.counts ?
+    (statusData.counts.twitter + statusData.counts.reddit + statusData.counts.youtube) : 0;
+
+  // based on real usage
+  const quota = 10000;
+  const usagePercent = Math.min(100, (totalReviews / quota) * 100);
 
   const handleSave = () => {
     saveSettingsMutation.mutate({
@@ -288,12 +331,19 @@ const Settings = () => {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="flex items-center gap-6">
-                    <div className="h-20 w-20 rounded-full bg-gradient-to-br from-sentinel-positive to-sentinel-credibility flex items-center justify-center">
-                      <span className="text-2xl font-bold text-black">SE</span>
+                    <div className="h-20 w-20 rounded-full bg-gradient-to-br from-sentinel-positive to-sentinel-credibility flex items-center justify-center shadow-lg border border-white/10">
+                      <span className="text-3xl font-bold text-black opacity-80">
+                        {(profile.firstName?.[0] || user?.email?.[0] || "U").toUpperCase()}
+                      </span>
                     </div>
                     <div>
-                      <Button variant="outline" size="sm">Change Avatar</Button>
-                      <p className="text-xs text-muted-foreground mt-1">JPG, PNG or GIF. Max 2MB.</p>
+                      <div className="text-sm">
+                        <p className="font-medium text-lg leading-none mb-2">{profile.firstName || "User"} {profile.lastName}</p>
+                        <p className="text-muted-foreground">{profile.email}</p>
+                        <Badge variant="outline" className="mt-2 text-xs bg-sentinel-positive/10 text-sentinel-positive border-sentinel-positive/20">
+                          {user?.role?.toUpperCase() || "AUTHENTICATED"}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
 
@@ -460,46 +510,57 @@ const Settings = () => {
                     <CardDescription>Manage your API keys and endpoints</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    <div className="space-y-2">
-                      <Label>API Key</Label>
-                      <div className="flex gap-2">
-                        <div className="relative flex-1">
+                    <div className="space-y-4">
+                      <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+                        <Label>Active Environment</Label>
+                        <div className="flex items-center gap-2 text-sm font-mono text-sentinel-positive">
+                          <Check className="h-4 w-4" />
+                          <span>Production (Local)</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>API Endpoint (Backend)</Label>
+                        <div className="flex gap-2">
                           <Input
-                            type={showApiKey ? 'text' : 'password'}
-                            defaultValue="sk-sentinel-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                            className="glass-card border-border/50 pr-10"
+                            defaultValue={import.meta.env.VITE_API_URL || "http://localhost:8000"}
+                            className="glass-card border-border/50 font-mono text-sm"
                             readOnly
                           />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                            onClick={() => setShowApiKey(!showApiKey)}
-                          >
-                            {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          <Button variant="outline" size="icon" onClick={() => {
+                            navigator.clipboard.writeText(import.meta.env.VITE_API_URL || "http://localhost:8000");
+                            toast({ title: "Copied", description: "Endpoint URL copied to clipboard" });
+                          }}>
+                            <Check className="h-4 w-4" />
                           </Button>
                         </div>
-                        <Button variant="outline">Regenerate</Button>
                       </div>
-                      <p className="text-xs text-muted-foreground">Keep this key secure. Never share it publicly.</p>
-                    </div>
 
-                    <div className="space-y-2">
-                      <Label>API Endpoint</Label>
-                      <Input
-                        defaultValue="https://api.sentinel-engine.ai/v1"
-                        className="glass-card border-border/50"
-                        readOnly
-                      />
-                    </div>
+                      <div className="space-y-2">
+                        <Label>Integration Status</Label>
+                        <div className="grid grid-cols-1 gap-2">
+                          <div className="flex items-center justify-between p-2 border rounded bg-card/50">
+                            <span className="flex items-center gap-2"><Globe className="h-4 w-4" /> Reddit</span>
+                            <Badge variant={statusData?.reddit ? "outline" : "secondary"} className={statusData?.reddit ? "text-sentinel-positive border-sentinel-positive" : "text-muted-foreground"}>
+                              {statusData?.reddit ? "Active" : "Not Configured"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between p-2 border rounded bg-card/50">
+                            <span className="flex items-center gap-2"><Globe className="h-4 w-4" /> Twitter</span>
+                            <Badge variant={statusData?.twitter ? "outline" : "secondary"} className={statusData?.twitter ? "text-sentinel-positive border-sentinel-positive" : "text-muted-foreground"}>
+                              {statusData?.twitter ? "Active" : "Not Configured"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between p-2 border rounded bg-card/50">
+                            <span className="flex items-center gap-2"><Globe className="h-4 w-4" /> YouTube</span>
+                            <Badge variant={statusData?.youtube ? "outline" : "secondary"} className={statusData?.youtube ? "text-sentinel-positive border-sentinel-positive" : "text-muted-foreground"}>
+                              {statusData?.youtube ? "Active" : "Not Configured"}
+                            </Badge>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Manage keys in the Integrations tab.</p>
+                      </div>
 
-                    <div className="space-y-2">
-                      <Label>Webhook URL</Label>
-                      <Input
-                        placeholder="https://your-server.com/webhook"
-                        className="glass-card border-border/50"
-                      />
-                      <p className="text-xs text-muted-foreground">Receive real-time alerts via webhook</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -511,34 +572,38 @@ const Settings = () => {
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span>API Calls This Month</span>
-                        <span>8,432 / 10,000</span>
+                        <span>Reviews Analyzed (Monthly Quota)</span>
+                        <span>{totalReviews.toLocaleString()} / {quota.toLocaleString()}</span>
                       </div>
                       <div className="h-2 rounded-full bg-muted overflow-hidden">
                         <motion.div
                           initial={{ width: 0 }}
-                          animate={{ width: '84.32%' }}
+                          animate={{ width: `${usagePercent}%` }}
                           transition={{ duration: 1, ease: 'easeOut' }}
+                          className={`h-full rounded-full ${usagePercent > 90 ? 'bg-sentinel-negative' : 'bg-sentinel-positive'}`}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground text-right">{usagePercent.toFixed(1)}% Used</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>Database Storage</span>
+                        {/* Estimate 1KB per review */}
+                        <span>{(totalReviews * 0.001).toFixed(2)} MB / 500 MB</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(totalReviews * 0.001 / 500) * 100}%` }}
+                          transition={{ duration: 1, ease: 'easeOut', delay: 0.1 }}
                           className="h-full bg-sentinel-credibility rounded-full"
                         />
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Reviews Analyzed</span>
-                        <span>142,890 / 500,000</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-muted overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: '28.58%' }}
-                          transition={{ duration: 1, ease: 'easeOut', delay: 0.1 }}
-                          className="h-full bg-sentinel-positive rounded-full"
-                        />
-                      </div>
-                    </div>
-                    <Badge variant="outline" className="bg-sentinel-positive/20 text-sentinel-positive">
-                      Pro Plan
+
+                    <Badge variant="outline" className="bg-sentinel-positive/20 text-sentinel-positive mt-4 w-full justify-center py-1">
+                      Sentinel Pro Plan (Active)
                     </Badge>
                   </CardContent>
                 </Card>
