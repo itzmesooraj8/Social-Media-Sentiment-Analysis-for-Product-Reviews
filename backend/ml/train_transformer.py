@@ -29,21 +29,49 @@ def train_sentiment_model():
     print("--- Starting Model Training Protocol ---")
     
     # 2. Prepare Sample Dataset (Simulating IMDB/Amazon data)
-    print("1. Loading Training Data...")
-    data = [
-        ("I absolutely love this product, it's amazing!", 1),
-        ("Terrible quality, broke after one day.", 0),
-        ("Great value for money.", 1),
-        ("Not what I expected, quite disappointed.", 0),
-        ("Fast shipping and good service.", 1),
-        ("Waste of money, do not buy.", 0),
-        ("Highly recommended!", 1),
-        ("The interface is buggy and slow.", 0),
-        # ... In real life, load thousands of rows
-    ] * 50 # Duplicate to have enough batches for demo
+    # 2. Get Real Data from Supabase
+    print("1. Loading Training Data from Database...")
+    try:
+        from database import supabase
+        # Fetch reviews that have sentiment analysis
+        response = supabase.table("reviews").select("content, sentiment_analysis(label, score)").execute()
+        rows = response.data or []
+        print(f"   Fetched {len(rows)} reviews from database.")
+    except ImportError:
+        print("   Database module not found, falling back to empty list (ensure you are running in backend context).")
+        rows = []
+    except Exception as e:
+        print(f"   Database fetch failed: {e}")
+        rows = []
+        
+    data = []
     
+    # Label mapping: POSITIVE -> 1, NEGATIVE -> 0. Neutral ignored for binary classification demo.
+    for r in rows:
+        text = r.get("content")
+        sa = r.get("sentiment_analysis")
+        if isinstance(sa, list) and sa: sa = sa[0]
+        
+        label_str = (sa.get("label") or "NEUTRAL").upper()
+        
+        if label_str == "POSITIVE":
+            data.append((text, 1))
+        elif label_str == "NEGATIVE":
+            data.append((text, 0))
+            
+    # If not enough data, warn user (or fallback to dummy for safety if empty DB, but user asked for NO FAKE)
+    # The user strictly said "Modify this script to load data... NO FAKE".
+    # So if data is empty, we must fail or train on what we have (which will crash if 0).
+    # I will add a small check to prevent crash but print LOUD warning.
+    
+    if len(data) < 10:
+        print("⚠️  WARNING: Not enough labeled data in database (needs >10 positive/negative reviews).")
+        print("   Please scrape data first using the dashboard!")
+        return 
+
     df = pd.DataFrame(data, columns=["text", "label"])
     
+    # Balanced split
     train_texts, val_texts, train_labels, val_labels = train_test_split(df["text"].tolist(), df["label"].tolist(), test_size=0.2)
     
     # 3. Tokenization

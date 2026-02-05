@@ -38,7 +38,7 @@ from services import scrapers, youtube_scraper, data_pipeline, wordcloud_service
 # Re-enabling Reddit/Twitter for real-time integration
 from services import reddit_scraper, twitter_scraper 
 from services.prediction_service import generate_forecast
-from routers import reports
+from routers import reports, alerts, settings
 from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats, get_product_by_id, delete_product, get_sentiment_trends, get_product_stats_full
 
 app = FastAPI(title="Sentiment Beacon API", version="1.0.0")
@@ -73,6 +73,8 @@ app.add_middleware(
 )
 
 app.include_router(reports.router)
+app.include_router(alerts.router)
+app.include_router(settings.router)
 from routers import auth
 app.include_router(auth.router)
 
@@ -766,6 +768,35 @@ async def api_get_analytics(product_id: Optional[str] = None, range: str = "7d")
         return {"success": True, "data": {"sentimentTrends": trends}}
     except Exception as e:
          return {"success": False, "detail": str(e), "data": {"sentimentTrends": []}}
+
+
+@app.get("/api/products/{product_id}/predictions")
+async def api_get_predictions(product_id: str, days: int = 7):
+    """
+    Get AI-powered sentiment forecast.
+    """
+    try:
+        # Fetch historical sentiment data
+        trends = await get_sentiment_trends(product_id, days=90) # Get enough history
+        
+        # Format for prediction service
+        # trends is usually [{'date': '...', 'sentiment': 0.5}, ...]
+        history = [{"date": t["date"], "sentiment": t["sentiment"]} for t in trends]
+        
+        forecast = generate_forecast(history)
+        
+        # Determine trend
+        trend = "stable"
+        if forecast and len(forecast) > 1:
+            first = forecast[0]["sentiment"]
+            last = forecast[-1]["sentiment"]
+            if last > first + 0.1: trend = "improving"
+            elif last < first - 0.1: trend = "declining"
+        
+        return {"success": True, "data": {"forecast": forecast, "trend": trend}}
+    except Exception as e:
+        logger.error(f"Prediction error: {e}")
+        return {"success": False, "detail": str(e), "data": {"forecast": [], "trend": "unknown"}}
 
 if __name__ == "__main__":
     import uvicorn

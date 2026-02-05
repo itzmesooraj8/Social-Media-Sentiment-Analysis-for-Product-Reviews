@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { AlertCircle, X } from 'lucide-react';
 import { AppSidebar } from './AppSidebar';
 import { DashboardHeader } from './DashboardHeader';
+import { getSystemStatus } from '@/lib/api';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -12,6 +13,21 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, lastUpdated, isCrisis }: DashboardLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [missingIntegrations, setMissingIntegrations] = useState<string[]>([]);
+  const [showBanner, setShowBanner] = useState(true);
+
+  useEffect(() => {
+    getSystemStatus().then((status) => {
+      const missing = [];
+      if (!status.reddit) missing.push("Reddit");
+      if (!status.twitter) missing.push("Twitter");
+      if (!status.youtube) missing.push("YouTube");
+
+      if (missing.length > 0) {
+        setMissingIntegrations(missing);
+      }
+    });
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -36,6 +52,32 @@ export function DashboardLayout({ children, lastUpdated, isCrisis }: DashboardLa
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
           >
+            <AnimatePresence>
+              {showBanner && missingIntegrations.length > 0 && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="mb-6 bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 flex items-start gap-3"
+                >
+                  <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-medium text-yellow-500">Configuration Missing</h3>
+                    <p className="text-sm text-yellow-500/80 mt-1">
+                      API keys are missing for the following platforms: <strong>{missingIntegrations.join(", ")}</strong>.
+                      Data collection will be disabled for these sources until you configure them in Settings.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowBanner(false)}
+                    className="text-yellow-500/50 hover:text-yellow-500"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {children}
           </motion.div>
         </main>

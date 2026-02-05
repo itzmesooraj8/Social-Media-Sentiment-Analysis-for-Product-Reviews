@@ -1,45 +1,58 @@
-# User Manual & Implementation Guide
+# User Manual
+
+**Project:** Social Media Sentiment Analysis for Product Reviews
 
 ## 1. Introduction
-Welcome to the Sentiment Beacon dashboard. This tool helps marketing teams and product managers understand real-time customer sentiment.
+Sentiment Beacon is a real-time analytics platform that helps you understand customer perception across social media.
 
-## 2. Navigating the Dashboard
+## 2. For Business Users (Marketing & Product Managers)
 
-### 2.1 Main Dashboard
-- **Live Feed**: Shows the most recent reviews streaming in from connected sources.
-- **Sentiment Word Cloud**: Visualizes the most common positive (green) and negative (red) terms.
-- **Trend Chart**: A line graph showing sentiment evolution over the last 7 or 30 days.
+### **The Dashboard**
+- **Overview**: Immediately see the "Sentiment Score" (0-100%). A score > 60% is generally positive.
+- **Crisis Mode**: If sentiment drops rapidly, the interface will shift to "Crisis Mode" (red accents). Check the "Alerts" panel immediately.
 
-### 2.2 Products Page
-- **Add Product**: Click the "+" button to track a new product.
-- **Scrape Actions**: Click the generic "Actions" menu on a product card to manually trigger a **YouTube** or **Reddit** scrape.
-- **Deep Analysis**: Click a product card to enter the detailed product view.
+### **The "War Room" (Competitor Analysis)**
+1.  Navigate to the **War Room** tab.
+2.  Select your product and a competitor's product.
+3.  **Radar Chart**: Compare strengths. If your "Price" score is lower but "Quality" is higher, consider marketing on value-for-money.
 
-### 2.3 Analytics Page
-- **Predictive AI**: See a 7-day forecast of sentiment trends.
-- **Visualizations**: Access deep-dive charts like specific attribute analysis (Price vs Quality vs Shipping).
+### **Generating Reports**
+1.  Go to the **Reports** page.
+2.  Click **"Generate Deep Analysis PDF"**.
+3.  Wait 5-10 seconds for the AI to process recent reviews, detect bot activity, and summarize topics.
+4.  Download the PDF for your stakeholder meeting.
 
-## 3. Configuration & Roles
+## 3. For Technical Users (Developers & Analysts)
 
-### 3.1 User Roles
-- **Admins**: Can configure API keys in the `.env` file for Twitter/Reddit access.
-- **Analysts**: Can view dashboards, export reports, and compare competitors.
-- **Viewers**: Read-only access to dashboards (future implementation via Supabase RLS).
+### **Adding a New Product**
+1.  Go to **Settings** > **Products**.
+2.  Enter the Product Name.
+3.  (Important) Enter precise **Keywords**. The scraper matches these in tweets and comments.
+    -   *Good*: "iPhone 15 Pro", "iPhone 15 overheating"
+    -   *Bad*: "iPhone", "phone"
+4.  Toggle the platforms you want to track.
 
-### 3.2 Setting Up Data Sources
-- **YouTube**: Requires `YOUTUBE_API_KEY` in `.env`.
-- **Reddit**: Requires `REDDIT_CLIENT_ID` and `SECRET`.
-- **Twitter**: Requires Bearer Token. *Note: Wireless fallback to "Nitter" (no-code scraping) is enabled if keys are missing.*
+### **Manually Triggering a Scrape**
+If you need immediate data:
+-   Go to **Dashboard**.
+-   Click the **"Scrape Now"** button (Lightning icon).
+-   *Note*: This runs in the background. Results typically appear in 30-60 seconds.
+
+### **Retraining the Model**
+If the sentiment accuracy feels off:
+1.  Ensure you have collected at least 100 new verified reviews.
+2.  Run the training script (requires backend access):
+    ```bash
+    python backend/ml/train_transformer.py
+    ```
+3.  Reliability metrics will be logged to `backend.log`.
 
 ## 4. Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| **No Data Showing** | Check if backend is running on port 8000. Ensure you have triggered a scrape. |
-| **Login Failed** | Verify Supabase credentials in `.env`. |
-| **Pending Scrape** | Scrapes are background tasks. Check the backend terminal logs for "Scraper started". |
+**"Configuration Missing" Alert**
+-   This means the backend cannot find API keys for Twitter, Reddit, or YouTube.
+-   **Fix**: Go to **Settings** > **Integrations** and enter your API keys.
 
-## 5. Exporting Reports
-1. Navigate to the **"Reports"** tab.
-2. Select your date range.
-3. Click **"Download PDF"** for a management-ready summary.
+**"No Data Available"**
+-   Ensure you have added Keywords for the product.
+-   Check if the platform (e.g., Reddit) is down or rate-limiting requests.

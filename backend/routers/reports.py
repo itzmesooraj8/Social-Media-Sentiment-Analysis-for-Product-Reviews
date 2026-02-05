@@ -8,6 +8,50 @@ from database import supabase
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
+@router.get("")
+async def list_reports():
+    """List available generated reports."""
+    try:
+        reports_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports")
+        if not os.path.exists(reports_dir):
+            return {"success": True, "data": []}
+            
+        files = []
+        for f in os.listdir(reports_dir):
+            if f.endswith(".pdf") or f.endswith(".xlsx") or f.endswith(".csv"):
+                path = os.path.join(reports_dir, f)
+                stats = os.stat(path)
+                files.append({
+                    "name": f,
+                    "created_at": datetime.fromtimestamp(stats.st_mtime).isoformat(),
+                    "size": stats.st_size,
+                    "type": f.split(".")[-1]
+                })
+        
+        # Sort by newest first
+        files.sort(key=lambda x: x["created_at"], reverse=True)
+        return {"success": True, "data": files}
+    except Exception as e:
+        print(f"List reports error: {e}")
+        return {"success": False, "data": []}
+
+@router.get("/{filename}")
+async def get_report_file(filename: str):
+    """Download a specific report file."""
+    try:
+        reports_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports")
+        filepath = os.path.join(reports_dir, filename)
+        
+        if not os.path.exists(filepath):
+            raise HTTPException(status_code=404, detail="Report not found")
+            
+        return FileResponse(filepath, filename=filename)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/export")
 async def export_report(product_id: str = Query(...), format: str = Query("csv", regex="^(csv|pdf|excel)$")):
     """
