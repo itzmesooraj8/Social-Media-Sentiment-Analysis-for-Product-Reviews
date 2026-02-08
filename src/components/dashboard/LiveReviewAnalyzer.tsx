@@ -42,7 +42,7 @@ export function LiveReviewAnalyzer() {
 
       // Map backend response to our result format
       const sentiment = (analysisData.label?.toLowerCase() || 'neutral') as 'positive' | 'neutral' | 'negative';
-      const confidence = (analysisData.score || 0.65) * 100;
+      const confidence = (analysisData.score || 0) * 100;
 
       // Extract key phrases from the text
       const keyPhrases = reviewText
@@ -73,8 +73,8 @@ export function LiveReviewAnalyzer() {
         confidence,
         emotions: emotions.sort((a: any, b: any) => b.score - a.score),
         keyPhrases: keyPhrases.length ? keyPhrases : ['No distinct phrases detected'],
-        credibilityScore: (analysisData.credibility || 0.75) * 100,
-        credibilityReasons: analysisData.credibilityReasons || ['AI Model Analysis', 'Pattern Detection', 'Language Verification'],
+        credibilityScore: (analysisData.credibility || 0) * 100,
+        credibilityReasons: analysisData.credibility_reasons || ['Analysis pending...'],
         aspects,
       });
     } catch (error) {

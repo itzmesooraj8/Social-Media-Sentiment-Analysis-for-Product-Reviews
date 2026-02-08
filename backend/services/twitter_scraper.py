@@ -57,16 +57,27 @@ class TwitterScraperService:
     async def search_tweets(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """
         Public async API.
+        Prioritizes Official API (Tweepy), falls back to Nitter (Scraper).
         """
+        results = []
+        
         # 1. Try Official API
         if self.tweepy_client:
             try:
-                return await asyncio.to_thread(self._run_tweepy, query, limit)
+                results = await asyncio.to_thread(self._run_tweepy, query, limit)
+                if results: return results
             except Exception as e:
-                logger.warning(f"Tweepy search failed: {e}")
-                return []
+                logger.warning(f"Tweepy search failed, failing over to Nitter: {e}")
         
-        return []
+        # 2. Fallback to Nitter
+        if _NITTER_AVAILABLE:
+            try:
+                logger.info(f"Attempting Nitter scrape for '{query}'...")
+                results = await asyncio.to_thread(self._run_nitter, query, limit)
+            except Exception as e:
+                logger.error(f"Nitter search failed: {e}")
+                
+        return results
 
     def _run_tweepy(self, query: str, limit: int) -> List[Dict[str, Any]]:
         """Blocking Tweepy call."""
@@ -98,5 +109,33 @@ class TwitterScraperService:
         except Exception as e:
             logger.error(f"Tweepy execution error: {e}")
             raise e
+
+    def _run_nitter(self, query: str, limit: int) -> List[Dict[str, Any]]:
+        """Blocking Nitter call."""
+        results = []
+        try:
+            scraper = Nitter(log_level=1, skip_instance_check=False)
+            # Nitter instances are flaky, maybe iterate? rely on lib defaults for now.
+            start = scraper.get_tweets(query, mode='term', number=limit)
+             
+            if not start or not start.get('tweets'):
+                return []
+
+            for t in start['tweets']:
+                # Nitter dict structure
+                results.append({
+                    'text': t.get('text', ''),
+                    'url': t.get('link', ''),
+                    'platform': 'twitter',
+                    'posted_at': t.get('date'),
+                    'like_count': t.get('stats', {}).get('likes', 0),
+                    'retweet_count': t.get('stats', {}).get('retweets', 0),
+                    'reply_count': t.get('stats', {}).get('comments', 0),
+                    'username': t.get('user', {}).get('username', '')
+                })
+            return results
+        except Exception as e:
+            logger.error(f"Nitter execution error: {e}")
+            return []
 
 twitter_scraper = TwitterScraperService()

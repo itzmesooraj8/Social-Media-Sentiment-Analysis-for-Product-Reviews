@@ -9,52 +9,25 @@ from database import supabase
 
 logger = logging.getLogger(__name__)
 
-# --- Imports with Safety Checks ---
-try:
-    from transformers import pipeline
-    _TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    _TRANSFORMERS_AVAILABLE = False
-    logger.warning("Transformers not found. AI features will be limited.")
+# --- Imports (Fail Fast) ---
+from transformers import pipeline
+import textstat
+from keybert import KeyBERT
+from sklearn.feature_extraction.text import CountVectorizer
+from nrclex import NRCLex
+import nltk
+import gensim
+from gensim import corpora
+import spacy
 
-try:
-    import textstat
-    _TEXTSTAT_AVAILABLE = True
-except ImportError:
-    _TEXTSTAT_AVAILABLE = False
-    logger.warning("textstat not found. Credibility scoring will be limited.")
-
-try:
-    from keybert import KeyBERT
-    _KEYBERT_AVAILABLE = True
-except ImportError:
-    _KEYBERT_AVAILABLE = False
-    logger.warning("KeyBERT not found. Advanced keyphrase extraction will be limited.")
-
-try:
-    from sklearn.feature_extraction.text import CountVectorizer
-    _SKLEARN_AVAILABLE = True
-except ImportError:
-    _SKLEARN_AVAILABLE = False
-    logger.warning("sklearn not found. Topic extraction will be limited.")
-
-try:
-    from nrclex import NRCLex
-    import nltk
-    _NRC_AVAILABLE = True
-except ImportError:
-    _NRC_AVAILABLE = False
-    logger.warning("NRCLex/NLTK not found. Advanced emotion detection will be limited.")
-
-try:
-    import gensim
-    from gensim import corpora
-    _GENSIM_AVAILABLE = True
-except ImportError:
-    _GENSIM_AVAILABLE = False
-    logger.warning("Gensim not found. LDA Topic modeling will be limited.")
-
-# ----------------------------------
+# Constants for availability checks (now always True if we reach here, but kept for compatibility with rest of code)
+_TRANSFORMERS_AVAILABLE = True
+_TEXTSTAT_AVAILABLE = True
+_KEYBERT_AVAILABLE = True
+_SKLEARN_AVAILABLE = True
+_NRC_AVAILABLE = True
+_GENSIM_AVAILABLE = True
+# ---------------------------
 
 class AIService:
     def __init__(self):
@@ -64,6 +37,7 @@ class AIService:
         self._sentiment_pipe = None
         self._emotion_pipe = None
         self._keybert_model = None
+        self._spacy_nlp = None
         self._models_loaded = False
 
     def _ensure_models_loaded(self):
@@ -71,35 +45,33 @@ class AIService:
             return
 
         # 0. Ensure NLTK Data (Lazy Download)
-        if _NRC_AVAILABLE:
-             try:
-                 nltk.data.find('tokenizers/punkt')
-             except LookupError:
-                 logger.info("Downloading NLTK data...")
-                 try:
-                     nltk.download('punkt', quiet=True)
-                 except Exception as nl_e:
-                     logger.warning(f"NLTK Download failed: {nl_e}")
-
-        if not _TRANSFORMERS_AVAILABLE:
-            self._models_loaded = True
-            return
-
+        # 0. Ensure NLTK Data
         try:
-            logger.info("Loading Sentiment Model (Lazy Load)...")
-            self._sentiment_pipe = pipeline("sentiment-analysis", model=self.sentiment_model)
-            logger.info("Loading Emotion Model (Lazy Load)...")
-            self._emotion_pipe = pipeline("text-classification", model=self.emotion_model, top_k=1)
-            
-            if _KEYBERT_AVAILABLE:
-                 logger.info("Loading KeyBERT Model (Lazy Load)...")
-                 self._keybert_model = KeyBERT()
+             nltk.data.find('tokenizers/punkt')
+        except LookupError:
+             logger.info("Downloading NLTK data...")
+             nltk.download('punkt', quiet=True)
 
-            logger.info("AI Models Loaded.")
-            self._models_loaded = True
-        except Exception as e:
-            logger.error(f"AI Init Error: {e}")
-            self._models_loaded = True # Prevent retry loop on failure
+        logger.info("Loading AI Models...")
+        
+        # 1. Transformers (Sentiment & Emotion)
+        self._sentiment_pipe = pipeline("sentiment-analysis", model=self.sentiment_model)
+        self._emotion_pipe = pipeline("text-classification", model=self.emotion_model, top_k=1)
+        
+        # 2. KeyBERT
+        self._keybert_model = KeyBERT()
+
+        # 3. Spacy (Aspects)
+        try:
+            self._spacy_nlp = spacy.load("en_core_web_sm")
+        except OSError:
+            logger.warning("Downloading Spacy model 'en_core_web_sm'...")
+            from spacy.cli import download
+            download("en_core_web_sm")
+            self._spacy_nlp = spacy.load("en_core_web_sm")
+
+        logger.info("All AI Models Loaded Successfully.")
+        self._models_loaded = True
 
     def _normalize_label(self, raw_label: str) -> str:
         lbl = (raw_label or "").upper()
@@ -149,7 +121,18 @@ class AIService:
              meta_val = 0.3 
 
         final_score = (0.4 * conf_score) + (0.3 * readability_val) + (0.3 * meta_val)
-        return round(final_score, 3)
+        
+        reasons = []
+        if conf_score > 0.8: reasons.append("High Model Confidence")
+        elif conf_score < 0.6: reasons.append("Low Model Confidence")
+        
+        if readability_val > 0.7: reasons.append("Clear Writing Style")
+        elif readability_val < 0.4: reasons.append("Complex/Unclear Text")
+        
+        if meta_val > 0.6: reasons.append("High Social Engagement")
+        elif meta_val < 0.2: reasons.append("Low/No Social Verification")
+        
+        return round(final_score, 3), reasons
 
     @lru_cache(maxsize=1000)
     def _predict_sentiment_cached(self, text: str):
@@ -256,61 +239,55 @@ class AIService:
             logger.error(f"Emotion extraction error: {e}")
 
         # 3. Aspects (God Tier V2)
+        # 3. Aspects (Real Dependency Parsing)
         try:
-            text_lower = text.lower()
-            
-            # Expanded Domain Dictionaries (inline for safety)
-            aspect_domains = {
-                "tech": {
-                    "battery": ["battery", "charge", "power", "drain", "mAh", "life"],
-                    "screen": ["screen", "display", "pixel", "brightness", "resolution", "touch"],
-                    "performance": ["speed", "lag", "crash", "processor", "ram", "smooth", "fast", "slow", "hang"],
-                    "camera": ["camera", "photo", "video", "lens", "shutter", "focus", "quality", "low light"],
-                    "audio": ["sound", "speaker", "mic", "volume", "bass", "treble", "audio", "noise"],
-                    "connectivity": ["wifi", "bluetooth", "signal", "connection", "pair", "network", "5g", "4g"],
-                    "build": ["build", "design", "material", "plastic", "metal", "glass", "sturdy", "fragile"],
-                },
-                "fashion": {
-                    "fit": ["fit", "size", "large", "small", "tight", "loose", "length"],
-                    "comfort": ["comfortable", "itchy", "soft", "rough", "cozy", "wear"],
-                    "material": ["fabric", "cotton", "polyester", "quality", "material", "texture"],
-                    "appearance": ["look", "color", "style", "design", "pattern", "beautiful", "ugly"],
-                },
-                "service": {
-                    "shipping": ["shipping", "delivery", "arrive", "package", "box", "mail", "late", "ontime"],
-                    "support": ["support", "service", "representative", "response", "rude", "helpful", "refund", "return"],
-                    "price": ["price", "cost", "value", "expensive", "cheap", "deal", "worth"],
-                }
-            }
-            
-            found_aspects_set = set()
+            if self._spacy_nlp:
+                doc = self._spacy_nlp(text)
+                # Strategy: Find Adjectives (amod) modifying Nouns (nsubj/dobj)
+                # or Nouns that are subjects of specific verbs.
+                
+                # Simple implementation: Look for adj + noun pairs
+                for token in doc:
+                    if token.pos_ == "NOUN" and not token.is_stop:
+                        # Check children for adjectives
+                        adjectives = [child for child in token.children if child.pos_ == "ADJ"]
+                        if adjectives:
+                            # We found a noun with an adjective (e.g. "great battery")
+                            aspect_name = token.lemma_.lower()
+                            
+                            # Determine local sentiment from the adjective
+                            # This is a heuristic. Ideally use the sentiment score of the sentence + adjective polarity.
+                            # For now, we fallback to the global sentence label/score but scoped to this aspect.
+                            
+                            # Refinement: Check if adjective is negative (using a small list or NLTK)
+                            # But since we have the global sentiment, let's use that as a baseline 
+                            # and maybe adjust if the specific adjective is starkly different?
+                            # Keeping it aligned with global sentiment for V1 of "Real NLP".
+                            
+                            aspect_sent = "neutral"
+                            if label == "POSITIVE": aspect_sent = "positive"
+                            elif label == "NEGATIVE": aspect_sent = "negative"
 
-            for domain, aspects in aspect_domains.items():
-                for aspect_name, triggers in aspects.items():
-                    for trigger in triggers:
-                        if trigger in text_lower:
-                            # Use regex for basic boundary check
-                            if re.search(r'\b' + re.escape(str(trigger)) + r'\b', text_lower):
-                                aspect_sentiment = "neutral"
-                                if label == "POSITIVE": aspect_sentiment = "positive"
-                                elif label == "NEGATIVE": aspect_sentiment = "negative"
-                                
-                                if aspect_name not in found_aspects_set:
-                                    aspects_found.append({
-                                        "aspect": str(aspect_name),
-                                        "sentiment": aspect_sentiment,
-                                        "score": float(score)
-                                    })
-                                    found_aspects_set.add(aspect_name)
-                                break 
+                            # Avoid duplicates
+                            if aspect_name not in [a["aspect"] for a in aspects_found]:
+                                aspects_found.append({
+                                    "aspect": aspect_name,
+                                    "sentiment": aspect_sent,
+                                    "score": float(score)
+                                })
+            else:
+                 logger.error("Spacy model not loaded for aspect extraction")
         except Exception as e:
              logger.error(f"Aspect extraction error: {e}")
 
         # 4. Credibility
+        credibility_reasons = []
         try:
-             credibility = self._compute_credibility(text, float(score), metadata)
+             credibility, credibility_reasons = self._compute_credibility(text, float(score), metadata)
         except Exception as e:
              logger.error(f"Credibility error: {e}")
+             credibility = 0.5
+             credibility_reasons = ["Analysis Error"]
 
         # 5. Topics
         try:
@@ -333,7 +310,9 @@ class AIService:
             "score": round(score, 4),
             "emotions": emotions_list,
             "aspects": aspects_found,
+            "aspects": aspects_found,
             "credibility": credibility,
+            "credibility_reasons": credibility_reasons,
             "topics": topics
         }
     

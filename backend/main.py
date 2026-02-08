@@ -141,6 +141,7 @@ class YoutubeScrapeRequest(BaseModel):
 class RedditScrapeRequest(BaseModel):
     query: str
     limit: Optional[int] = 50
+    subreddits: Optional[List[str]] = None
 
 
 class TwitterScrapeRequest(BaseModel):
@@ -342,7 +343,11 @@ async def api_scrape_reddit(payload: RedditScrapeRequest):
         raise HTTPException(status_code=400, detail="query is required")
 
     try:
-        items = await reddit_scraper.reddit_scraper.search_product_mentions(query, limit=payload.limit or 50)
+        items = await reddit_scraper.reddit_scraper.search_product_mentions(
+            query, 
+            limit=payload.limit or 50, 
+            subreddits=payload.subreddits
+        )
         return {"success": True, "data": items, "count": len(items)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

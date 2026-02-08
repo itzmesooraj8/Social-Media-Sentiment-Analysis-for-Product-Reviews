@@ -37,20 +37,20 @@ class RedditScraperService:
             print(f"Reddit client init failed: {e}")
             self.client = None
 
-    async def search_product_mentions(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Search Reddit (selected subreddits) for product mentions and return list of dicts.
+    async def search_product_mentions(self, query: str, limit: int = 50, subreddits: List[str] = None) -> List[Dict[str, Any]]:
+        """Search Reddit (dynamic subreddits or global) for product mentions.
 
         Each item: {"text": ..., "url": ..., "platform": "reddit", "posted_at": ISO timestamp}
         """
         if not self.client:
             return []
 
-        subreddits = ["technology", "gadgets", "reviews"]
-        per_sub = max(1, limit // len(subreddits))
+        targets = subreddits if subreddits else ["all"]
+        per_sub = max(1, limit // len(targets))
         results: List[Dict[str, Any]] = []
 
         try:
-            for sub in subreddits:
+            for sub in targets:
                 try:
                     subreddit = await self.client.subreddit(sub)
                 except Exception:

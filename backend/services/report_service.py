@@ -153,6 +153,9 @@ class ReportService:
 
         avg_sent = sum(scores) / total if scores else 0
         
+        pos_pct = (len(pos_reviews) / total * 100) if total else 0
+        neg_pct = (len(neg_reviews) / total * 100) if total else 0
+        
         avg_likes_pos = sum(r.get("like_count", 0) for r in pos_reviews) / len(pos_reviews) if pos_reviews else 0
         avg_likes_neg = sum(r.get("like_count", 0) for r in neg_reviews) / len(neg_reviews) if neg_reviews else 0
 
@@ -177,6 +180,8 @@ class ReportService:
             ['Metric', 'Value'],
             ['Total Analyzed Reviews', str(total)],
             ['Average Sentiment Score', f"{avg_sent:.2f} / 1.0"],
+            ['Positive Sentiment', f"{pos_pct:.1f}%"],
+            ['Negative Sentiment', f"{neg_pct:.1f}%"],
             ['Credible Sources', f"{verified_count} verified"],
         ]
         t = Table(summary_data, colWidths=[200, 200])
