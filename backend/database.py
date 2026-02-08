@@ -481,8 +481,8 @@ async def get_dashboard_stats(product_id: str = None):
         final_aspects = []
         for k, v in aspect_scores.items():
             if v["n"] > 0:
-                final_aspects.append({"subject": k, "A": round(v["sum"]/v["n"], 1), "fullMark": 5})
-        final_aspects.sort(key=lambda x: x["A"], reverse=True)
+                final_aspects.append({"aspect": k, "score": round(v["sum"]/v["n"], 1), "fullMark": 5})
+        final_aspects.sort(key=lambda x: x["score"], reverse=True)
         final_aspects = final_aspects[:6]
 
         final_data = {

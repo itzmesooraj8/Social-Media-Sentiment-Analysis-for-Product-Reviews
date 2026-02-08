@@ -243,26 +243,28 @@ class AIService:
         try:
             if self._spacy_nlp:
                 doc = self._spacy_nlp(text)
-                # Strategy: Find Adjectives (amod) modifying Nouns (nsubj/dobj)
-                # or Nouns that are subjects of specific verbs.
+                # Strategy: Find Adjectives (amod) modifying Nouns...
+                # ...AND Nouns as subjects of 'be' with adjective complements (acomp).
                 
-                # Simple implementation: Look for adj + noun pairs
                 for token in doc:
                     if token.pos_ == "NOUN" and not token.is_stop:
-                        # Check children for adjectives
-                        adjectives = [child for child in token.children if child.pos_ == "ADJ"]
+                        adjectives = []
+                        
+                        # 1. Direct Modification (e.g. "great battery")
+                        adjectives.extend([child for child in token.children if child.dep_ == "amod" and child.pos_ == "ADJ"])
+                        
+                        # 2. Predicative Adjectives (e.g. "battery is dead")
+                        if token.dep_ == "nsubj" and token.head.lemma_ == "be":
+                            adjectives.extend([child for child in token.head.children if child.dep_ == "acomp" and child.pos_ == "ADJ"])
+                        
                         if adjectives:
-                            # We found a noun with an adjective (e.g. "great battery")
                             aspect_name = token.lemma_.lower()
+                            # Use the first adjective for sentiment context
+                            adj_token = adjectives[0]
                             
                             # Determine local sentiment from the adjective
                             # This is a heuristic. Ideally use the sentiment score of the sentence + adjective polarity.
                             # For now, we fallback to the global sentence label/score but scoped to this aspect.
-                            
-                            # Refinement: Check if adjective is negative (using a small list or NLTK)
-                            # But since we have the global sentiment, let's use that as a baseline 
-                            # and maybe adjust if the specific adjective is starkly different?
-                            # Keeping it aligned with global sentiment for V1 of "Real NLP".
                             
                             aspect_sent = "neutral"
                             if label == "POSITIVE": aspect_sent = "positive"

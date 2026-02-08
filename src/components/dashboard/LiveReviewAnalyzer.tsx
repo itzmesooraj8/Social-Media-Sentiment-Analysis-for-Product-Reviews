@@ -62,11 +62,19 @@ export function LiveReviewAnalyzer() {
       ];
 
       // Use backend aspects if available
-      const aspects = analysisData.aspects || [
-        { name: 'Quality', sentiment },
-        { name: 'Value', sentiment: 'neutral' as const },
-        { name: 'Service', sentiment: 'neutral' as const },
-      ];
+      const aspects = (analysisData.aspects || []).map((a: any) => ({
+        name: a.name || a.aspect,
+        sentiment: a.sentiment || 'neutral'
+      }));
+
+      if (aspects.length === 0) {
+        // Fallback default only if empty
+        aspects.push(
+          { name: 'Quality', sentiment },
+          { name: 'Value', sentiment: 'neutral' },
+          { name: 'Service', sentiment: 'neutral' }
+        );
+      }
 
       setResult({
         sentiment,
