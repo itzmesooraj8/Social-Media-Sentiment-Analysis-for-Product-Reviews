@@ -89,6 +89,8 @@ const Reports = () => {
     });
 
     const filteredReports = reports.filter((report: any) => {
+        // Ensure report and filename exist before filtering
+        if (!report || !report.filename) return false;
         const matchesSearch = report.filename.toLowerCase().includes(searchQuery.toLowerCase());
         return matchesSearch;
     });
