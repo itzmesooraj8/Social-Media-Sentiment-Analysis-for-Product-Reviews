@@ -217,8 +217,12 @@ export const getWordCloud = async (productId?: string) => {
 
 export const exportReport = async (productId: string, format: 'pdf' | 'excel' | 'csv') => {
     try {
+        // Safe encoding for parameters
+        const safeId = encodeURIComponent(productId);
+        const safeFormat = encodeURIComponent(format);
+
         // Direct download using blob
-        const response = await api.get(`/reports/export?product_id=${productId}&format=${format}`, {
+        const response = await api.get(`/reports/export?product_id=${safeId}&format=${safeFormat}`, {
             responseType: 'blob'
         });
 

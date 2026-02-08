@@ -59,9 +59,23 @@ async def export_report(product_id: str = Query(...), format: str = Query("csv",
     """
     try:
         # Check if product exists
+        # Check if product exists (Try ID first, then Name fallback)
         p = supabase.table("products").select("name").eq("id", product_id).single().execute()
+        
         if not p.data:
-            raise HTTPException(status_code=404, detail="Product not found")
+            # Fallback: Try finding by Name (case-insensitive)
+            # This handles cases where frontend might send the Name as ID
+            p = supabase.table("products").select("id, name").ilike("name", product_id).limit(1).execute()
+            
+            if p.data:
+                # Found by name, correct the product_id to the real ID if needed, 
+                # though report generation usually uses the ID passed to query reviews.
+                # If reviews use the UUID, we need the UUID.
+                real_id = p.data[0]['id']
+                # If the passed product_id was a Name, we should probably use the Found UUID for review lookup
+                product_id = real_id
+            else:
+                raise HTTPException(status_code=404, detail=f"Product not found: {product_id}")
 
         if format == "pdf":
             filepath = report_service.generate_pdf_report(product_id)
