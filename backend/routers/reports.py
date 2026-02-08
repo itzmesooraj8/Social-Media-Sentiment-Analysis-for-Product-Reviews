@@ -2,6 +2,10 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from typing import Optional
 import os
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 from services.report_service import report_service
 from database import supabase
@@ -60,22 +64,26 @@ async def export_report(product_id: str = Query(...), format: str = Query("csv",
     try:
         # Check if product exists
         # Check if product exists (Try ID first, then Name fallback)
-        p = supabase.table("products").select("name").eq("id", product_id).single().execute()
+        logger.info(f"Exporting report for product_id: {product_id}")
         
-        if not p.data:
+        # Use limit(1) instead of single() to avoid exception on 0 rows
+        p_resp = supabase.table("products").select("id, name").eq("id", product_id).limit(1).execute()
+        
+        real_id = None
+        if p_resp.data:
+             real_id = p_resp.data[0]['id']
+        else:
             # Fallback: Try finding by Name (case-insensitive)
-            # This handles cases where frontend might send the Name as ID
-            p = supabase.table("products").select("id, name").ilike("name", product_id).limit(1).execute()
-            
-            if p.data:
-                # Found by name, correct the product_id to the real ID if needed, 
-                # though report generation usually uses the ID passed to query reviews.
-                # If reviews use the UUID, we need the UUID.
-                real_id = p.data[0]['id']
-                # If the passed product_id was a Name, we should probably use the Found UUID for review lookup
-                product_id = real_id
+            logger.info(f"Product ID lookup failed, trying name fallback for: {product_id}")
+            p_resp = supabase.table("products").select("id, name").ilike("name", product_id).limit(1).execute()
+            if p_resp.data:
+                real_id = p_resp.data[0]['id']
+                logger.info(f"Found product by name: {real_id}")
             else:
+                logger.warning(f"Product not found: {product_id}")
                 raise HTTPException(status_code=404, detail=f"Product not found: {product_id}")
+        
+        product_id = real_id # Ensure we use the UUID for subsequent queries
 
         if format == "pdf":
             filepath = report_service.generate_pdf_report(product_id)
