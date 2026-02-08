@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useQuery } from '@tanstack/react-query';
-import { getProducts } from '@/lib/api';
+import { getProducts, api } from '@/lib/api';
 
 const CSVUploadButton = () => {
   const [isUploading, setIsUploading] = useState(false);
@@ -29,20 +29,15 @@ const CSVUploadButton = () => {
     formData.append('platform', 'csv_import');
 
     try {
-      // Direct fetch to backend
-      const res = await fetch('http://localhost:8000/api/reviews/upload', {
-        method: 'POST',
-        body: formData,
+      // Use configured API instance (handles auth + correct URL)
+      await api.post('/reviews/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
-      
-      if (!res.ok) throw new Error("Upload failed");
-      
-      const data = await res.json();
-      
+
       toast.success("Import Successful", {
-        description: data.data?.message || "Reviews imported successfully"
+        description: "Reviews imported successfully"
       });
-      
+
       // Refresh dashboard
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setIsOpen(false);
@@ -73,8 +68,8 @@ const CSVUploadButton = () => {
             <label className="text-sm font-medium">Select Product Target</label>
             <div className="max-h-40 overflow-y-auto border rounded-md p-2">
               {products?.map((p: any) => (
-                <div 
-                  key={p.id} 
+                <div
+                  key={p.id}
                   className={`p-2 rounded cursor-pointer flex justify-between items-center ${selectedProduct === p.id ? 'bg-primary/10 border-primary border' : 'hover:bg-accent'}`}
                   onClick={() => setSelectedProduct(p.id)}
                 >
@@ -85,32 +80,32 @@ const CSVUploadButton = () => {
               {(!products || products.length === 0) && <p className="text-sm text-muted-foreground p-2">No products found.</p>}
             </div>
           </div>
-          
+
           <div className="pt-2">
-             <Button 
-               className="w-full relative" 
-               disabled={!selectedProduct || isUploading}
-               onClick={() => fileInputRef.current?.click()}
-             >
-               {isUploading ? (
-                 <>
-                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                   Processing...
-                 </>
-               ) : (
-                 <>
-                   <FileUp className="mr-2 h-4 w-4" />
-                   Select CSV & Upload
-                 </>
-               )}
-             </Button>
-             <input 
-               type="file" 
-               accept=".csv" 
-               className="hidden" 
-               ref={fileInputRef} 
-               onChange={handleFileChange}
-             />
+            <Button
+              className="w-full relative"
+              disabled={!selectedProduct || isUploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <FileUp className="mr-2 h-4 w-4" />
+                  Select CSV & Upload
+                </>
+              )}
+            </Button>
+            <input
+              type="file"
+              accept=".csv"
+              className="hidden"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+            />
           </div>
           <p className="text-xs text-muted-foreground text-center">
             Format: Column "text" or "content" required.

@@ -12,7 +12,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useQuery } from '@tanstack/react-query';
-import { getProducts, downloadReport } from '@/lib/api';
+import { getProducts, exportReport } from '@/lib/api';
 import { useDashboardData } from '@/hooks/useDashboardData';
 
 type ExportFormat = 'pdf' | 'excel' | 'csv' | 'png';
@@ -31,69 +31,20 @@ export function ExportButton({ className }: ExportButtonProps) {
   // Fetch dashboard data for export
   const { data: dashboardData } = useDashboardData();
 
+  /* Main Handler */
   const handleExport = async (format: ExportFormat) => {
-    // If PDF, open selection dialog
-    if (format === 'pdf') {
+    // Open dialog for all real exports to select product context
+    if (['pdf', 'excel', 'csv'].includes(format)) {
+      setIsExporting(format);
       setIsDialogOpen(true);
       return;
     }
 
+    // Fallback for image export (client-side usually, but here just a placeholder for now)
     setIsExporting(format);
-
-    if (format === 'csv' || format === 'excel') {
-      try {
-        const reviews = dashboardData?.data?.recentReviews || [];
-        if (!reviews.length) {
-          toast({ title: "No data to export", variant: "destructive" });
-          setIsExporting(null);
-          return;
-        }
-
-        // Generate CSV Content
-        const headers = "Date,Platform,Author,Content,Sentiment,Score,Emotion\n";
-        const rows = reviews.map((r: any) => {
-          const date = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
-          const content = (r.content || "").replace(/"/g, '""').replace(/\n/g, " ");
-          const emotion = r.sentiment_analysis?.[0]?.emotions?.[0]?.name || r.emotion || "";
-          return `"${date}","${r.platform}","${r.username}","${content}","${r.sentiment}","${r.score || 0}","${emotion}"`;
-        }).join("\n");
-
-        const csvContent = headers + rows;
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `sentiment_report_${new Date().toISOString().split('T')[0]}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (e) {
-        console.error("Export failed", e);
-        toast({ title: "Export failed", variant: "destructive" });
-      }
-    } else {
-      // Simulate other formats (PNG) for now
-      await new Promise(resolve => setTimeout(resolve, 1200));
-    }
-
+    await new Promise(resolve => setTimeout(resolve, 1000));
     setIsExporting(null);
-    setExportSuccess(format);
-
-    const formatNames = {
-      pdf: 'PDF Report',
-      excel: 'Excel Spreadsheet (CSV)',
-      csv: 'CSV Data',
-      png: 'Dashboard Image',
-    };
-
-    if (format !== 'pdf') {
-      toast({
-        title: 'Export Complete',
-        description: `${formatNames[format]} has been downloaded successfully.`,
-      });
-    }
-
-    setTimeout(() => setExportSuccess(null), 2000);
+    toast({ title: "Image export coming soon" });
   };
 
   const exportOptions = [
@@ -210,19 +161,27 @@ export function ExportButton({ className }: ExportButtonProps) {
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
               <Button
+                disabled={!isExporting} // Should be set before opening
                 onClick={async () => {
                   if (!selectedProduct) return toast({ title: 'Select a product first' });
-                  toast({ title: 'Generating Report...' });
+
+                  const format = (isExporting || 'pdf') as 'pdf' | 'excel' | 'csv';
+                  toast({ title: `Generating ${format.toUpperCase()} Report...` });
+
                   try {
-                    await downloadReport(selectedProduct);
+                    await exportReport(selectedProduct, format);
                     toast({ title: 'Report downloaded' });
                     setIsDialogOpen(false);
+                    setExportSuccess(format);
+                    setTimeout(() => setExportSuccess(null), 3000);
                   } catch (e) {
                     toast({ title: 'Failed to generate report', variant: 'destructive' });
+                  } finally {
+                    setIsExporting(null);
                   }
                 }}
               >
-                Export PDF
+                {isExporting ? `Export ${isExporting.toUpperCase()}` : 'Select & Export'}
               </Button>
             </div>
           </div>

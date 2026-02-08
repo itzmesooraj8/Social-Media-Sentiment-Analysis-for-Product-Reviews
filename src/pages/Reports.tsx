@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
-import { getReports, downloadReport } from '@/lib/api';
+import { getReports, downloadReport, exportReport, getProducts } from '@/lib/api';
+import { toast } from 'sonner';
 import {
     FileText,
     Download,
@@ -65,6 +66,21 @@ const Reports = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [filterType, setFilterType] = useState<string>('all');
     const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+
+    const handleGenerateReport = async (productId: string, format: 'pdf' | 'excel' | 'csv') => {
+        setIsGenerating(true);
+        try {
+            toast.info(`Generating ${format.toUpperCase()} report...`);
+            await exportReport(productId, format);
+            toast.success("Report Generated & Downloaded");
+            setIsCreateOpen(false);
+        } catch (e) {
+            toast.error("Failed to generate report");
+        } finally {
+            setIsGenerating(false);
+        }
+    };
 
     const { data: reports = [], isLoading } = useQuery({
         queryKey: ['reports'],
@@ -110,6 +126,28 @@ const Reports = () => {
                     </div>
                 </motion.div>
 
+                <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Generate New Report</DialogTitle>
+                            <DialogDescription>
+                                Select a product to generate a comprehensive sentiment analysis report.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <Label>Select Product</Label>
+                                <ProductSelector onSelect={(id) => {
+                                    // Trigger immediate download or create async task?
+                                    // For now, trigger download as per "Real Time" requirement
+                                    handleGenerateReport(id, 'pdf');
+                                }} />
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
                 {/* Reports List */}
                 <motion.div variants={itemVariants}>
                     <Card className="glass-card border-border/50">
@@ -152,6 +190,32 @@ const Reports = () => {
                 </motion.div>
             </motion.div>
         </DashboardLayout>
+    );
+};
+
+// Helper Component for Product Selection
+const ProductSelector = ({ onSelect }: { onSelect: (id: string) => void }) => {
+    const { data: products = [], isLoading } = useQuery({ queryKey: ['products'], queryFn: getProducts });
+
+    if (isLoading) return <div className="text-sm text-muted-foreground p-2">Loading products...</div>;
+    if (!products || products.length === 0) return <div className="text-sm p-2">No products found.</div>;
+
+    return (
+        <div className="space-y-2 max-h-64 overflow-y-auto border rounded p-2">
+            {products.map((p: any) => (
+                <div
+                    key={p.id}
+                    className="flex items-center justify-between p-2 hover:bg-muted/50 rounded cursor-pointer group"
+                    onClick={() => onSelect(p.id)}
+                >
+                    <div>
+                        <div className="font-medium text-sm">{p.name}</div>
+                        <div className="text-xs text-muted-foreground truncate max-w-[200px]">{p.description}</div>
+                    </div>
+                    <Button size="sm" variant="ghost" className="opacity-0 group-hover:opacity-100 h-8">Select</Button>
+                </div>
+            ))}
+        </div>
     );
 };
 

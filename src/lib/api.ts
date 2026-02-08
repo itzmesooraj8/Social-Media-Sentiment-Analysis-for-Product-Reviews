@@ -5,7 +5,7 @@ import { supabase } from './supabase';
 const API_URL_RAW = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 const API_URL = API_URL_RAW.endsWith('/api') ? API_URL_RAW : `${API_URL_RAW}/api`;
 
-const api = axios.create({
+export const api = axios.create({
     baseURL: API_URL,
     headers: {
         'Content-Type': 'application/json',
@@ -303,14 +303,40 @@ export const getSystemStatus = async () => {
     }
 };
 
+
 export const getReviews = async (productId: string, limit = 500) => {
     try {
         const response = await api.get('/reviews', { params: { product_id: productId, limit } });
-        return response.data?.data || [];
+        const data = response.data?.data || [];
+
+        // Normalize data to match Review interface
+        return data.map((r: any) => {
+            const sa = r.sentiment_analysis?.[0] || r.sentiment_analysis || {};
+            return {
+                id: r.id,
+                text: r.content || r.text || "",
+                platform: r.platform,
+                username: r.username || "Anonymous",
+                sentiment: (sa.label || "neutral").toLowerCase(),
+                sentiment_label: sa.label,
+                score: sa.score,
+                timestamp: r.created_at,
+                sourceUrl: r.source_url,
+                credibility: sa.credibility,
+                like_count: r.like_count || 0,
+                reply_count: r.reply_count || 0,
+                retweet_count: r.retweet_count || 0
+            };
+        });
     } catch (e) {
         console.error('getReviews failed', e);
         return [];
     }
+};
+
+export const getExportUrl = (productId: string, format: string) => {
+    const base = API_URL.replace(/\/+$/, '');
+    return `${base}/reports/export?product_id=${productId}&format=${format}`;
 };
 
 export const getProductStats = async (productId: string) => {
