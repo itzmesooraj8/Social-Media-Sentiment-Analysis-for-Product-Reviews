@@ -124,13 +124,73 @@ class YouTubeScraperService:
 
     async def search_video_comments_stream(self, query: str, max_results: int = 50):
         """
-        Async generator for streaming comments.
+        True Async generator for streaming comments page-by-page.
+        Yields comments as soon as they are fetched from the API.
         """
-        # Fallback to API (Not truly streaming usually, but we can simulate)
-        if self._client:
-            # Just fetch all and yield one by one
-            items = await self.search_video_comments(query, max_results)
-            for item in items:
-                yield item
+        if not self._client:
+             logger.warning("YouTube API client missing")
+             return
+
+        # 1. Get Video ID (Blocking call in thread)
+        video_id = await asyncio.to_thread(self._get_video_id_sync, query)
+        
+        if not video_id:
+            logger.warning(f"Could not find video for query: {query}")
+            return
+
+        # 2. Paginate and Yield
+        fetched = 0
+        page_token = None
+        
+        while fetched < max_results:
+            try:
+                # Fetch one page
+                params = {
+                    "part": "snippet",
+                    "videoId": video_id,
+                    "maxResults": min(100, max_results - fetched),
+                    "textFormat": "plainText",
+                }
+                if page_token:
+                    params["pageToken"] = page_token
+
+                # Execute in thread to avoid blocking event loop
+                resp = await asyncio.to_thread(
+                    lambda: self._client.commentThreads().list(**params).execute()
+                )
+                
+                items = resp.get("items", [])
+                if not items:
+                    break
+
+                for item in items:
+                    top = item["snippet"]["topLevelComment"]["snippet"]
+                    comment = {
+                        "content": top.get("textDisplay"),
+                        "author": top.get("authorDisplayName") or top.get("authorOriginal"),
+                        "platform": "youtube",
+                        "source_url": f"https://youtu.be/{video_id}",
+                        "created_at": top.get("publishedAt"),
+                        "like_count": top.get("likeCount", 0),
+                        "reply_count": item["snippet"].get("totalReplyCount", 0)
+                    }
+                    yield comment
+                    fetched += 1
+                    if fetched >= max_results:
+                        break
+                
+                page_token = resp.get("nextPageToken")
+                if not page_token:
+                    break
+                    
+                # Small delay to be polite to API?
+                # await asyncio.sleep(0.1) 
+                
+            except HttpError as he:
+                logger.error(f"YouTube Stream HttpError: {he}")
+                break
+            except Exception as e:
+                logger.error(f"YouTube Stream Error: {e}")
+                break
 
 youtube_scraper = YouTubeScraperService()

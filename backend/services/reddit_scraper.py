@@ -32,7 +32,16 @@ class RedditScraperService:
             return
 
         try:
-            self.client = asyncpraw.Reddit(client_id=client_id, client_secret=client_secret, user_agent=user_agent)
+            # Proxy Configuration for High Reliability
+            proxy_url = os.environ.get("REDDIT_PROXY")
+            requestor_kwargs = {"proxy": proxy_url} if proxy_url else None
+            
+            self.client = asyncpraw.Reddit(
+                client_id=client_id, 
+                client_secret=client_secret, 
+                user_agent=user_agent,
+                requestor_kwargs=requestor_kwargs
+            )
         except Exception as e:
             print(f"Reddit client init failed: {e}")
             self.client = None

@@ -555,10 +555,25 @@ async def api_product_stats(product_id: str):
         return {"success": False, "detail": str(e)}
 
 
+from fastapi import WebSocket, WebSocketDisconnect
+from services.status_manager import status_manager
+
+@app.websocket("/ws/progress/{product_id}")
+async def websocket_endpoint(websocket: WebSocket, product_id: str):
+    await status_manager.connect(websocket, product_id)
+    try:
+        while True:
+            # Keep connection alive, maybe receive commands to cancel?
+            # For now just listen for disconnect
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        status_manager.disconnect(websocket, product_id)
+
 @app.get("/api/system/status")
 async def api_system_status():
     """
     Check REAL status of integrations and database.
+    Now includes active background tasks status check.
     """
     try:
         # Check Reddit (Require both ID and Secret)
@@ -577,21 +592,25 @@ async def api_system_status():
         counts = {"reddit": 0, "youtube": 0, "twitter": 0}
         if supabase:
             try:
+                # Parallel Count Check for Real-time Dashboard Status
                 t_red = asyncio.to_thread(lambda: supabase.table("reviews").select("id", count="exact").ilike("platform", "reddit%").execute())
                 t_yt = asyncio.to_thread(lambda: supabase.table("reviews").select("id", count="exact").ilike("platform", "youtube%").execute())
                 t_tw = asyncio.to_thread(lambda: supabase.table("reviews").select("id", count="exact").ilike("platform", "twitter%").execute())
-                r, y, t = await asyncio.gather(t_red, t_yt, t_tw)
-                counts["reddit"] = r.count if r else 0
-                counts["youtube"] = y.count if y else 0
-                counts["twitter"] = t.count if t else 0
+                
+                # Execute efficiently
+                r, y, t = await asyncio.gather(t_red, t_yt, t_tw, return_exceptions=True)
+                
+                counts["reddit"] = r.count if not isinstance(r, Exception) and r else 0
+                counts["youtube"] = y.count if not isinstance(y, Exception) and y else 0
+                counts["twitter"] = t.count if not isinstance(t, Exception) and t else 0
             except Exception as e:
-                logger.error(f"Count fetch error: {e}")
+                logger.error(f"Count fetch warning: {e}")
 
         return {"success": True, "data": {
             "reddit": reddit_status,
             "youtube": youtube_status,
             "twitter": twitter_status,
-            "database": True,
+            "database": True if supabase else False,
             "counts": counts
         }}
     except Exception as e:

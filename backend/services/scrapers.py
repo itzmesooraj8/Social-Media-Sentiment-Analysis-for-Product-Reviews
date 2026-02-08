@@ -75,8 +75,21 @@ async def scrape_all(keywords: list, product_id: str, target_url: str = None):
 
     # 3. Execute all agents simultaneously
     # We use gather, but exceptions are already caught in _safe_execute
+    # Broadcast localized updates
+    try:
+        from services.status_manager import status_manager
+        await status_manager.broadcast_status(product_id, "running", 10, "Agents deployed...")
+    except ImportError:
+        pass
+
     results_lists = await asyncio.gather(*tasks)
     
+    try:
+        from services.status_manager import status_manager
+        await status_manager.broadcast_status(product_id, "running", 50, "Aggregating results...")
+    except ImportError:
+        pass
+
     # 4. Flatten Results
     flat_results = []
     for r_list in results_lists:
@@ -88,11 +101,25 @@ async def scrape_all(keywords: list, product_id: str, target_url: str = None):
     # 5. Send to AI Pipeline
     if flat_results:
         try:
+            from services.status_manager import status_manager
+            await status_manager.broadcast_status(product_id, "running", 70, f"Analyzing {len(flat_results)} reviews with AI...")
+            
             logger.info("Sending data to AI pipeline...")
             await data_pipeline.process_reviews(flat_results, product_id)
             logger.info("AI pipeline processing started.")
+            
+            await status_manager.broadcast_status(product_id, "completed", 100, "Analysis complete.")
         except Exception as e:
             logger.exception("AI Pipeline failed")
+            try:
+                from services.status_manager import status_manager
+                await status_manager.broadcast_status(product_id, "failed", 100, "AI Analysis failed.")
+            except: pass
+    else:
+        try:
+            from services.status_manager import status_manager
+            await status_manager.broadcast_status(product_id, "completed", 100, "No new data found.")
+        except: pass
     
     return {
         "status": "completed", 
