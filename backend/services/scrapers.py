@@ -41,35 +41,35 @@ async def scrape_all(keywords: list, product_id: str, target_url: str = None):
     if target_url:
         if "youtube.com" in target_url or "youtu.be" in target_url:
             tasks.append(_safe_execute(
-                youtube_scraper.scrape_video_comments(target_url), 
+                youtube_scraper.youtube_scraper.scrape_video_comments(target_url), 
                 "YouTube-Direct"
             ))
         elif "reddit.com" in target_url:
             tasks.append(_safe_execute(
-                reddit_scraper.search_product_mentions(target_url), 
+                reddit_scraper.reddit_scraper.search_product_mentions(target_url), 
                 "Reddit-Direct"
             ))
     
     # 2. General Keyword Search (Parallel)
     for keyword in keywords:
         # YouTube
-        if hasattr(youtube_scraper, 'search_video_comments'):
+        if hasattr(youtube_scraper, 'youtube_scraper'):
             tasks.append(_safe_execute(
-                youtube_scraper.search_video_comments(keyword), 
+                youtube_scraper.youtube_scraper.search_video_comments(keyword), 
                 f"YouTube-{keyword}"
             ))
         
         # Reddit
-        if hasattr(reddit_scraper, 'search_product_mentions'):
+        if hasattr(reddit_scraper, 'reddit_scraper'):
             tasks.append(_safe_execute(
-                reddit_scraper.search_product_mentions(keyword), 
+                reddit_scraper.reddit_scraper.search_product_mentions(keyword), 
                 f"Reddit-{keyword}"
             ))
             
         # Twitter
-        if hasattr(twitter_scraper, 'search_tweets'):
+        if hasattr(twitter_scraper, 'twitter_scraper'):
             tasks.append(_safe_execute(
-                twitter_scraper.search_tweets(keyword), 
+                twitter_scraper.twitter_scraper.search_tweets(keyword), 
                 f"Twitter-{keyword}"
             ))
 

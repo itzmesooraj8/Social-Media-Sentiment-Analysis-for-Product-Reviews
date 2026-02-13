@@ -188,7 +188,7 @@ class AIService:
         # 1. Sentiment Analysis (Transformers)
         if self._sentiment_pipe:
             try:
-                out = self._sentiment_pipe(text[:512])
+                out = self._sentiment_pipe(text[:256])
                 if out and isinstance(out, list):
                     top = out[0]
                     label = self._normalize_label(top.get("label"))
@@ -400,7 +400,17 @@ class AIService:
         except Exception as e:
              logger.warning(f"LDA failed, falling back: {e}")
 
-        # 2. Simple Fallback
+        # 2. TF-IDF Fallback (Better than simple n-grams)
+        try:
+             # Lazy import
+             from services.nlp_service import nlp_service
+             tfidf_results = nlp_service.extract_keywords_tfidf(texts, top_k=top_k)
+             if tfidf_results:
+                 return [{"topic": r["keyword"], "count": 10, "method": "tfidf"} for r in tfidf_results]
+        except Exception:
+             pass
+
+        # 3. Simple Fallback
         return self.extract_topics_simple(texts, top_k)
 
     def extract_topics_simple(self, texts: List[str], top_k: int = 5) -> List[Dict[str, any]]:
@@ -468,7 +478,7 @@ class AIService:
                 def _run_batch():
                     # Check if GPU available via torch (implied by device param, but we let pipeline handle defaults)
                     # batch_size=16 is a safe default for CPU/Latency balance
-                    return self._sentiment_pipe(texts, batch_size=32, truncation=True, max_length=512)
+                    return self._sentiment_pipe(texts, batch_size=32, truncation=True, max_length=256)
                 
                 sentiments = await asyncio.to_thread(_run_batch)
             elif _TEXTBlob_AVAILABLE:

@@ -15,7 +15,6 @@ except ImportError:
 try:
     import gensim
     from gensim import corpora
-    _GENSIM_AVAILABLE = True
 except ImportError:
     _GENSIM_AVAILABLE = False
     logger.warning("gensim not found. LDA features disabled.")
@@ -23,22 +22,40 @@ except ImportError:
 try:
     import nltk
     from nltk.corpus import stopwords
-    # Ensure resources
-    try:
-        nltk.data.find('corpora/stopwords')
-    except LookupError:
-        nltk.download('stopwords', quiet=True)
     _NLTK_AVAILABLE = True
 except ImportError:
     _NLTK_AVAILABLE = False
-    logger.warning("nltk not found. Text processing limited.")
+
 
 
 class NLPService:
     def __init__(self):
-        self.stop_words = set(stopwords.words('english')) if _NLTK_AVAILABLE else {"the", "a", "an", "is", "are", "in", "on", "of", "to"}
+        self._resources_loaded = False
+        self.stop_words = {"the", "a", "an", "is", "are", "in", "on", "of", "to"}
+
+    def _ensure_resources(self):
+        if self._resources_loaded:
+            return
+            
+        if _NLTK_AVAILABLE:
+            try:
+                nltk.data.find('corpora/stopwords')
+            except LookupError:
+                try:
+                    logger.info("Downloading NLTK stopwords...")
+                    nltk.download('stopwords', quiet=True)
+                except Exception:
+                    pass
+            try:
+                self.stop_words = set(stopwords.words('english'))
+            except Exception:
+                 pass
+        self._resources_loaded = True
 
     def _preprocess(self, texts: List[str]) -> List[List[str]]:
+        """Clean and tokenize texts."""
+        self._ensure_resources()
+        processed = []
         """Clean and tokenize texts."""
         processed = []
         for t in texts:

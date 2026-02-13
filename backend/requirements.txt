@@ -14,4 +14,5 @@ httpx
 python-jose[cryptography]
 passlib[bcrypt]
 youtube-comment-downloader
+scikit-learn
 # Excluded: torch, transformers, spacy, etc. to save space.
