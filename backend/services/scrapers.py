@@ -5,10 +5,14 @@ from typing import List, Any
 try:
     from services import youtube_scraper, reddit_scraper, twitter_scraper, data_pipeline
 except ImportError:
-    import youtube_scraper
-    import reddit_scraper
-    import twitter_scraper
-    import data_pipeline
+    # Local dev or mixed environment fallback
+    try:
+        import youtube_scraper
+        import reddit_scraper
+        import twitter_scraper
+        import data_pipeline
+    except ImportError:
+        pass
 
 logger = logging.getLogger(__name__)
 

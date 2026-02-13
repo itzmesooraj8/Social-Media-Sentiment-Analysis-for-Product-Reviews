@@ -15,4 +15,8 @@ python-jose[cryptography]
 passlib[bcrypt]
 youtube-comment-downloader
 scikit-learn
+pandas>=2.0.0
+gensim>=4.3.0
+wordcloud>=1.9.0
+matplotlib>=3.7.0
 # Excluded: torch, transformers, spacy, etc. to save space.

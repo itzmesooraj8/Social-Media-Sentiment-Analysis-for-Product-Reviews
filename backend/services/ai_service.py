@@ -84,31 +84,49 @@ class AIService:
         if self._models_loaded:
             return
 
-        # 0. Ensure NLTK Data (Lazy Download)
-        # 0. Ensure NLTK Data
-        try:
-             nltk.data.find('tokenizers/punkt')
-        except LookupError:
-             logger.info("Downloading NLTK data...")
-             nltk.download('punkt', quiet=True)
-
         logger.info("Loading AI Models...")
+
+        # 0. Ensure NLTK Data (Lazy Download)
+        if _NLTK_AVAILABLE:
+            try:
+                 nltk.data.find('tokenizers/punkt')
+            except LookupError:
+                 logger.info("Downloading NLTK data...")
+                 try:
+                    nltk.download('punkt', quiet=True)
+                 except Exception: pass
+
         
         # 1. Transformers (Sentiment & Emotion)
-        self._sentiment_pipe = pipeline("sentiment-analysis", model=self.sentiment_model)
-        self._emotion_pipe = pipeline("text-classification", model=self.emotion_model, top_k=1)
+        try:
+             if _TRANSFORMERS_AVAILABLE:
+                # Use a smaller/faster model if possible, or keep what we have
+                self._sentiment_pipe = pipeline("sentiment-analysis", model=self.sentiment_model)
+                self._emotion_pipe = pipeline("text-classification", model=self.emotion_model, top_k=1)
+        except Exception as e:
+             logger.error(f"Failed to load Transformers: {e}")
         
-        # 2. KeyBERT
-        self._keybert_model = KeyBERT()
+        # 2. KeyBERT (Lazy or Skip if heavy)
+        if _KEYBERT_AVAILABLE:
+            try:
+                self._keybert_model = KeyBERT()
+            except Exception as e:
+                logger.warning(f"KeyBERT failed to load: {e}")
 
         # 3. Spacy (Aspects)
-        try:
-            self._spacy_nlp = spacy.load("en_core_web_sm")
-        except OSError:
-            logger.warning("Downloading Spacy model 'en_core_web_sm'...")
-            from spacy.cli import download
-            download("en_core_web_sm")
-            self._spacy_nlp = spacy.load("en_core_web_sm")
+        if spacy:
+            try:
+                self._spacy_nlp = spacy.load("en_core_web_sm")
+            except OSError:
+                logger.warning("Downloading Spacy model 'en_core_web_sm'...")
+                try:
+                    from spacy.cli import download
+                    download("en_core_web_sm")
+                    self._spacy_nlp = spacy.load("en_core_web_sm")
+                except Exception as e:
+                    logger.error(f"Spacy download failed: {e}")
+            except Exception as e:
+                logger.error(f"Spacy load failed: {e}")
 
         logger.info("All AI Models Loaded Successfully.")
         self._models_loaded = True

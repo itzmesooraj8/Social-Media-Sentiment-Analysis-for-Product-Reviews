@@ -23,6 +23,12 @@ class RedditScraperService:
             print("Warning: asyncpraw not installed; Reddit scraping disabled.")
             return
 
+        # Attempt to see if credentials exist. If not, we just log and return.
+        client_id = os.environ.get("REDDIT_CLIENT_ID", "")
+        client_secret = os.environ.get("REDDIT_CLIENT_SECRET", "")
+        # Allow running without keys (return empty results) instead of crashing or warning later? 
+        # Actually user wants 'Real Time' so we must warn him to add keys.
+
         client_id = os.environ.get("REDDIT_CLIENT_ID")
         client_secret = os.environ.get("REDDIT_CLIENT_SECRET")
         user_agent = os.environ.get("REDDIT_USER_AGENT", "SentimentBeacon/1.0")
