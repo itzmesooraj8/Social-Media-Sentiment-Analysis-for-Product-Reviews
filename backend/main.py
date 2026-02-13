@@ -38,7 +38,7 @@ from services import scrapers, youtube_scraper, data_pipeline, wordcloud_service
 # Re-enabling Reddit/Twitter for real-time integration
 from services import reddit_scraper, twitter_scraper 
 from services.prediction_service import generate_forecast
-from routers import reports, alerts, settings, market, trading, research
+from routers import reports, alerts, settings
 from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats, get_product_by_id, delete_product, get_sentiment_trends, get_product_stats_full
 
 app = FastAPI(title="Sentiment Beacon API", version="1.0.0")
@@ -83,9 +83,7 @@ app.add_middleware(
 app.include_router(reports.router)
 app.include_router(alerts.router)
 app.include_router(settings.router)
-app.include_router(market.router)
-app.include_router(trading.router)
-app.include_router(research.router)
+
 from routers import auth
 app.include_router(auth.router)
 
@@ -139,10 +137,7 @@ class ProductCreate(BaseModel):
 
 
 
-class TrainRequest(BaseModel):
-    dataset: str
-    algorithm: str
-    parameters: Optional[Dict[str, Any]] = None
+
 
 class ScrapeRequest(BaseModel):
     product_id: str
@@ -531,35 +526,7 @@ async def api_analyze(payload: AnalyzeRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/models/train")
-async def api_train_model(request: TrainRequest):
-    """
-    Simulate or trigger model training.
-    """
-    import random
-    try:
-        # Simulate delay
-        await asyncio.sleep(2)
-        
-        # Real logic would happen here (loading dataset, split, fit)
-        # For demo/MVP on serverless, we return plausible metrics
-        acc = 0.85 + random.random() * 0.10
-        f1 = 0.83 + random.random() * 0.10
-        
-        return {
-            "success": True,
-            "data": {
-                "algorithm": request.algorithm,
-                "accuracy": round(acc, 4),
-                "f1_score": round(f1, 4),
-                "precision": round(0.84 + random.random() * 0.05, 4),
-                "recall": round(0.82 + random.random() * 0.05, 4),
-                "model_name": f"custom-{request.algorithm}-v1",
-                "status": "completed"
-            }
-        }
-    except Exception as e:
-         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.delete("/api/products/{product_id}")

@@ -19,7 +19,7 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import { AuthProvider } from "@/context/AuthContext";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
-import ModelTraining from "./pages/ModelTraining";
+
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -57,7 +57,7 @@ const App = () => {
                 <Route path="/products/:id" element={<ProtectedRoute><ProductDetails /></ProtectedRoute>} />
                 <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
                 <Route path="/competitors" element={<ProtectedRoute><Competitors /></ProtectedRoute>} />
-                <Route path="/training" element={<ProtectedRoute><ModelTraining /></ProtectedRoute>} />
+
 
                 <Route path="*" element={<ProtectedRoute><Index /></ProtectedRoute>} />
               </Routes>

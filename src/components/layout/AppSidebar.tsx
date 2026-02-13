@@ -45,7 +45,6 @@ const navItems = [
   { icon: Package, label: 'Products', path: '/products' },
   { icon: Target, label: 'Competitors', path: '/competitors' },
   { icon: Link2, label: 'Integrations', path: '/integrations' },
-  { icon: BrainCircuit, label: 'Training', path: '/training' },
   { icon: Settings, label: 'Settings', path: '/settings' },
   { icon: HelpCircle, label: 'Help', path: '/help' },
 ];
