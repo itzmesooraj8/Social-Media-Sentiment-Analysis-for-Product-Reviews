@@ -49,3 +49,8 @@ lint_log.txt
 
 backend/seed_keys.py
 .vercel
+
+# Database
+*.duckdb
+*.duckdb.wal
+backend/data/*.duckdb*

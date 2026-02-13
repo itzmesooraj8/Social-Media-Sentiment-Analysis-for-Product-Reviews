@@ -5,7 +5,7 @@ from services.data_pipeline import process_scraped_reviews
 from services import scrapers
 from database import get_products
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 scheduler = AsyncIOScheduler()
 
@@ -57,11 +57,11 @@ def start_scheduler():
         replace_existing=True
     )
     
-    # Run immediately on startup
+    # Run delayed on startup (2 minutes delay)
     scheduler.add_job(
         run_automated_scraping_job,
         trigger='date',
-        run_date=datetime.now().astimezone(),
+        run_date=datetime.now().astimezone() + timedelta(minutes=2),
         id='startup_scraping',
         name='Startup Run'
     )

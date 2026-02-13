@@ -77,8 +77,8 @@ export const sentinelApi = {
 
     getProducts: async () => {
         try {
-            // Increase timeout to 60 seconds (60000ms) to prevent ECONNABORTED on slow networks
-            const response = await api.get('/products', { timeout: 60000 });
+            // Increase timeout to 120 seconds (120000ms) to prevent ECONNABORTED on slow networks
+            const response = await api.get('/products', { timeout: 120000 });
             return response.data.data || [];
         } catch (e) {
             console.error("API /products failed", e);
