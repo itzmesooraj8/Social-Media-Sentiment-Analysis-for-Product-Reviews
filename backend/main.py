@@ -38,7 +38,7 @@ from services import scrapers, youtube_scraper, data_pipeline, wordcloud_service
 # Re-enabling Reddit/Twitter for real-time integration
 from services import reddit_scraper, twitter_scraper 
 from services.prediction_service import generate_forecast
-from routers import reports, alerts, settings
+from routers import reports, alerts, settings, market, trading, research
 from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats, get_product_by_id, delete_product, get_sentiment_trends, get_product_stats_full
 
 app = FastAPI(title="Sentiment Beacon API", version="1.0.0")
@@ -66,7 +66,15 @@ logger = logging.getLogger("backend")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "https://social-media-sentiment-analysis-lilac.vercel.app",
+        "https://social-media-sentiment-analysis-for.onrender.com"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -75,6 +83,9 @@ app.add_middleware(
 app.include_router(reports.router)
 app.include_router(alerts.router)
 app.include_router(settings.router)
+app.include_router(market.router)
+app.include_router(trading.router)
+app.include_router(research.router)
 from routers import auth
 app.include_router(auth.router)
 
@@ -411,7 +422,7 @@ async def api_get_insights(product_id: Optional[str] = None):
     try:
         # Fetch recent reviews to analyze
         # Limit to 100 for speed
-        reviews = await database.get_reviews(product_id, limit=100)
+        reviews = await get_reviews(product_id, limit=100)
         
         # Generate Insights (Agentic/Rule-based AI)
         insights = ai_service.generate_insights(reviews)

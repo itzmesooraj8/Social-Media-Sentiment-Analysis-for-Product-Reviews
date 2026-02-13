@@ -88,10 +88,19 @@ class DataPipelineService:
             if not created_at:
                 created_at = datetime.now().isoformat()
 
+            # Anonymize Username as per Privacy Requirements
+            raw_username = review.get("author") or review.get("username") or "Unknown"
+            if raw_username and raw_username != "Unknown":
+                # Create a consistent 8-char hash for the username
+                user_hash = hashlib.sha256(raw_username.encode()).hexdigest()[:8]
+                username = f"User_{user_hash}"
+            else:
+                username = "Anonymous_User"
+
             review_data = {
                 "product_id": product_id,
                 "content": content, 
-                "username": review.get("author") or review.get("username") or "Unknown User",
+                "username": username,
                 "platform": review.get("platform", "web_upload"),
                 "source_url": review.get("source_url", ""),
                 "text_hash": text_hash,
@@ -156,7 +165,7 @@ class DataPipelineService:
                 return processed_reviews
 
             if all_texts:
-                topics = await asyncio.to_thread(ai_service.extract_topics, all_texts)
+                topics = await ai_service.extract_topics(all_texts)
                 
                 # Save topics to 'topic_analysis' table
                 for t in topics:

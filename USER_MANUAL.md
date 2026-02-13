@@ -1,58 +1,91 @@
-# User Manual
+# User Manual: Real-Time Sentiment Analysis Dashboard
 
-**Project:** Social Media Sentiment Analysis for Product Reviews
+Welcome to the **Real-Time Sentiment Analysis** platform! This tool helps marketing and product teams understand customer perceptions across social media platforms like YouTube, Reddit, and Twitter.
 
-## 1. Introduction
-Sentiment Beacon is a real-time analytics platform that helps you understand customer perception across social media.
+## 1. Getting Started
 
-## 2. For Business Users (Marketing & Product Managers)
+### Access the Dashboard
+Open your web browser and navigate to:
+-   **URL**: `http://localhost:5173` (Local Development)
 
-### **The Dashboard**
-- **Overview**: Immediately see the "Sentiment Score" (0-100%). A score > 60% is generally positive.
-- **Crisis Mode**: If sentiment drops rapidly, the interface will shift to "Crisis Mode" (red accents). Check the "Alerts" panel immediately.
+### Add a Product
+1.  Click the **"Add Product"** button in the top-right corner.
+2.  Enter the **Product Name** (e.g., "iPhone 15 Pro").
+3.  Add relevant **Keywords** (e.g., "camera", "battery life", "overheating").
+4.  Toggle **Platform Tracking** (YouTube/Reddit/Twitter) as needed.
+5.  Click **Create Product**.
 
-### **The "War Room" (Competitor Analysis)**
-1.  Navigate to the **War Room** tab.
-2.  Select your product and a competitor's product.
-3.  **Radar Chart**: Compare strengths. If your "Price" score is lower but "Quality" is higher, consider marketing on value-for-money.
+---
 
-### **Generating Reports**
-1.  Go to the **Reports** page.
-2.  Click **"Generate Deep Analysis PDF"**.
-3.  Wait 5-10 seconds for the AI to process recent reviews, detect bot activity, and summarize topics.
-4.  Download the PDF for your stakeholder meeting.
+## 2. Dashboard Features
 
-## 3. For Technical Users (Developers & Analysts)
+### The Overview Page
+The main "Stat Cards" provide a snapshot of the current sentiment:
+-   **Total Reviews**: Number of comments/reviews scraped.
+-   **Sentiment Score (0-100)**: Higher is better. >75 is Excellent, <40 is Critical.
+-   **Credibility Score**: Indicates data quality (filters out spam/bots).
+-   **Active Platforms**: Status of active scrapers.
 
-### **Adding a New Product**
-1.  Go to **Settings** > **Products**.
-2.  Enter the Product Name.
-3.  (Important) Enter precise **Keywords**. The scraper matches these in tweets and comments.
-    -   *Good*: "iPhone 15 Pro", "iPhone 15 overheating"
-    -   *Bad*: "iPhone", "phone"
-4.  Toggle the platforms you want to track.
+### Sentiment Trends Chart
+Visualizes sentiment over time:
+-   **Green Line**: Postive sentiment trend.
+-   **Red Line**: Negative sentiment trend.
+-   **Blue Bar**: Total review volume per day.
 
-### **Manually Triggering a Scrape**
-If you need immediate data:
--   Go to **Dashboard**.
--   Click the **"Scrape Now"** button (Lightning icon).
--   *Note*: This runs in the background. Results typically appear in 30-60 seconds.
+### Word Cloud
+Displays frequent terms found in reviews. Larger words appear more often. Click on a word (if interactive) to drill down.
 
-### **Retraining the Model**
-If the sentiment accuracy feels off:
-1.  Ensure you have collected at least 100 new verified reviews.
-2.  Run the training script (requires backend access):
-    ```bash
-    python backend/ml/train_transformer.py
-    ```
-3.  Reliability metrics will be logged to `backend.log`.
+### Real-Time Alerts
+Top-right bell icon. Notifies you of:
+-   Sudden drops in sentiment score.
+-   Completion of scraping tasks (e.g., "YouTube Scrape Finished").
 
-## 4. Troubleshooting
+---
 
-**"Configuration Missing" Alert**
--   This means the backend cannot find API keys for Twitter, Reddit, or YouTube.
--   **Fix**: Go to **Settings** > **Integrations** and enter your API keys.
+## 3. Real-Time Scraping
 
-**"No Data Available"**
--   Ensure you have added Keywords for the product.
--   Check if the platform (e.g., Reddit) is down or rate-limiting requests.
+### Watching the Progress
+When you add a product or click "Refresh Data":
+1.  A **Progress Bar** appears at the bottom or top of the dashboard.
+2.  Status messages update in real-time:
+    -   *Initializing Scrapers...*
+    -   *Fetching Comments form YouTube (25/100)...*
+    -   *Analyzing Sentiment (AI Model Running)...*
+    -   *Completed Successfully!*
+
+**Note**: YouTube scraping is fastest. Reddit may take longer due to API rate limits (proxies handle this automatically).
+
+---
+
+## 4. Reports & Exporting
+
+### Generate a Report
+1.  Navigate to the **"Reports"** tab in the sidebar.
+2.  Select your **Product** from the dropdown.
+3.  Choose a **Format**:
+    -   **PDF**: Best for presentations/management. Include charts and summaries.
+    -   **Excel**: Best for raw data analysis.
+4.  Click **"Generate Report"**.
+
+### Understanding Report Data
+-   **Executive Summary**: AI-generated overview ("Generally positive, but users complain about battery life").
+-   **Top Aspects**: Breakdown of specific features (e.g., "Camera: 90% Positive", "Price: 40% Negative").
+-   **Emotion Analysis**: Distribution of emotions like "Joy", "Anger", "Surprise".
+
+---
+
+## 5. Troubleshooting (FAQ)
+
+### Q: Why is the "Sentiment Score" 0?
+**A**: Ensure scrapers have finished running. If no reviews are found for your keywords, the score defaults to 0. Try adding broader keywords.
+
+### Q: Why are Reddit results missing?
+**A**: Reddit scraping requires API keys or proxy configuration. Check with your technical administrator if these are set in the `.env` file.
+
+### Q: The dashboard is not updating.
+**A**: Hard refresh the page (`Ctrl + F5`). Ensure the backend server is running in the terminal.
+
+---
+
+**Need Technical Support?**
+Contact the developer team or refer to the `TECHNICAL_GUIDE.md` for system details.

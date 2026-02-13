@@ -86,6 +86,7 @@ export default function RegisterPage() {
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
+                                        autoComplete="new-password"
                                     />
                                 </div>
                             </div>
@@ -101,6 +102,7 @@ export default function RegisterPage() {
                                         value={confirmPassword}
                                         onChange={(e) => setConfirmPassword(e.target.value)}
                                         required
+                                        autoComplete="new-password"
                                     />
                                 </div>
                             </div>

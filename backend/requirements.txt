@@ -5,31 +5,13 @@ supabase
 python-dotenv
 google-api-python-client
 asyncpraw
+# ntscraper might rely on heavy things? No, usually requests/bs4.
 ntscraper
-transformers[torch]
-accelerate>=0.26.0
-torch
-scikit-learn
-pandas
-numpy
-reportlab
+tweepy
+textblob
 python-multipart
 httpx
-tweepy
-keybert
-textstat
-nrclex
-gensim
-nltk
-youtube-comment-downloader
-openpyxl
-xlsxwriter
-wordcloud
-matplotlib
-textblob
-pillow
-psycopg2-binary
 python-jose[cryptography]
 passlib[bcrypt]
-spacy>=3.7.0
-https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
+youtube-comment-downloader
+# Excluded: torch, transformers, spacy, etc. to save space.

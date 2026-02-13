@@ -10,23 +10,63 @@ from database import supabase
 logger = logging.getLogger(__name__)
 
 # --- Imports (Fail Fast) ---
-from transformers import pipeline
-import textstat
-from keybert import KeyBERT
-from sklearn.feature_extraction.text import CountVectorizer
-from nrclex import NRCLex
-import nltk
-import gensim
-from gensim import corpora
-import spacy
 
-# Constants for availability checks (now always True if we reach here, but kept for compatibility with rest of code)
-_TRANSFORMERS_AVAILABLE = True
-_TEXTSTAT_AVAILABLE = True
-_KEYBERT_AVAILABLE = True
-_SKLEARN_AVAILABLE = True
-_NRC_AVAILABLE = True
-_GENSIM_AVAILABLE = True
+# --- Imports (Fail Fast) ---
+try:
+    from transformers import pipeline
+except ImportError:
+    pipeline = None
+
+try:
+    import textstat
+except ImportError:
+    textstat = None
+
+try:
+    from keybert import KeyBERT
+except ImportError:
+    KeyBERT = None
+
+try:
+    from sklearn.feature_extraction.text import CountVectorizer
+except ImportError:
+    CountVectorizer = None
+
+try:
+    from nrclex import NRCLex
+except ImportError:
+    NRCLex = None
+
+try:
+    import nltk
+except ImportError:
+    nltk = None
+
+try:
+    import gensim
+    from gensim import corpora
+except ImportError:
+    gensim = None
+    corpora = None
+
+try:
+    import spacy
+except ImportError:
+    spacy = None
+
+try:
+    from textblob import TextBlob
+except ImportError:
+    TextBlob = None
+
+# Constants for availability checks
+_TRANSFORMERS_AVAILABLE = pipeline is not None
+_TEXTBlob_AVAILABLE = TextBlob is not None
+_TEXTSTAT_AVAILABLE = textstat is not None
+_KEYBERT_AVAILABLE = KeyBERT is not None
+_SKLEARN_AVAILABLE = CountVectorizer is not None
+_NRC_AVAILABLE = NRCLex is not None
+_GENSIM_AVAILABLE = gensim is not None
 # ---------------------------
 
 class AIService:
@@ -155,6 +195,17 @@ class AIService:
                     score = float(top.get("score", 0.5))
             except Exception as e:
                 logger.error(f"Sentiment error: {e}")
+        elif _TEXTBlob_AVAILABLE:
+            # Fallback: TextBlob
+            try:
+                blob = TextBlob(text)
+                polarity = blob.sentiment.polarity
+                score = (polarity + 1) / 2 # Normalize -1..1 to 0..1
+                if polarity > 0.1: label = "POSITIVE"
+                elif polarity < -0.1: label = "NEGATIVE"
+                else: label = "NEUTRAL"
+            except Exception:
+                pass
 
         # 2. Emotion Logic (Transformers fallback + Custom)
         if label == "POSITIVE" and score > 0.8:
@@ -330,11 +381,19 @@ class AIService:
         if not texts: return []
         
         # 1. Try LDA via NLP Service
+        # 1. Try LDA via NLP Service
         try:
              # Lazy import
              from services.nlp_service import nlp_service
-             # Use a larger window extraction
-             lda_results = nlp_service.extract_topics_lda(texts, num_topics=top_k)
+             import inspect
+             
+             # Run in thread to avoid blocking loop (LDA is CPU intensive)
+             # And handle if it returns a coroutine or value
+             if asyncio.iscoroutinefunction(nlp_service.extract_topics_lda):
+                 lda_results = await nlp_service.extract_topics_lda(texts, num_topics=top_k)
+             else:
+                 lda_results = await asyncio.to_thread(nlp_service.extract_topics_lda, texts, num_topics=top_k)
+
              if lda_results:
                  # Normalize output
                  return [{"topic": r["topic"], "count": 10, "method": "lda"} for r in lda_results]
@@ -412,6 +471,20 @@ class AIService:
                     return self._sentiment_pipe(texts, batch_size=32, truncation=True, max_length=512)
                 
                 sentiments = await asyncio.to_thread(_run_batch)
+            elif _TEXTBlob_AVAILABLE:
+                # Fallback: TextBlob for Batch
+                def _run_textblob():
+                    res = []
+                    for t in texts:
+                        blob = TextBlob(t)
+                        pol = blob.sentiment.polarity
+                        sc = (pol + 1) / 2
+                        lbl = "NEUTRAL"
+                        if pol > 0.1: lbl = "POSITIVE"
+                        elif pol < -0.1: lbl = "NEGATIVE"
+                        res.append({"label": lbl, "score": sc})
+                    return res
+                sentiments = await asyncio.to_thread(_run_textblob)
             else:
                  # Mock/Fallback if no model
                  sentiments = [{"label": "NEUTRAL", "score": 0.5} for _ in texts]

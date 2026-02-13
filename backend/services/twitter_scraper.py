@@ -67,7 +67,7 @@ class TwitterScraperService:
                 results = await asyncio.to_thread(self._run_tweepy, query, limit)
                 if results: return results
             except Exception as e:
-                logger.warning(f"Tweepy search failed, failing over to Nitter: {e}")
+                logger.warning(f"Tweepy search failed (Check API Keys), failing over to Nitter (Experimental/Unstable): {e}")
         
         # 2. Fallback to Nitter
         if _NITTER_AVAILABLE:

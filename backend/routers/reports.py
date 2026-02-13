@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from fastapi.responses import FileResponse
 from typing import Optional
 import os
@@ -56,11 +56,22 @@ async def get_report_file(filename: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/export")
-async def export_report(product_id: str = Query(...), format: str = Query("csv", regex="^(csv|pdf|excel)$")):
+@router.api_route("/export", methods=["GET", "POST"])
+async def export_report(product_id: str = Query(None), format: str = Query("csv", regex="^(csv|pdf|excel)$"), p_id: str = Body(None), fmt: str = Body(None)):
     """
     Export product analysis report in CSV, PDF or Excel format.
+    Supports both GET (Query) and POST (Body) for maximum compatibility.
     """
+    # Resolve parameters from Query or Body
+    final_product_id = product_id or p_id
+    final_format = format or fmt or "csv"
+
+    if not final_product_id:
+        raise HTTPException(status_code=400, detail="Missing product_id")
+
+    # Use resolved variables
+    product_id = final_product_id
+    format = final_format
     try:
         # Check if product exists
         # Check if product exists (Try ID first, then Name fallback)
