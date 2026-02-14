@@ -14,109 +14,116 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 @router.get("")
 async def list_reports():
-    """List available generated reports."""
+    """List available reports from Supabase persistence."""
     try:
-        reports_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports")
-        if not os.path.exists(reports_dir):
-            return {"success": True, "data": []}
-            
-        files = []
-        for f in os.listdir(reports_dir):
-            if f.endswith(".pdf") or f.endswith(".xlsx") or f.endswith(".csv"):
-                path = os.path.join(reports_dir, f)
-                stats = os.stat(path)
-                files.append({
-                    "name": f,
-                    "created_at": datetime.fromtimestamp(stats.st_mtime).isoformat(),
-                    "size": stats.st_size,
-                    "type": f.split(".")[-1]
-                })
+        # Fetch from database instead of local filesystem
+        resp = await asyncio.to_thread(supabase.table("reports").select("*").order("created_at", desc=True).limit(50).execute)
         
-        # Sort by newest first
-        files.sort(key=lambda x: x["created_at"], reverse=True)
-        return {"success": True, "data": files}
+        reports_data = []
+        for r in (resp.data or []):
+            reports_data.append({
+                "name": r.get("filename"),
+                "filename": r.get("filename"), # For backward compatibility with frontend
+                "created_at": r.get("created_at"),
+                "size": r.get("size", 0),
+                "type": r.get("type"),
+                "storage_path": r.get("storage_path")
+            })
+            
+        return {"success": True, "data": reports_data}
     except Exception as e:
-        print(f"List reports error: {e}")
+        logger.error(f"List reports error: {e}")
         return {"success": False, "data": []}
 
 @router.get("/{filename}")
 async def get_report_file(filename: str):
-    """Download a specific report file."""
+    """Download a report, prioritizing local file then Supabase Storage."""
     try:
-        reports_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports")
+        reports_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports"))
         filepath = os.path.join(reports_dir, filename)
         
-        if not os.path.exists(filepath):
-            raise HTTPException(status_code=404, detail="Report not found")
+        # 1. Try local cache first (for immediate downloads)
+        if os.path.exists(filepath):
+             return FileResponse(filepath, filename=filename)
+             
+        # 2. Fallback to Supabase Storage if local file is purged (Render reset)
+        logger.info(f"Local file {filename} not found, attempting Supabase Storage download.")
+        
+        # We need the storage path
+        resp = await asyncio.to_thread(supabase.table("reports").select("storage_path").eq("filename", filename).limit(1).execute)
+        if not resp.data:
+            raise HTTPException(status_code=404, detail="Report record not found")
             
-        return FileResponse(filepath, filename=filename)
+        storage_path = resp.data[0]['storage_path']
+        
+        # Option A: Proxy the download (more secure/private)
+        try:
+             # This depends on supabase-py storage implementation
+             # For simplicity, we can get a public URL or sign it
+             file_data = await asyncio.to_thread(supabase.storage.from_('reports').download, storage_path)
+             
+             # Save to local cache for future hits
+             with open(filepath, 'wb') as f:
+                 f.write(file_data)
+                 
+             return FileResponse(filepath, filename=filename)
+        except Exception as se:
+            logger.error(f"Supabase Storage download failed: {se}")
+            raise HTTPException(status_code=404, detail="Report not found in storage")
+
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Get report file error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.api_route("/export", methods=["GET", "POST"])
 async def export_report(product_id: str = Query(None), format: str = Query("csv", regex="^(csv|pdf|excel)$"), p_id: str = Body(None), fmt: str = Body(None)):
     """
-    Export product analysis report in CSV, PDF or Excel format.
-    Supports both GET (Query) and POST (Body) for maximum compatibility.
+    Export product analysis report with persistent storage.
     """
-    # Resolve parameters from Query or Body
     final_product_id = product_id or p_id
     final_format = format or fmt or "csv"
 
     if not final_product_id:
         raise HTTPException(status_code=400, detail="Missing product_id")
 
-    # Use resolved variables
     product_id = final_product_id
     format = final_format
+    
     try:
-        # Check if product exists
-        # Check if product exists (Try ID first, then Name fallback)
-        logger.info(f"Exporting report for product_id: {product_id}")
+        logger.info(f"Exporting report for product_id: {product_id} in {format} format")
         
-        # Use limit(1) instead of single() to avoid exception on 0 rows
-        p_resp = supabase.table("products").select("id, name").eq("id", product_id).limit(1).execute()
+        # 1. Validate Product
+        p_resp = await asyncio.to_thread(supabase.table("products").select("id, name").eq("id", product_id).limit(1).execute)
         
         real_id = None
         if p_resp.data:
              real_id = p_resp.data[0]['id']
         else:
-            # Fallback: Try finding by Name (case-insensitive)
-            logger.info(f"Product ID lookup failed, trying name fallback for: {product_id}")
-            p_resp = supabase.table("products").select("id, name").ilike("name", product_id).limit(1).execute()
+            # Fallback for name lookup
+            p_resp = await asyncio.to_thread(supabase.table("products").select("id, name").ilike("name", product_id).limit(1).execute)
             if p_resp.data:
                 real_id = p_resp.data[0]['id']
-                logger.info(f"Found product by name: {real_id}")
             else:
-                logger.warning(f"Product not found: {product_id}")
                 raise HTTPException(status_code=404, detail=f"Product not found: {product_id}")
         
-        product_id = real_id # Ensure we use the UUID for subsequent queries
+        product_id = real_id
 
+        # 2. Generate and Persistence handled inside service
         if format == "pdf":
-            filepath = report_service.generate_pdf_report(product_id)
+            filepath = await report_service.generate_pdf_report(product_id)
             media_type = "application/pdf"
-            filename = f"report_{product_id}.pdf"
         elif format == "excel":
-            filepath = report_service.generate_excel_report(product_id)
+            filepath = await report_service.generate_excel_report(product_id)
             media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            filename = f"report_{product_id}.xlsx"
         else:
-            # Prepare data for generic CSV export
-            # We fetch reviews joined with sentiment
-            resp = supabase.table("reviews").select("*, sentiment_analysis(*)").eq("product_id", product_id).limit(1000).execute()
+            # Fetch data for CSV
+            resp = await asyncio.to_thread(supabase.table("reviews").select("*, sentiment_analysis(*)").eq("product_id", product_id).limit(1000).execute)
             data = {
-                "statistics": {
-                    "total_reviews": len(resp.data or []),
-                    "average_rating": 0, # Placeholder if no rating field
-                    "sentiment_score": 0 # Placeholder, calc handled in report service if needed
-                },
                 "recent_reviews": []
             }
-            # flatten for CSV
             for r in (resp.data or []):
                 sent = r.get("sentiment_analysis", [{}])
                 label = sent[0].get("label") if sent else "NEUTRAL"
@@ -127,14 +134,14 @@ async def export_report(product_id: str = Query(None), format: str = Query("csv"
                     "content": r.get("content")
                 })
             
-            filepath = report_service.generate_report(data, format="csv")
+            filepath = await report_service.generate_report(data, format="csv", product_id=product_id)
             media_type = "text/csv"
-            filename = f"report_{product_id}.csv"
             
+        filename = os.path.basename(filepath)
         return FileResponse(filepath, media_type=media_type, filename=filename)
 
     except ImportError as e:
          raise HTTPException(status_code=501, detail=f"Export feature missing dependency: {e}")
     except Exception as e:
-        print(f"Export failed: {e}")
+        logger.exception(f"Export failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate report")
