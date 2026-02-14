@@ -47,80 +47,97 @@ class YouTubeScraperService:
         """Directly scrape comments from a specific video URL."""
         return await self.search_video_comments(video_url, max_results)
 
-    def _get_video_id_sync(self, query: str) -> Optional[str]:
-        video_id = None
+    def _get_video_ids_sync(self, query: str, max_videos: int = 3) -> List[str]:
+        video_ids = []
         if "youtube.com" in query or "youtu.be" in query:
             m = re.search(r"(?:v=|/)([0-9A-Za-z_-]{11})", query)
             if m:
-                video_id = m.group(1)
+                return [m.group(1)]
 
-        if not video_id and self._client:
+        if self._client:
             try:
-                resp = self._client.search().list(q=query, part="id,snippet", type="video", maxResults=1).execute()
+                resp = self._client.search().list(q=query, part="id,snippet", type="video", maxResults=max_videos).execute()
                 items = resp.get("items") or []
-                if not items:
-                    return None
-                video_id = items[0]["id"]["videoId"]
+                for item in items:
+                    v_id = item.get("id", {}).get("videoId")
+                    if v_id:
+                        video_ids.append(v_id)
             except Exception as e:
                 logger.error(f"YouTube search error: {e}")
-                return None
-        return video_id
+        return video_ids
 
     def _sync_search_comments(self, query: str, max_results: int) -> List[Dict[str, Any]]:
-        """Sync implementation using API."""
-        comments: List[Dict[str, Any]] = []
+        """Sync implementation using API. Tries multiple videos if needed."""
+        all_comments: List[Dict[str, Any]] = []
         
         if not self._client:
-            logger.warning("YouTube API missing.")
+            logger.warning("YouTube API client not initialized.")
             return []
 
-        # 1. Get Video ID
-        video_id = self._get_video_id_sync(query)
-        if not video_id:
-            logger.warning(f"Could not find video for query: {query}")
+        # 1. Get multiple Video IDs to increase chance of finding comments
+        video_ids = self._get_video_ids_sync(query, max_videos=5)
+        if not video_ids:
+            logger.warning(f"Could not find any videos for query: {query}")
             return []
 
-        try:
-            # paginate commentThreads
-            fetched = 0
-            page_token = None
-            while fetched < max_results:
-                params = {
-                    "part": "snippet",
-                    "videoId": video_id,
-                    "maxResults": min(100, max_results - fetched),
-                    "textFormat": "plainText",
-                }
-                if page_token:
-                    params["pageToken"] = page_token
-
-                resp = self._client.commentThreads().list(**params).execute()
-                for item in resp.get("items", []):
-                    top = item["snippet"]["topLevelComment"]["snippet"]
-                    comments.append({
-                        "content": top.get("textDisplay"),
-                        "author": top.get("authorDisplayName") or top.get("authorOriginal"),
-                        "platform": "youtube",
-                        "source_url": f"https://youtu.be/{video_id}",
-                        "created_at": top.get("publishedAt"),
-                        "like_count": top.get("likeCount", 0),
-                        "reply_count": item["snippet"].get("totalReplyCount", 0)
-                    })
-                    fetched += 1
-                    if fetched >= max_results:
-                        break
-
-                page_token = resp.get("nextPageToken")
-                if not page_token:
+        for video_id in video_ids:
+            try:
+                logger.info(f"Fetching comments for Video ID: {video_id}")
+                fetched = 0
+                page_token = None
+                video_comments = []
+                
+                # Fetch up to 50 comments per video, or until we hit global max_results
+                limit_for_this_video = min(50, max_results - len(all_comments))
+                if limit_for_this_video <= 0:
                     break
 
-            return comments
-        except HttpError as he:
-            logger.error(f"YouTube API HttpError: {he}")
-            return []
-        except Exception as e:
-            logger.error(f"YouTube scraping error: {e}")
-            return []
+                while fetched < limit_for_this_video:
+                    params = {
+                        "part": "snippet",
+                        "videoId": video_id,
+                        "maxResults": min(100, limit_for_this_video - fetched),
+                        "textFormat": "plainText",
+                    }
+                    if page_token:
+                        params["pageToken"] = page_token
+
+                    resp = self._client.commentThreads().list(**params).execute()
+                    items = resp.get("items", [])
+                    if not items:
+                        break
+
+                    for item in items:
+                        top = item["snippet"]["topLevelComment"]["snippet"]
+                        video_comments.append({
+                            "content": top.get("textDisplay"),
+                            "author": top.get("authorDisplayName") or top.get("authorOriginal"),
+                            "platform": "youtube",
+                            "source_url": f"https://youtu.be/{video_id}",
+                            "created_at": top.get("publishedAt"),
+                            "like_count": top.get("likeCount", 0),
+                            "reply_count": item["snippet"].get("totalReplyCount", 0)
+                        })
+                        fetched += 1
+                        if fetched >= limit_for_this_video:
+                            break
+
+                    page_token = resp.get("nextPageToken")
+                    if not page_token:
+                        break
+
+                all_comments.extend(video_comments)
+                logger.info(f"Found {len(video_comments)} comments in video {video_id}")
+                
+                if len(all_comments) >= max_results:
+                    break
+                    
+            except Exception as e:
+                # If comments are disabled, we might get an HttpError. Skip to next video.
+                logger.warning(f"YouTube search error for video {video_id}: {e}")
+                continue
+
+        return all_comments
 
     async def search_video_comments_stream(self, query: str, max_results: int = 50):
         """
@@ -131,66 +148,74 @@ class YouTubeScraperService:
              logger.warning("YouTube API client missing")
              return
 
-        # 1. Get Video ID (Blocking call in thread)
-        video_id = await asyncio.to_thread(self._get_video_id_sync, query)
+        # 1. Get Video IDs (Blocking call in thread)
+        video_ids = await asyncio.to_thread(self._get_video_ids_sync, query, 3)
         
-        if not video_id:
+        if not video_ids:
             logger.warning(f"Could not find video for query: {query}")
             return
 
         # 2. Paginate and Yield
-        fetched = 0
-        page_token = None
+        total_fetched = 0
         
-        while fetched < max_results:
-            try:
-                # Fetch one page
-                params = {
-                    "part": "snippet",
-                    "videoId": video_id,
-                    "maxResults": min(100, max_results - fetched),
-                    "textFormat": "plainText",
-                }
-                if page_token:
-                    params["pageToken"] = page_token
-
-                # Execute in thread to avoid blocking event loop
-                resp = await asyncio.to_thread(
-                    lambda: self._client.commentThreads().list(**params).execute()
-                )
+        for video_id in video_ids:
+            if total_fetched >= max_results:
+                break
                 
-                items = resp.get("items", [])
-                if not items:
-                    break
-
-                for item in items:
-                    top = item["snippet"]["topLevelComment"]["snippet"]
-                    comment = {
-                        "content": top.get("textDisplay"),
-                        "author": top.get("authorDisplayName") or top.get("authorOriginal"),
-                        "platform": "youtube",
-                        "source_url": f"https://youtu.be/{video_id}",
-                        "created_at": top.get("publishedAt"),
-                        "like_count": top.get("likeCount", 0),
-                        "reply_count": item["snippet"].get("totalReplyCount", 0)
+            fetched_this_video = 0
+            page_token = None
+            limit_this_video = min(50, max_results - total_fetched)
+            
+            while fetched_this_video < limit_this_video:
+                try:
+                    # Fetch one page
+                    params = {
+                        "part": "snippet",
+                        "videoId": video_id,
+                        "maxResults": min(100, limit_this_video - fetched_this_video),
+                        "textFormat": "plainText",
                     }
-                    yield comment
-                    fetched += 1
-                    if fetched >= max_results:
-                        break
-                
-                page_token = resp.get("nextPageToken")
-                if not page_token:
-                    break
+                    if page_token:
+                        params["pageToken"] = page_token
+
+                    # Execute in thread to avoid blocking event loop
+                    resp = await asyncio.to_thread(
+                        lambda: self._client.commentThreads().list(**params).execute()
+                    )
                     
-                # Small delay to be polite to API?
-                # await asyncio.sleep(0.1) 
-                
-            except HttpError as he:
-                logger.error(f"YouTube Stream HttpError: {he}")
-                break
-            except Exception as e:
-                logger.error(f"YouTube Stream Error: {e}")
-                break
+                    items = resp.get("items", [])
+                    if not items:
+                        break
+
+                    for item in items:
+                        top = item["snippet"]["topLevelComment"]["snippet"]
+                        comment = {
+                            "content": top.get("textDisplay"),
+                            "author": top.get("authorDisplayName") or top.get("authorOriginal"),
+                            "platform": "youtube",
+                            "source_url": f"https://youtu.be/{video_id}",
+                            "created_at": top.get("publishedAt"),
+                            "like_count": top.get("like_count", 0),
+                            "reply_count": item["snippet"].get("totalReplyCount", 0)
+                        }
+                        yield comment
+                        fetched_this_video += 1
+                        total_fetched += 1
+                        if total_fetched >= max_results or fetched_this_video >= limit_this_video:
+                            break
+                    
+                    page_token = resp.get("nextPageToken")
+                    if not page_token:
+                        break
+                        
+                except HttpError as he:
+                    if he.resp.status == 403:
+                        logger.warning(f"Comments disabled for video {video_id}")
+                        break # Skip this video
+                    logger.error(f"YouTube Stream HttpError: {he}")
+                    break
+                except Exception as e:
+                    logger.error(f"YouTube Stream Error: {e}")
+                    break
 
 youtube_scraper = YouTubeScraperService()

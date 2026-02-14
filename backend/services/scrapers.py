@@ -45,35 +45,35 @@ async def scrape_all(keywords: list, product_id: str, target_url: str = None):
     if target_url:
         if "youtube.com" in target_url or "youtu.be" in target_url:
             tasks.append(_safe_execute(
-                youtube_scraper.youtube_scraper.scrape_video_comments(target_url), 
+                youtube_scraper.scrape_video_comments(target_url), 
                 "YouTube-Direct"
             ))
         elif "reddit.com" in target_url:
             tasks.append(_safe_execute(
-                reddit_scraper.reddit_scraper.search_product_mentions(target_url), 
+                reddit_scraper.search_product_mentions(target_url), 
                 "Reddit-Direct"
             ))
     
     # 2. General Keyword Search (Parallel)
     for keyword in keywords:
-        # YouTube
-        if hasattr(youtube_scraper, 'youtube_scraper'):
+        # YouTube - Check if instance exists and has the method
+        if youtube_scraper and hasattr(youtube_scraper, 'search_video_comments'):
             tasks.append(_safe_execute(
-                youtube_scraper.youtube_scraper.search_video_comments(keyword), 
+                youtube_scraper.search_video_comments(keyword), 
                 f"YouTube-{keyword}"
             ))
         
         # Reddit
-        if hasattr(reddit_scraper, 'reddit_scraper'):
+        if reddit_scraper and hasattr(reddit_scraper, 'search_product_mentions'):
             tasks.append(_safe_execute(
-                reddit_scraper.reddit_scraper.search_product_mentions(keyword), 
+                reddit_scraper.search_product_mentions(keyword), 
                 f"Reddit-{keyword}"
             ))
             
         # Twitter
-        if hasattr(twitter_scraper, 'twitter_scraper'):
+        if twitter_scraper and hasattr(twitter_scraper, 'search_tweets'):
             tasks.append(_safe_execute(
-                twitter_scraper.twitter_scraper.search_tweets(keyword), 
+                twitter_scraper.search_tweets(keyword), 
                 f"Twitter-{keyword}"
             ))
 
