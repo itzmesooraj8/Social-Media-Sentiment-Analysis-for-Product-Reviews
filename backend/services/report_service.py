@@ -2,11 +2,15 @@ import os
 import json
 import csv
 import io
+import asyncio
+import logging
 import pandas as pd
 from datetime import datetime
 from typing import Dict, Any, List
 from services.ai_service import ai_service
 from database import supabase
+
+logger = logging.getLogger(__name__)
 
 # --- SAFETY UPDATE: Graceful imports for ReportLab ---
 try:
@@ -18,7 +22,7 @@ try:
     _REPORTLAB_AVAILABLE = True
 except ImportError:
     _REPORTLAB_AVAILABLE = False
-    print("⚠️ Warning: 'reportlab' not installed. PDF generation disabled.")
+    logger.warning("'reportlab' not installed. PDF generation disabled.")
 # ----------------------------------------------------
 
 class ReportService:
@@ -32,7 +36,7 @@ class ReportService:
         Uploads the file to Supabase Storage and saves a record in the 'reports' database table.
         """
         if not supabase:
-            print("Supabase client not initialized. Skipping upload.")
+            logger.info("Supabase client not initialized. Skipping upload.")
             return
 
         filename = os.path.basename(filepath)
@@ -63,27 +67,28 @@ class ReportService:
                 "size": file_size
             }
             await asyncio.to_thread(supabase.table("reports").insert(report_data).execute)
-            print(f"Successfully saved persistent report record: {filename}")
+            logger.info(f"Successfully saved persistent report record: {filename}")
 
         except Exception as e:
-            print(f"Failed to upload report to Supabase: {e}")
-            # We don't raise here to avoid crashing the whole export if storage fail, 
-            # local file still exists for the current download.
+            logger.error(f"Failed to upload report to Supabase Storage: {e}")
+            logger.info("Local report file still available for immediate download.")
 
     async def generate_excel_report(self, product_id: str) -> str:
         """
         Generate an Excel report with multiple sheets: Summary, Reviews, Topics.
         """
+        logger.info(f"Excel generation started for Product: {product_id}")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"report_{product_id}_{timestamp}.xlsx"
         filepath = os.path.join(self.reports_dir, filename)
 
         # 1. Fetch Data
         try:
-            # Reviews
+            logger.info("Fetching reviews for Excel...")
             task = asyncio.to_thread(lambda: supabase.table("reviews").select("*, sentiment_analysis(*)").eq("product_id", product_id).execute())
             resp = await task
             reviews = resp.data or []
+            logger.info(f"Fetched {len(reviews)} reviews for Excel.")
             
             # Topics
             t_task = asyncio.to_thread(lambda: supabase.table("topic_analysis").select("*").order("size", desc=True).limit(20).execute())
@@ -142,14 +147,18 @@ class ReportService:
         Generate a 'Real Intelligence' PDF report for a product_id.
         Includes: Credibility Audit, Topic Landscape, Engagement Impact.
         """
+        logger.info(f"PDF generation started for Product: {product_id}")
         if not _REPORTLAB_AVAILABLE:
+            logger.error("ReportLab not available. PDF generation aborted.")
             raise ImportError("PDF generation requires reportlab")
 
         # 1. Fetch Reviews with Deep Analysis Data
         try:
+            logger.info("Fetching reviews for PDF...")
             task = asyncio.to_thread(lambda: supabase.table("reviews").select("*, sentiment_analysis(*), like_count, reply_count").eq("product_id", product_id).execute())
             resp = await task
             rows = resp.data or []
+            logger.info(f"Fetched {len(rows)} reviews for PDF.")
         except Exception as e:
             print(f"Failed to fetch reviews for report: {e}")
             rows = []

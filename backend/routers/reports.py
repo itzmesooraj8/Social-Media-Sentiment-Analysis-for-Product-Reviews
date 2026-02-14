@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Body
 from fastapi.responses import FileResponse
 from typing import Optional
 import os
+import asyncio
 from datetime import datetime
 import logging
 
@@ -79,7 +80,7 @@ async def get_report_file(filename: str):
 
 
 @router.api_route("/export", methods=["GET", "POST"])
-async def export_report(product_id: str = Query(None), format: str = Query("csv", regex="^(csv|pdf|excel)$"), p_id: str = Body(None), fmt: str = Body(None)):
+async def export_report(product_id: str = Query(None), format: str = Query("csv", pattern="^(csv|pdf|excel)$"), p_id: str = Body(None), fmt: str = Body(None)):
     """
     Export product analysis report with persistent storage.
     """
@@ -87,6 +88,7 @@ async def export_report(product_id: str = Query(None), format: str = Query("csv"
     final_format = format or fmt or "csv"
 
     if not final_product_id:
+        logger.error("Export failed: Missing product_id")
         raise HTTPException(status_code=400, detail="Missing product_id")
 
     product_id = final_product_id
@@ -96,7 +98,11 @@ async def export_report(product_id: str = Query(None), format: str = Query("csv"
         logger.info(f"Exporting report for product_id: {product_id} in {format} format")
         
         # 1. Validate Product
-        p_resp = await asyncio.to_thread(supabase.table("products").select("id, name").eq("id", product_id).limit(1).execute)
+        try:
+            p_resp = await asyncio.to_thread(supabase.table("products").select("id, name").eq("id", product_id).limit(1).execute)
+        except Exception as db_err:
+            logger.error(f"Database error during product lookup: {db_err}")
+            raise HTTPException(status_code=500, detail="Database connection error")
         
         real_id = None
         if p_resp.data:
