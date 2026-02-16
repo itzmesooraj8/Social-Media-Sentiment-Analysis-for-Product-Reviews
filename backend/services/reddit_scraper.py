@@ -29,8 +29,8 @@ class RedditScraperService:
         # Allow running without keys (return empty results) instead of crashing or warning later? 
         # Actually user wants 'Real Time' so we must warn him to add keys.
 
-        client_id = os.environ.get("REDDIT_CLIENT_ID")
-        client_secret = os.environ.get("REDDIT_CLIENT_SECRET")
+        client_id = os.environ.get("REDDIT_CLIENT_ID", "").strip()
+        client_secret = os.environ.get("REDDIT_CLIENT_SECRET", "").strip()
         user_agent = os.environ.get("REDDIT_USER_AGENT", "SentimentBeacon/1.0")
 
         if not client_id or not client_secret:

@@ -18,7 +18,7 @@ async def list_reports():
     """List available reports from Supabase persistence."""
     try:
         # Fetch from database instead of local filesystem
-        resp = await asyncio.to_thread(supabase.table("reports").select("*").order("created_at", desc=True).limit(50).execute)
+        resp = await asyncio.to_thread(lambda: supabase.table("reports").select("*").order("created_at", desc=True).limit(50).execute())
         
         reports_data = []
         for r in (resp.data or []):
@@ -51,7 +51,7 @@ async def get_report_file(filename: str):
         logger.info(f"Local file {filename} not found, attempting Supabase Storage download.")
         
         # We need the storage path
-        resp = await asyncio.to_thread(supabase.table("reports").select("storage_path").eq("filename", filename).limit(1).execute)
+        resp = await asyncio.to_thread(lambda: supabase.table("reports").select("storage_path").eq("filename", filename).limit(1).execute())
         if not resp.data:
             raise HTTPException(status_code=404, detail="Report record not found")
             
@@ -99,7 +99,7 @@ async def export_report(product_id: str = Query(None), format: str = Query("csv"
         
         # 1. Validate Product
         try:
-            p_resp = await asyncio.to_thread(supabase.table("products").select("id, name").eq("id", product_id).limit(1).execute)
+            p_resp = await asyncio.to_thread(lambda: supabase.table("products").select("id, name").eq("id", product_id).limit(1).execute())
         except Exception as db_err:
             logger.error(f"Database error during product lookup: {db_err}")
             raise HTTPException(status_code=500, detail="Database connection error")
@@ -109,7 +109,7 @@ async def export_report(product_id: str = Query(None), format: str = Query("csv"
              real_id = p_resp.data[0]['id']
         else:
             # Fallback for name lookup
-            p_resp = await asyncio.to_thread(supabase.table("products").select("id, name").ilike("name", product_id).limit(1).execute)
+            p_resp = await asyncio.to_thread(lambda: supabase.table("products").select("id, name").ilike("name", product_id).limit(1).execute())
             if p_resp.data:
                 real_id = p_resp.data[0]['id']
             else:
@@ -126,7 +126,7 @@ async def export_report(product_id: str = Query(None), format: str = Query("csv"
             media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         else:
             # Fetch data for CSV
-            resp = await asyncio.to_thread(supabase.table("reviews").select("*, sentiment_analysis(*)").eq("product_id", product_id).limit(1000).execute)
+            resp = await asyncio.to_thread(lambda: supabase.table("reviews").select("*, sentiment_analysis(*)").eq("product_id", product_id).limit(1000).execute())
             data = {
                 "recent_reviews": []
             }

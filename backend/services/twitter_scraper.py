@@ -135,7 +135,11 @@ class TwitterScraperService:
                 })
             return results
         except Exception as e:
-            logger.error(f"Nitter execution error: {e}")
+            msg = str(e)
+            if "empty sequence" in msg or "instance" in msg:
+                logger.warning(f"Nitter (fallback) failed: No working instances found. Skipping Twitter.")
+            else:
+                logger.error(f"Nitter execution error: {e}")
             return []
 
 twitter_scraper = TwitterScraperService()

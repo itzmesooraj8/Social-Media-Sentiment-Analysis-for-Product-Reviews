@@ -23,14 +23,16 @@ except ImportError:
 
 class YouTubeScraperService:
     def __init__(self):
-        self.api_key = os.environ.get("YOUTUBE_API_KEY")
+        self.api_key = os.environ.get("YOUTUBE_API_KEY", "").strip()
         self._client = None
         
         if _GOOGLE_AVAILABLE and self.api_key:
             try:
                 self._client = build("youtube", "v3", developerKey=self.api_key)
+                logger.info("YouTube: API Client initialized successfully.")
             except Exception as e:
                 logger.error(f"YouTube client init error: {e}")
+                self._client = None
         elif not _GOOGLE_AVAILABLE:
             logger.warning("YouTube: Google API Client not installed. YouTube scraping disabled.")
         elif not self.api_key:
@@ -62,6 +64,12 @@ class YouTubeScraperService:
                     v_id = item.get("id", {}).get("videoId")
                     if v_id:
                         video_ids.append(v_id)
+            except HttpError as he:
+                if he.resp.status in [400, 403]:
+                    logger.warning(f"YouTube search failed {he.resp.status}: Invalid API Key or Quota Exceeded.")
+                    self._client = None
+                else: 
+                     logger.error(f"YouTube HTTP search error: {he}")
             except Exception as e:
                 logger.error(f"YouTube search error: {e}")
         return video_ids
@@ -132,6 +140,13 @@ class YouTubeScraperService:
                 if len(all_comments) >= max_results:
                     break
                     
+            except HttpError as he:
+                if he.resp.status in [400, 401, 403]:
+                    logger.warning(f"YouTube API Error {he.resp.status}: Invalid Key or Quota Exceeded. disabling.")
+                    self._client = None  # Disable client to prevent further errors
+                    break
+                else:
+                    logger.error(f"YouTube HTTP Error: {he}")
             except Exception as e:
                 # If comments are disabled, we might get an HttpError. Skip to next video.
                 logger.warning(f"YouTube search error for video {video_id}: {e}")

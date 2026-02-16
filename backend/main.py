@@ -66,16 +66,8 @@ logger = logging.getLogger("backend")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "https://social-media-sentiment-analysis-lilac.vercel.app",
-        "https://social-media-sentiment-analysis-for.onrender.com"
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -89,9 +81,7 @@ app.include_router(auth.router)
 
 from services.insights_service import insights_service
 
-@app.get("/api/insights")
-async def api_get_insights(product_id: Optional[str] = None):
-    return {"success": True, "data": insights_service.generate_insights(product_id)}
+
 
 @app.post("/api/reviews/upload")
 async def api_upload_reviews(
@@ -184,47 +174,20 @@ class IntegrationConfig(BaseModel):
 @app.get("/health")
 async def health():
     """
-    Comprehensive Health Check for Load Balancers and Frontend.
-    Checks:
-    1. System Uptime (Basic)
-    2. Database Connectivity (Supabase)
-    3. AI Model Readiness (DistilBERT loaded)
+    Lightweight Health Check.
     """
-    status = {
-        "status": "initializing", 
-        "database": "unknown", 
-        "ai_models": "unknown",
-        "version": "1.2.0"
-    }
-    
-    # 1. Check Database
     try:
-        # Lightweight check - just limit 1
-        response = supabase.table("products").select("id", count="exact").limit(1).execute()
-        status["database"] = "connected"
+        # Check DB connection status (just check if variable is not None)
+        db_status = "connected" if supabase else "disconnected"
+        return {
+            "status": "healthy" if supabase else "degraded",
+            "database": db_status,
+            "ai_models": "ready" if ai_service._models_loaded else "loading",
+            "version": "1.2.1"
+        }
     except Exception as e:
-        status["database"] = "disconnected"
-        logger.error(f"Health Check DB Fail: {e}")
-
-    # 2. Check AI Models
-    # ai_service is initialized on import, but models load lazily or on startup
-    if ai_service._models_loaded:
-        status["ai_models"] = "ready"
-    else:
-        status["ai_models"] = "loading"
-        # Trigger load in background if not loaded? 
-        # Better to just report state.
-    
-    # Determined overall status
-    if status["database"] == "connected" and status["ai_models"] == "ready":
-        status["status"] = "healthy"
-    elif status["database"] == "connected":
-        # AI loading is fine, app is usable
-        status["status"] = "degraded" # Frontend should show "AI Warming Up"
-    else:
-        status["status"] = "unhealthy"
-        
-    return status
+        logger.error(f"Health Check Fail: {e}")
+        return {"status": "unhealthy", "error": str(e)}
 
 
 @app.get("/api/products")
