@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { supabase } from './supabase';
 
-const API_URL_RAW = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const API_URL_RAW = import.meta.env.VITE_API_URL || 'https://social-media-sentiment-analysis-for.onrender.com';
 const API_URL = API_URL_RAW.endsWith('/api') ? API_URL_RAW : `${API_URL_RAW}/api`;
 
 export const api = axios.create({
@@ -373,6 +373,22 @@ export const getSettings = async () => {
 };
 
 export const getPredictions = getPredictiveAnalytics;
+
+
+export const testIntegration = async (platform: string) => {
+    const response = await api.post(`/integrations/test/${platform}`);
+    return response.data;
+};
+
+export const saveIntegrationConfig = async (config: any) => {
+    const response = await api.post('/integrations/config', config);
+    return response.data;
+};
+
+export const deleteIntegration = async (platform: string) => {
+    const response = await api.delete(`/integrations/${platform}`);
+    return response.data;
+};
 
 export default sentinelApi;
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
-import { getSystemStatus } from '@/lib/api';
+import { getSystemStatus, testIntegration, saveIntegrationConfig, deleteIntegration } from '@/lib/api';
 import {
   Link2,
   Plus,
@@ -157,15 +157,14 @@ const Integrations = () => {
   const handleTestConnection = async (id: string, platform: string) => {
     setTestingConnection(id);
     try {
-      const res = await fetch(`/api/integrations/test/${platform}`, { method: 'POST' });
-      if (res.ok) {
+      const res = await testIntegration(platform);
+      if (res.success) {
         toast({ title: 'Connection Successful', description: 'API connection is verified.', variant: "default" });
       } else {
-        const err = await res.json();
-        toast({ title: 'Connection Failed', description: err.detail || 'Could not verify credentials.', variant: "destructive" });
+        toast({ title: 'Connection Failed', description: res.detail || 'Could not verify credentials.', variant: "destructive" });
       }
-    } catch (e) {
-      toast({ title: 'Connection Error', description: 'Network error.', variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: 'Connection Error', description: e.response?.data?.detail || 'Network error.', variant: "destructive" });
     } finally {
       setTestingConnection(null);
     }
@@ -189,24 +188,17 @@ const Integrations = () => {
         payload.credentials = { bearer_token: apiKey };
       }
 
-      const res = await fetch('/api/integrations/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      await saveIntegrationConfig(payload);
 
-      if (res.ok) {
-        toast({ title: "Configuration Saved", description: "System updated. Validating connection..." });
-        // Auto test
-        await handleTestConnection(platform, platform);
-        refetch();
-        setIsAddDialogOpen(false);
-        setIsConfigDialogOpen(false);
-      } else {
-        throw new Error("Failed to save config");
-      }
-    } catch (e) {
-      toast({ title: "Error", description: "Failed to save configuration.", variant: "destructive" });
+      toast({ title: "Configuration Saved", description: "System updated. Validating connection..." });
+      // Auto test
+      await handleTestConnection(platform, platform);
+      refetch();
+      setIsAddDialogOpen(false);
+      setIsConfigDialogOpen(false);
+
+    } catch (e: any) {
+      toast({ title: "Error", description: e.response?.data?.detail || "Failed to save configuration.", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -219,18 +211,16 @@ const Integrations = () => {
       // Optimistic update
       setIntegrations(prev => prev.filter(i => i.platform !== platform));
 
-      const res = await fetch(`/api/integrations/${platform}`, { method: 'DELETE' });
-      if (res.ok) {
-        toast({ title: "Integration Removed", description: `${platform} credentials have been cleared.` });
-        // Force refetch to sync backend state
-        refetch();
-      } else {
-        toast({ title: "Error", description: "Failed to remove integration.", variant: "destructive" });
-        // Revert on error (optional, or just let refetch handle it)
-        refetch();
-      }
-    } catch (e) {
-      toast({ title: "Error", description: "Network error.", variant: "destructive" });
+      await deleteIntegration(platform);
+
+      toast({ title: "Integration Removed", description: `${platform} credentials have been cleared.` });
+      // Force refetch to sync backend state
+      refetch();
+
+    } catch (e: any) {
+      toast({ title: "Error", description: e.response?.data?.detail || "Network error.", variant: "destructive" });
+      // Revert on error (optional, or just let refetch handle it)
+      refetch();
     }
   };
 
