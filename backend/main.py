@@ -379,9 +379,11 @@ async def api_scrape_youtube_stream(url: str = Query(...), product_id: Optional[
                 except Exception:
                     continue
         except Exception as e:
+
             try:
-                error_payload = {"error": str(e), "message": "An error occurred during the stream."}
-                yield "event: error\\ndata: " + json.dumps(error_payload) + "\\n\\n"
+                # Send error as a normal message with type 'error' so client handles it in onmessage
+                error_payload = {"type": "error", "message": "Stream error: " + str(e)}
+                yield "data: " + json.dumps(error_payload) + "\\n\\n"
             except Exception:
                 pass
         finally:

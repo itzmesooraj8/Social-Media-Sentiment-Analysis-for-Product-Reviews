@@ -52,6 +52,11 @@ export const UrlAnalyzer: React.FC<UrlAnalyzerProps> = ({ onAnalysisComplete, se
           const payload = JSON.parse(ev.data);
           if (payload?.type === 'comment' && payload.comment) {
             setResults((prev) => [payload.comment, ...prev]);
+          } else if (payload?.type === 'error') {
+            console.error("Stream Error Payload:", payload);
+            toast({ title: 'Stream Error', description: payload.message || 'An error occurred.', variant: 'destructive' });
+            es.close();
+            setIsLoading(false);
           }
         } catch (err) {
           // ignore parse errors
