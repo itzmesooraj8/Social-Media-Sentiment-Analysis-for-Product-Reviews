@@ -26,6 +26,14 @@ from fastapi.responses import StreamingResponse
 from fastapi import Query
 from dotenv import load_dotenv, set_key, unset_key
 
+# Setting Matplotlib config dir to avoid read-only FS issues / repeated cache building
+os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib_cache'
+try:
+    if not os.path.exists('/tmp/matplotlib_cache'):
+        os.makedirs('/tmp/matplotlib_cache', exist_ok=True)
+except:
+    pass
+
 # Load env vars specific to backend BEFORE importing services that might use them on init
 # We reload them dynamically now in config endpoints too
 env_path = Path(__file__).parent / ".env"
@@ -42,6 +50,15 @@ from routers import reports, alerts, settings
 from database import supabase, get_products, add_product, get_reviews, get_dashboard_stats, get_product_by_id, delete_product, get_sentiment_trends, get_product_stats_full
 
 app = FastAPI(title="Sentiment Beacon API", version="1.0.0")
+
+@app.get("/")
+def root():
+    """Root endpoint for health checks and welcome message."""
+    return {
+        "message": "Sentiment Beacon AI Backend is Operational 🚀",
+        "status": "online",
+        "docs": "/docs"
+    }
 
 # --- SCHEDULER STARTUP ---
 from services.scheduler import start_scheduler
