@@ -38,6 +38,23 @@ class YouTubeScraperService:
         elif not self.api_key:
             logger.warning("YouTube: No API Key found. YouTube scraping disabled.")
 
+    async def reload_config(self):
+        """Reload configuration from environment variables."""
+        self.api_key = os.environ.get("YOUTUBE_API_KEY", "").strip()
+        logger.info(f"YouTube: Reloading config with key: {self.api_key[:10]}...")
+        
+        if _GOOGLE_AVAILABLE and self.api_key:
+            try:
+                # We need to rebuild the client
+                self._client = build("youtube", "v3", developerKey=self.api_key)
+                logger.info("YouTube: Config reloaded. Client initialized.")
+            except Exception as e:
+                logger.error(f"YouTube re-init error: {e}")
+                self._client = None
+        else:
+            self._client = None
+            logger.info("YouTube: API Key missing or lib unavailable after reload.")
+
     async def search_video_comments(self, query: str, max_results: int = 50) -> List[Dict[str, Any]]:
         """
         Search videos by query (requires API), pick top result, fetch comments.

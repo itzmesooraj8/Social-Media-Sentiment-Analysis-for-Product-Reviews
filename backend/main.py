@@ -318,7 +318,7 @@ async def api_scrape_reddit(payload: RedditScrapeRequest):
         raise HTTPException(status_code=400, detail="query is required")
 
     try:
-        items = await reddit_scraper.reddit_scraper.search_product_mentions(
+        items = await reddit_scraper.search_product_mentions(
             query, 
             limit=payload.limit or 50, 
             subreddits=payload.subreddits
@@ -335,7 +335,7 @@ async def api_scrape_twitter(payload: TwitterScrapeRequest):
         raise HTTPException(status_code=400, detail="query is required")
 
     try:
-        items = await twitter_scraper.twitter_scraper.search_tweets(query, limit=payload.limit or 20)
+        items = await twitter_scraper.search_tweets(query, limit=payload.limit or 20)
         
         # If product_id, save them
         if payload.product_id and items:
@@ -628,10 +628,11 @@ async def api_configure_integration(config: IntegrationConfig):
         # 3. Hot Reload Services
         if updated_keys:
             if platform == "twitter":
-                # Access the instance within the module
-                await twitter_scraper.twitter_scraper.reload_config()
+                await twitter_scraper.reload_config()
                 logger.info("Twitter Scraper reloaded.")
-            # Add Reddit/YouTube reload logic here as needed
+            elif platform == "youtube":
+                await youtube_scraper.reload_config()
+                logger.info("YouTube Scraper reloaded.")
         
         return {"success": True, "message": f"{platform.capitalize()} configuration updated successfully."}
     except Exception as e:
