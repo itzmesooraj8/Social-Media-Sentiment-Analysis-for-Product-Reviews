@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, Youtube, Search } from "lucide-react";
-import { sentinelApi } from '@/lib/api';
+import { sentinelApi, getYoutubeStreamUrl } from '@/lib/api';
 import { useToast } from "@/hooks/use-toast";
 
 interface UrlAnalyzerProps {
@@ -19,9 +19,8 @@ export const UrlAnalyzer: React.FC<UrlAnalyzerProps> = ({ onAnalysisComplete, se
   const [results, setResults] = useState<any[]>([]);
   const { toast } = useToast();
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = () => {
     if (!url.trim()) return;
-    // show product form to gather metadata before scraping
     setShowProductForm(true);
   };
 
@@ -44,12 +43,9 @@ export const UrlAnalyzer: React.FC<UrlAnalyzerProps> = ({ onAnalysisComplete, se
       const productId = product?.id || product?.[0]?.id;
 
       // 2. Open SSE connection to get real-time comments
-      const params = new URLSearchParams();
-      params.set('url', url);
-      if (productId) params.set('product_id', productId);
-      params.set('max_results', '100');
+      // Use helper from api.ts to correctly handle base URL overrides
+      const streamUrl = getYoutubeStreamUrl(url, productId, 100);
 
-      const streamUrl = `${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api'}/scrape/youtube/stream?${params.toString()}`;
       const es = new EventSource(streamUrl);
       es.onmessage = (ev) => {
         try {
