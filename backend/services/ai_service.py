@@ -59,9 +59,15 @@ try:
 except ImportError:
     TextBlob = None
 
+try:
+    from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+except ImportError:
+    SentimentIntensityAnalyzer = None
+
 # Constants for availability checks
 _TRANSFORMERS_AVAILABLE = pipeline is not None
 _TEXTBlob_AVAILABLE = TextBlob is not None
+_VADER_AVAILABLE = SentimentIntensityAnalyzer is not None
 _TEXTSTAT_AVAILABLE = textstat is not None
 _KEYBERT_AVAILABLE = KeyBERT is not None
 _SKLEARN_AVAILABLE = CountVectorizer is not None
@@ -76,6 +82,7 @@ class AIService:
         self.emotion_model = "j-hartmann/emotion-english-distilroberta-base"
         self._sentiment_pipe = None
         self._emotion_pipe = None
+        self._vader_analyzer = None
         self._keybert_model = None
         self._spacy_nlp = None
         self._models_loaded = False
@@ -105,6 +112,13 @@ class AIService:
                 self._emotion_pipe = pipeline("text-classification", model=self.emotion_model, top_k=1)
         except Exception as e:
              logger.error(f"Failed to load Transformers: {e}")
+
+        # 1.5 VADER (Fallback & Fast)
+        if _VADER_AVAILABLE:
+            try:
+                self._vader_analyzer = SentimentIntensityAnalyzer()
+            except Exception as e:
+                logger.error(f"Failed to load VADER: {e}")
         
         # 2. KeyBERT (Lazy or Skip if heavy)
         if _KEYBERT_AVAILABLE:
@@ -213,8 +227,28 @@ class AIService:
                     score = float(top.get("score", 0.5))
             except Exception as e:
                 logger.error(f"Sentiment error: {e}")
-        elif _TEXTBlob_AVAILABLE:
-            # Fallback: TextBlob
+            except Exception as e:
+                logger.error(f"Sentiment error: {e}")
+        
+        # 1.5 VADER (Better Fallback than TextBlob)
+        if label == "NEUTRAL" and self._vader_analyzer:
+            try:
+                scores = self._vader_analyzer.polarity_scores(text)
+                compound = scores.get('compound', 0)
+                # Normalize compound (-1 to 1) to score (0 to 1)
+                score = (compound + 1) / 2
+                
+                if compound >= 0.05:
+                    label = "POSITIVE"
+                elif compound <= -0.05:
+                    label = "NEGATIVE"
+                else: 
+                    label = "NEUTRAL"
+            except Exception:
+                pass
+
+        # 1.6 TextBlob (Last Resort)
+        if label == "NEUTRAL" and _TEXTBlob_AVAILABLE and not self._vader_analyzer:
             try:
                 blob = TextBlob(text)
                 polarity = blob.sentiment.polarity

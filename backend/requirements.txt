@@ -22,3 +22,4 @@ matplotlib>=3.7.0
 # Excluded: torch, transformers, spacy, etc. to save space.
 apscheduler
 reportlab
+vaderSentiment
