@@ -27,10 +27,15 @@ from fastapi import Query
 from dotenv import load_dotenv, set_key, unset_key
 
 # Setting Matplotlib config dir to avoid read-only FS issues / repeated cache building
-os.environ['MPLCONFIGDIR'] = '/tmp/matplotlib_cache'
+import tempfile
+
+# Setting Matplotlib config dir to avoid read-only FS issues / repeated cache building
+# Use tempfile to work on both Windows and Linux
+cache_dir = os.path.join(tempfile.gettempdir(), 'matplotlib_cache')
+os.environ['MPLCONFIGDIR'] = cache_dir
 try:
-    if not os.path.exists('/tmp/matplotlib_cache'):
-        os.makedirs('/tmp/matplotlib_cache', exist_ok=True)
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir, exist_ok=True)
 except:
     pass
 
@@ -83,8 +88,13 @@ logger = logging.getLogger("backend")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://social-media-sentiment-analysis-lilac.vercel.app",
+        "https://social-media-sentiment-analysis-for.onrender.com" 
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
