@@ -66,17 +66,35 @@ export default function Products() {
     onError: () => toast({ title: 'Error', description: 'Failed to create product', variant: 'destructive' })
   });
 
-  // Delete Product
+  // Delete Product — optimistic update removes the card immediately from the UI.
+  // If the API call fails, the previous list is restored.
   const deleteMutation = useMutation({
     mutationFn: deleteProduct,
+    onMutate: async (productId: string) => {
+      // Cancel any in-flight fetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ['products'] });
+      // Snapshot the current list for rollback
+      const previousProducts = queryClient.getQueryData<any[]>(['products']);
+      // Optimistically remove the product from the cache right away
+      queryClient.setQueryData<any[]>(['products'], (old = []) =>
+        old.filter((p) => p.id !== productId)
+      );
+      return { previousProducts };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
       toast({ title: 'Deleted', description: 'Product removed' });
     },
-    onError: (err: any) => {
-      console.error('Delete failed', err);
+    onError: (err: any, _productId, context: any) => {
+      // Roll back to the snapshot so nothing disappears on failure
+      if (context?.previousProducts) {
+        queryClient.setQueryData(['products'], context.previousProducts);
+      }
       const msg = err?.response?.data?.detail || err?.message || 'Failed to delete product';
       toast({ title: 'Delete failed', description: String(msg), variant: 'destructive' });
+    },
+    onSettled: () => {
+      // Always re-sync from the server so the list is authoritative
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     },
   });
 
