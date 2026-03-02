@@ -1,7 +1,6 @@
 
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { signIn } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,32 +21,23 @@ export default function LoginPage() {
         setError(null);
 
         try {
-            // Try Custom Backend Login first (for Admin/Admin)
-            // If username is email-like, try Supabase? 
-            // User said "username/password: admin/admin".
-            // We'll try custom login first.
-            try {
-                // Import dynamically to avoid circular dep issues in some frameworks, but here direct import is fine if added to api.ts
-                const { apiLogin } = await import('@/lib/api');
-                const data = await apiLogin(email, password); // email state holds 'admin'
-                if (data.token) {
-                    localStorage.setItem('access_token', data.token);
-                    // Force reload or just navigate?
-                    // Navigation might not update AuthContext.
-                    // Ideally we update AuthContext, but for demo speed:
-                    window.location.href = '/dashboard';
-                    return;
-                }
-            } catch (backendError) {
-                // connection refused or invalid creds?
-                // Fallback to Supabase if backend refused
-                // console.log("Backend auth failed, trying Supabase", backendError);
-                const { error } = await signIn(email, password);
-                if (error) throw error;
-                navigate('/dashboard');
+            // Route login through the backend only — never call Supabase from the
+            // browser directly (free-tier Supabase times out from browser connections).
+            const { apiLogin } = await import('@/lib/api');
+            const data = await apiLogin(email, password);
+
+            if (!data.token) {
+                throw new Error('Login failed — no token returned');
             }
+
+            localStorage.setItem('access_token', data.token);
+
+            // navigate() keeps React state intact; AuthContext will pick up the
+            // localStorage token and set a synthetic user without a page reload.
+            navigate('/dashboard');
         } catch (err: any) {
-            setError(err.message || 'Failed to login');
+            const msg = err?.response?.data?.detail || err?.message || 'Invalid credentials';
+            setError(msg);
         } finally {
             setLoading(false);
         }
