@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { useEffect } from "react";
 import Index from "./pages/Index";
 import Analytics from "./pages/Analytics";
 import Reports from "./pages/Reports";
@@ -30,7 +31,20 @@ const queryClient = new QueryClient({
   },
 });
 
+// Ping the backend on app startup so Render free-tier wakes up before the user
+// tries to do anything. Fire-and-forget; failures are silently ignored.
+const pingBackend = () => {
+  const backendUrl = (import.meta.env.VITE_API_URL || 'https://social-media-sentiment-analysis-for.onrender.com')
+    .replace(/\/api$/, '');
+  fetch(`${backendUrl}/health`, { method: 'GET', signal: AbortSignal.timeout(60000) })
+    .then(() => console.log('[Sentinel] Backend is awake ✓'))
+    .catch(() => console.warn('[Sentinel] Backend wake-up ping failed – will retry on first request'));
+};
+
 const App = () => {
+  // Wake up the Render backend as early as possible
+  useEffect(() => { pingBackend(); }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="system" storageKey="sentinel-ui-theme">

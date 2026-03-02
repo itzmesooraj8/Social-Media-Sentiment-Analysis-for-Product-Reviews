@@ -14,12 +14,24 @@ export const api = axios.create({
 });
 
 // Sync Auth Token from Supabase or Local Storage
+// Uses a race with a 3s timeout so a slow/misconfigured Supabase client never stalls the request.
 api.interceptors.request.use(async (config) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    try {
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
+        const result = await Promise.race([sessionPromise, timeoutPromise]);
+        const session = result ? (result as any)?.data?.session : null;
 
-    if (session?.access_token) {
-        config.headers.Authorization = `Bearer ${session.access_token}`;
-    } else {
+        if (session?.access_token) {
+            config.headers.Authorization = `Bearer ${session.access_token}`;
+        } else {
+            const localToken = localStorage.getItem('access_token');
+            if (localToken) {
+                config.headers.Authorization = `Bearer ${localToken}`;
+            }
+        }
+    } catch {
+        // If auth check fails, continue without token (public endpoints still work)
         const localToken = localStorage.getItem('access_token');
         if (localToken) {
             config.headers.Authorization = `Bearer ${localToken}`;

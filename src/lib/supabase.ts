@@ -3,12 +3,25 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
 
+// Flag indicating whether Supabase was properly configured via env vars.
+// Components can check this to fast-fail or skip Supabase-dependent operations.
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
+
 let supabase: any;
 
-if (!supabaseUrl || !supabaseKey) {
-    console.warn('CRITICAL: Missing VITE_SUPABASE_URL or VITE_SUPABASE_KEY. Auth will fail.');
-    // Initialize with dummy values to prevent crash, requests will fail gracefully
-    supabase = createClient('https://placeholder.supabase.co', 'placeholder');
+if (!isSupabaseConfigured) {
+    console.warn(
+        'CRITICAL: Missing VITE_SUPABASE_URL or VITE_SUPABASE_KEY.\n' +
+        'Set these in Vercel → Settings → Environment Variables and redeploy.\n' +
+        'Auth will not work until these are set.'
+    );
+    // Use a known-invalid but structurally-valid URL so createClient() does not throw.
+    // All auth calls will fail gracefully; the AuthContext timeout (8s) will unblock the app.
+    supabase = createClient(
+        'https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.supabase.co',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwbGFjZWhvbGRlciJ9.placeholder',
+        { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+    );
 } else {
     supabase = createClient(supabaseUrl, supabaseKey);
 }
