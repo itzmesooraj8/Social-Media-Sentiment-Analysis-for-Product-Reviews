@@ -222,10 +222,10 @@ export default function Products() {
                 <Badge variant={product.status === 'active' ? 'default' : 'secondary'}>
                   {product.status}
                 </Badge>
-                {/* @ts-ignore */}
+                {/* @ts-expect-error review_count is dynamic from API */}
                 {product.review_count !== undefined && (
                   <span className="text-xs font-medium bg-muted px-2 py-1 rounded">
-                    {/* @ts-ignore */}
+                    {/* @ts-expect-error review_count is dynamic from API */}
                     {product.review_count} reviews
                   </span>
                 )}

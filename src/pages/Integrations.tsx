@@ -124,13 +124,13 @@ const Integrations = () => {
         id: d.id,
         name: d.name,
         platform: d.platform,
-        // @ts-ignore
+        // @ts-expect-error dynamic key lookup on status shape
         status: statusData[d.key] ? 'connected' : 'disconnected',
-        // @ts-ignore
+        // @ts-expect-error dynamic key lookup on status shape
         lastSync: statusData[d.key] ? new Date() : null,
         reviewsCollected: d.reviews || 0,
         syncFrequency: '30 minutes',
-        // @ts-ignore
+        // @ts-expect-error dynamic key lookup on status shape
         isEnabled: !!statusData[d.key]
       }))
         // Filter out disconnected items to effectively "Delete" them from the list

@@ -33,45 +33,46 @@ class ReportService:
 
     async def _upload_to_supabase(self, filepath: str, product_id: str, format_type: str):
         """
-        Uploads the file to Supabase Storage and saves a record in the 'reports' database table.
+        Uploads the generated report file to Supabase Storage and inserts a record
+        into the 'reports' table. Failures are caught and logged — they will not
+        abort the download that triggered the generation.
         """
         if not supabase:
-            logger.info("Supabase client not initialized. Skipping upload.")
+            logger.info("Supabase client not initialized. Skipping persistent upload.")
             return
 
         filename = os.path.basename(filepath)
         storage_path = f"generated/{filename}"
-        
+
         try:
-            # 1. Upload to Storage Bucket (Expected bucket name: 'reports')
-            # Note: The 'reports' bucket must exist and have public/authenticated access enabled.
+            # 1. Upload file to the 'reports' Storage bucket.
+            #    The bucket must exist in Supabase with appropriate access policies.
             with open(filepath, 'rb') as f:
-                async def _upload():
-                    return supabase.storage.from_('reports').upload(storage_path, f, {"upsert": "true"})
-                
-                # Check if we should use thread for sync library or if it's async
-                # supabase-py 2.0+ is usually sync unless using async client. 
-                # database.py uses create_client which is sync.
-                # However, the routers call these methods. I will use asyncio.to_thread for safety.
-                await asyncio.to_thread(supabase.storage.from_('reports').upload, storage_path, f, {"upsert": "true"})
+                file_bytes = f.read()
+            await asyncio.to_thread(
+                supabase.storage.from_('reports').upload,
+                storage_path,
+                file_bytes,
+                {"upsert": "true"}
+            )
 
-            # 2. Get File Stats
+            # 2. Insert a metadata record into the 'reports' table.
             file_size = os.path.getsize(filepath)
-
-            # 3. Insert Record into 'reports' table
             report_data = {
                 "product_id": product_id,
                 "filename": filename,
                 "storage_path": storage_path,
                 "type": format_type,
-                "size": file_size
+                "size": file_size,
             }
-            await asyncio.to_thread(supabase.table("reports").insert(report_data).execute)
-            logger.info(f"Successfully saved persistent report record: {filename}")
+            await asyncio.to_thread(
+                lambda: supabase.table("reports").insert(report_data).execute()
+            )
+            logger.info(f"Persistent report record saved: {filename}")
 
         except Exception as e:
-            logger.error(f"Failed to upload report to Supabase Storage: {e}")
-            logger.info("Local report file still available for immediate download.")
+            logger.error(f"Supabase Storage upload skipped (non-fatal): {e}")
+            logger.info("Local report file is still available for immediate download.")
 
     async def generate_excel_report(self, product_id: str) -> str:
         """
@@ -153,14 +154,21 @@ class ReportService:
             raise ImportError("PDF generation requires reportlab")
 
         # 1. Fetch Reviews with Deep Analysis Data
+        #    Select only guaranteed-stable columns; engagement columns (like_count,
+        #    reply_count) are read via .get() with a safe default below.
         try:
             logger.info("Fetching reviews for PDF...")
-            task = asyncio.to_thread(lambda: supabase.table("reviews").select("*, sentiment_analysis(*), like_count, reply_count").eq("product_id", product_id).execute())
+            task = asyncio.to_thread(
+                lambda: supabase.table("reviews")
+                    .select("*, sentiment_analysis(*)")
+                    .eq("product_id", product_id)
+                    .execute()
+            )
             resp = await task
             rows = resp.data or []
             logger.info(f"Fetched {len(rows)} reviews for PDF.")
         except Exception as e:
-            print(f"Failed to fetch reviews for report: {e}")
+            logger.error(f"Failed to fetch reviews for PDF report: {e}")
             rows = []
 
         # 2. Fetch Global Topics
@@ -294,9 +302,13 @@ class ReportService:
 
             doc.build(story)
         
-        await asyncio.to_thread(_build_pdf)
+        try:
+            await asyncio.to_thread(_build_pdf)
+        except Exception as build_err:
+            logger.error(f"PDF build failed for {product_id}: {build_err}")
+            raise
 
-        # 4. Upload to Persistance
+        # 4. Persist to Supabase Storage (non-fatal if it fails)
         await self._upload_to_supabase(filepath, product_id, "pdf")
 
         return filepath

@@ -36,49 +36,8 @@ async def list_reports():
         logger.error(f"List reports error: {e}")
         return {"success": False, "data": []}
 
-@router.get("/{filename}")
-async def get_report_file(filename: str):
-    """Download a report, prioritizing local file then Supabase Storage."""
-    try:
-        reports_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports"))
-        filepath = os.path.join(reports_dir, filename)
-        
-        # 1. Try local cache first (for immediate downloads)
-        if os.path.exists(filepath):
-             return FileResponse(filepath, filename=filename)
-             
-        # 2. Fallback to Supabase Storage if local file is purged (Render reset)
-        logger.info(f"Local file {filename} not found, attempting Supabase Storage download.")
-        
-        # We need the storage path
-        resp = await asyncio.to_thread(lambda: supabase.table("reports").select("storage_path").eq("filename", filename).limit(1).execute())
-        if not resp.data:
-            raise HTTPException(status_code=404, detail="Report record not found")
-            
-        storage_path = resp.data[0]['storage_path']
-        
-        # Option A: Proxy the download (more secure/private)
-        try:
-             # This depends on supabase-py storage implementation
-             # For simplicity, we can get a public URL or sign it
-             file_data = await asyncio.to_thread(supabase.storage.from_('reports').download, storage_path)
-             
-             # Save to local cache for future hits
-             with open(filepath, 'wb') as f:
-                 f.write(file_data)
-                 
-             return FileResponse(filepath, filename=filename)
-        except Exception as se:
-            logger.error(f"Supabase Storage download failed: {se}")
-            raise HTTPException(status_code=404, detail="Report not found in storage")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Get report file error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
+# NOTE: /export MUST be registered before /{filename} so FastAPI does not
+# greedily match the literal path segment "export" as a filename parameter.
 @router.api_route("/export", methods=["GET", "POST"])
 async def export_report(product_id: str = Query(None), format: str = Query("csv", pattern="^(csv|pdf|excel)$"), p_id: str = Body(None), fmt: str = Body(None)):
     """
@@ -148,6 +107,50 @@ async def export_report(product_id: str = Query(None), format: str = Query("csv"
 
     except ImportError as e:
          raise HTTPException(status_code=501, detail=f"Export feature missing dependency: {e}")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Export failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate report")
+        raise HTTPException(status_code=500, detail=f"Failed to generate report: {str(e)}")
+
+@router.get("/{filename}")
+async def get_report_file(filename: str):
+    """Download a report, prioritizing local file then Supabase Storage."""
+    try:
+        reports_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports"))
+        filepath = os.path.join(reports_dir, filename)
+        
+        # 1. Try local cache first (for immediate downloads)
+        if os.path.exists(filepath):
+             return FileResponse(filepath, filename=filename)
+             
+        # 2. Fallback to Supabase Storage if local file is purged (Render reset)
+        logger.info(f"Local file {filename} not found, attempting Supabase Storage download.")
+        
+        # We need the storage path
+        resp = await asyncio.to_thread(lambda: supabase.table("reports").select("storage_path").eq("filename", filename).limit(1).execute())
+        if not resp.data:
+            raise HTTPException(status_code=404, detail="Report record not found")
+            
+        storage_path = resp.data[0]['storage_path']
+        
+        # Option A: Proxy the download (more secure/private)
+        try:
+             # This depends on supabase-py storage implementation
+             # For simplicity, we can get a public URL or sign it
+             file_data = await asyncio.to_thread(supabase.storage.from_('reports').download, storage_path)
+             
+             # Save to local cache for future hits
+             with open(filepath, 'wb') as f:
+                 f.write(file_data)
+                 
+             return FileResponse(filepath, filename=filename)
+        except Exception as se:
+            logger.error(f"Supabase Storage download failed: {se}")
+            raise HTTPException(status_code=404, detail="Report not found in storage")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get report file error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
