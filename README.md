@@ -397,7 +397,7 @@ Please ensure all ESLint checks pass (`npm run lint`) before submitting a pull r
 ## Author
 
 **Sooraj S**  
-Full-Stack Developer | AI/ML Engineer
+Full-Stack Developer 
 
 ---
 
