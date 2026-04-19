@@ -37,6 +37,7 @@ Whether you are tracking a product launch, monitoring brand health, or benchmark
 - **Multi-Platform Scraping** — Live collection from YouTube comments, Reddit threads, and Twitter/X posts via dedicated scraper services
 - **CSV Import** — Bulk upload of historical review data
 - **Scheduled Pipelines** — Background APScheduler jobs keep data continuously fresh without manual intervention
+- **Auto Demo Seeding** — Backend startup seeds 500 demo reviews automatically when the database is empty
 
 ### AI / NLP Pipeline
 - **Transformer Sentiment Classification** — DistilBERT-based positive / negative / neutral scoring
@@ -337,7 +338,7 @@ Sentiment Beacon uses a split-hosting model with continuous deployment on both p
 4. Add all backend environment variables under **Service → Environment**.
 5. Every push to `main` automatically triggers a new build and deploy.
 
-> **Cold-start optimisation:** Heavy AI models (DistilBERT, spaCy) are loaded **lazily** on first request, keeping startup time well within free-tier limits. NLTK corpora are downloaded on first use rather than at startup.
+> **Startup optimisation:** FastAPI warms AI models during startup and seeds demo records when the database is empty, so the first dashboard load has data and avoids long first-inference delays.
 
 ---
 

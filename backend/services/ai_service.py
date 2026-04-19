@@ -73,6 +73,7 @@ _KEYBERT_AVAILABLE = KeyBERT is not None
 _SKLEARN_AVAILABLE = CountVectorizer is not None
 _NRC_AVAILABLE = NRCLex is not None
 _GENSIM_AVAILABLE = gensim is not None
+_NLTK_AVAILABLE = nltk is not None
 # ---------------------------
 
 class AIService:
@@ -86,6 +87,10 @@ class AIService:
         self._keybert_model = None
         self._spacy_nlp = None
         self._models_loaded = False
+
+    def load_models(self):
+        """Public warm-up entrypoint used by FastAPI startup."""
+        self._ensure_models_loaded()
 
     def _ensure_models_loaded(self):
         if self._models_loaded:

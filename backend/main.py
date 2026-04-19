@@ -67,10 +67,22 @@ def root():
 
 # --- SCHEDULER STARTUP ---
 from services.scheduler import start_scheduler
+from services.seed_data_service import ensure_demo_seed_data
 
 @app.on_event("startup")
 async def startup_event():
     start_scheduler()
+    try:
+        await asyncio.to_thread(ai_service.load_models)
+        logger.info("AI model warm-up complete")
+    except Exception as e:
+        logger.error(f"AI model warm-up failed: {e}")
+
+    try:
+        seed_result = await ensure_demo_seed_data(min_reviews=500)
+        logger.info(f"Demo seed result: {seed_result}")
+    except Exception as e:
+        logger.error(f"Demo seed routine failed: {e}")
 
 # --- LOGGING CONFIGURATION ---
 import logging

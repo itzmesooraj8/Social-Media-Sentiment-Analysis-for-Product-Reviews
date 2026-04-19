@@ -24,6 +24,7 @@ import { EmotionWheel } from '@/components/dashboard/EmotionWheel';
 import { InsightCard } from '@/components/dashboard/InsightCard';
 import { TopicClusters } from '@/components/dashboard/TopicClusters';
 import { DashboardControls } from '@/components/dashboard/DashboardControls';
+import { PanelErrorBoundary } from '@/components/common/PanelErrorBoundary';
 
 const Index = () => {
   const [selectedProductId, setSelectedProductId] = useState<string | undefined>(undefined);
@@ -144,9 +145,21 @@ const Index = () => {
   if (isLoadingLocal || productsLoading) {
     return (
       <DashboardLayout lastUpdated={new Date()} isCrisis={false}>
-        <div className="p-6">
-          <Skeleton className="h-6 w-48 mb-4" />
-          <Skeleton className="h-40 w-full" />
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Skeleton className="h-28 w-full" />
+            <Skeleton className="h-28 w-full" />
+            <Skeleton className="h-28 w-full" />
+            <Skeleton className="h-28 w-full" />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Skeleton className="h-80 w-full" />
+            <Skeleton className="h-80 w-full" />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Skeleton className="h-96 w-full" />
+            <Skeleton className="h-96 w-full" />
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -190,7 +203,27 @@ const Index = () => {
         </div>
 
         {/* Controls Row */}
-        <DashboardControls />
+        <PanelErrorBoundary title="Dashboard controls">
+          <DashboardControls />
+        </PanelErrorBoundary>
+
+        {assembled.metrics.totalReviews === 0 && (
+          <div className="rounded-xl border border-border/60 bg-card/70 p-6">
+            <h3 className="text-lg font-semibold">No reviews available yet</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Demo data seeds automatically on backend startup. If charts are still empty, trigger a live refresh to collect fresh platform data.
+            </p>
+            <Button
+              variant="outline"
+              className="mt-4 gap-2"
+              onClick={handleLiveAnalysis}
+              disabled={scrapeMutation.isPending}
+            >
+              <RefreshCw className={`h-4 w-4 ${scrapeMutation.isPending ? 'animate-spin' : ''}`} />
+              Fetch Demo Data
+            </Button>
+          </div>
+        )}
 
         {/* Key Metrics Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -234,49 +267,69 @@ const Index = () => {
 
         {/* Live Analyzer & Insights */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <LiveReviewAnalyzer />
-          <InsightCard isLoading={isLoading || summaryLoading || insightsLoading} summary={summaryResp?.summary} recommendations={insightsData || []} />
+          <PanelErrorBoundary title="Live review analyzer">
+            <LiveReviewAnalyzer />
+          </PanelErrorBoundary>
+          <PanelErrorBoundary title="Insight summary">
+            <InsightCard isLoading={isLoading || summaryLoading || insightsLoading} summary={summaryResp?.summary} recommendations={insightsData || []} />
+          </PanelErrorBoundary>
         </div>
 
 
 
         {/* Review Feed & Emotions */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ReviewFeed reviews={assembled?.recentReviews ?? []} />
-          <EmotionWheel isLoading={isLoading} data={assembled.emotions} />
+          <PanelErrorBoundary title="Review feed">
+            <ReviewFeed reviews={assembled?.recentReviews ?? []} />
+          </PanelErrorBoundary>
+          <PanelErrorBoundary title="Emotion wheel">
+            <EmotionWheel isLoading={isLoading} data={assembled.emotions} />
+          </PanelErrorBoundary>
         </div>
 
         {/* Aspect Analysis & Alerts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <AspectRadarChart
-            data={assembled?.aspectScores ?? []}
-            isLoading={isLoadingLocal}
-          />
-          <AlertsPanel
-            alerts={assembled?.alerts ?? []}
-            isLoading={isLoadingLocal}
-          />
+          <PanelErrorBoundary title="Aspect analysis">
+            <AspectRadarChart
+              data={assembled?.aspectScores ?? []}
+              isLoading={isLoadingLocal}
+            />
+          </PanelErrorBoundary>
+          <PanelErrorBoundary title="Alerts">
+            <AlertsPanel
+              alerts={assembled?.alerts ?? []}
+              isLoading={isLoadingLocal}
+            />
+          </PanelErrorBoundary>
         </div>
 
         {/* Topics & Platform Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <TopicClusters isLoading={isLoading} />
-          <PlatformChart
-            data={assembled?.platformBreakdown ?? []}
-            isLoading={isLoadingLocal}
-          />
+          <PanelErrorBoundary title="Topic clusters">
+            <TopicClusters isLoading={isLoading} />
+          </PanelErrorBoundary>
+          <PanelErrorBoundary title="Platform breakdown">
+            <PlatformChart
+              data={assembled?.platformBreakdown ?? []}
+              isLoading={isLoadingLocal}
+            />
+          </PanelErrorBoundary>
         </div>
 
         {/* Keywords & Credibility Report */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ImageWordCloud
-            productId={selectedProductId}
-          />
+          <PanelErrorBoundary title="Word cloud">
+            <ImageWordCloud
+              productId={selectedProductId}
+            />
+          </PanelErrorBoundary>
 
-          <CredibilityReport
-            report={assembled.credibilityReport}
-            isLoading={isLoadingLocal}
-          />
+          <PanelErrorBoundary title="Credibility report">
+            <CredibilityReport
+              report={assembled.credibilityReport}
+              isLoading={isLoadingLocal}
+            />
+          </PanelErrorBoundary>
         </div>
       </div>
     </DashboardLayout >

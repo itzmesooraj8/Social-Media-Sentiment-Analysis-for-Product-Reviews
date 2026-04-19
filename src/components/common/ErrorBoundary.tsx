@@ -25,6 +25,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
 
     render() {
+        const isDev = import.meta.env.DEV;
+
         if (this.state.hasError) {
             return (
                 <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-gray-900 p-4">
@@ -39,7 +41,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                         </p>
 
                         {/* Debug info for "Senior Devs" */}
-                        {this.state.error && process.env.NODE_ENV === 'development' && (
+                        {this.state.error && isDev && (
                             <div className="bg-gray-100 p-4 rounded text-left text-xs font-mono mb-6 overflow-auto max-h-40">
                                 {this.state.error.toString()}
                             </div>
