@@ -485,6 +485,14 @@ async def get_dashboard_stats(product_id: str = None):
         final_aspects.sort(key=lambda x: x["score"], reverse=True)
         final_aspects = final_aspects[:6]
 
+        # Most recent ingestion timestamp for freshness indicators.
+        last_scraped_at = None
+        for review in recent_reviews:
+            candidate_ts = review.get("created_at")
+            if candidate_ts:
+                last_scraped_at = candidate_ts
+                break
+
         final_data = {
             "recentReviews": recent_reviews,
             "totalReviews": total_reviews,
@@ -501,7 +509,8 @@ async def get_dashboard_stats(product_id: str = None):
             "topKeywords": top_keywords,
             "emotionBreakdown": emotion_breakdown,
             "aspectScores": final_aspects,
-            "alerts": [] 
+            "alerts": [],
+            "lastScrapedAt": last_scraped_at,
         }
         
         # Save to Cache ONLY if we found data, to avoid caching failures/empty states
@@ -530,7 +539,8 @@ async def get_dashboard_stats(product_id: str = None):
             "topKeywords": [],
             "emotionBreakdown": [],
             "aspectScores": [],
-            "alerts": [] 
+            "alerts": [],
+            "lastScrapedAt": None,
         }
 
 async def get_product_stats_full(product_id: str):

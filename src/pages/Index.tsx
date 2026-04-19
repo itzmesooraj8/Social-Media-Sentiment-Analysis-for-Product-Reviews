@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from "sonner";
 import { FileText, BarChart3, MessageSquare, Shield, RefreshCw } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { getProducts, getInsights, triggerScrape } from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -83,6 +84,12 @@ const Index = () => {
   const recentReviews = apiMetrics?.recentReviews || [];
   const rawPlatformBreakdown = apiMetrics?.platformBreakdown || [];
   const platformBreakdown = Array.isArray(rawPlatformBreakdown) ? rawPlatformBreakdown : [];
+  const lastUpdatedRaw = apiMetrics.lastScrapedAt || apiMetrics.last_scraped_at || recentReviews?.[0]?.timestamp || recentReviews?.[0]?.created_at;
+  const lastUpdatedDate = (() => {
+    if (!lastUpdatedRaw) return undefined;
+    const parsed = new Date(lastUpdatedRaw);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  })();
 
   const assembled = {
     metrics: {
@@ -106,7 +113,7 @@ const Index = () => {
       totalAnalyzed: 0,
     },
     emotions: apiMetrics.emotionBreakdown || apiMetrics.emotions || [], // Use backend aggregated breakdown
-    lastUpdated: new Date()
+    lastUpdated: lastUpdatedDate
   };
   const isLoadingLocal = isLoading;
 
@@ -127,7 +134,7 @@ const Index = () => {
   /* Error State Handling */
   if (data?.isError || (products === undefined && !productsLoading && !isLoadingLocal)) {
     return (
-      <DashboardLayout lastUpdated={new Date()} isCrisis={false}>
+      <DashboardLayout isCrisis={false}>
         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4">
           <Shield className="h-16 w-16 text-muted-foreground opacity-50" />
           <h3 className="text-xl font-semibold">System Offline</h3>
@@ -144,7 +151,7 @@ const Index = () => {
 
   if (isLoadingLocal || productsLoading) {
     return (
-      <DashboardLayout lastUpdated={new Date()} isCrisis={false}>
+      <DashboardLayout isCrisis={false}>
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Skeleton className="h-28 w-full" />
@@ -185,9 +192,16 @@ const Index = () => {
 
 
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground mr-2 font-medium">
-              Global Overview
-            </span>
+            <div className="flex flex-col items-end mr-2">
+              <span className="text-sm text-muted-foreground font-medium">
+                Global Overview
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {assembled.lastUpdated
+                  ? `Last updated ${formatDistanceToNow(assembled.lastUpdated, { addSuffix: true })}`
+                  : 'Last updated not available yet'}
+              </span>
+            </div>
             <Button
               variant="outline"
               size="sm"

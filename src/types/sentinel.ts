@@ -19,6 +19,7 @@ export interface DashboardStats {
   totalReviews: number;
   sentimentScore: number;
   averageCredibility: number;
+  lastScrapedAt?: string | null;
   platformBreakdown: PlatformBreakdown[];
   topKeywords: Array<{ text: string; value: number; sentiment?: string }>;
   recentReviews: Review[];

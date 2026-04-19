@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { Activity, Clock } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { UserNav } from '@/components/common/UserNav';
 
 interface DashboardHeaderProps {
@@ -10,6 +10,10 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({ lastUpdated, isCrisis = false }: DashboardHeaderProps) {
+  const relativeUpdated = lastUpdated
+    ? formatDistanceToNow(lastUpdated, { addSuffix: true })
+    : null;
+
   return (
     <header className="sticky top-0 z-30 glass-card rounded-none border-b border-border/50 px-6 py-4">
       <div className="flex items-center justify-between">
@@ -52,7 +56,7 @@ export function DashboardHeader({ lastUpdated, isCrisis = false }: DashboardHead
               className="hidden md:flex items-center gap-2 text-sm text-muted-foreground"
             >
               <Clock className="h-4 w-4" />
-              <span>Updated {format(lastUpdated, 'HH:mm:ss')}</span>
+              <span title={format(lastUpdated, 'PPpp')}>Last updated {relativeUpdated}</span>
             </motion.div>
           )}
 
