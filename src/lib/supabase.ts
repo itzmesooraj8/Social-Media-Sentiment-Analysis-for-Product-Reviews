@@ -13,10 +13,10 @@ if (!isSupabaseConfigured) {
     console.warn(
         'CRITICAL: Missing VITE_SUPABASE_URL or VITE_SUPABASE_KEY.\n' +
         'Set these in Vercel → Settings → Environment Variables and redeploy.\n' +
-        'Auth will not work until these are set.'
+        'Supabase-backed data features will not work until these are set.'
     );
     // Use a known-invalid but structurally-valid URL so createClient() does not throw.
-    // All auth calls will fail gracefully; the AuthContext timeout (8s) will unblock the app.
+    // Supabase operations will fail gracefully when credentials are missing.
     supabase = createClient(
         'https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.supabase.co',
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwbGFjZWhvbGRlciJ9.placeholder',
@@ -27,33 +27,6 @@ if (!isSupabaseConfigured) {
 }
 
 export { supabase };
-
-// Auth helpers
-export const signUp = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-    });
-    return { data, error };
-};
-
-export const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-    });
-    return { data, error };
-};
-
-export const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    return { error };
-};
-
-export const getCurrentUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    return user;
-};
 
 export const subscribeToTable = (table: string, callback: (payload: any) => void) => {
     return supabase

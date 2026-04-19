@@ -103,9 +103,6 @@ app.include_router(reports.router)
 app.include_router(alerts.router)
 app.include_router(settings.router)
 
-from routers import auth
-app.include_router(auth.router)
-
 from services.insights_service import insights_service
 
 

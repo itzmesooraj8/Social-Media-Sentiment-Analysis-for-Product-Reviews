@@ -11,8 +11,6 @@ tweepy
 textblob
 python-multipart
 httpx
-python-jose[cryptography]
-passlib[bcrypt]
 youtube-comment-downloader
 scikit-learn
 pandas>=2.0.0

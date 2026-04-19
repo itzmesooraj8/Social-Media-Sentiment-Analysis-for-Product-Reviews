@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
 import { motion } from 'framer-motion';
 import {
   Settings as SettingsIcon,
@@ -14,8 +12,6 @@ import {
   Save,
   Mail,
   Smartphone,
-  Eye,
-  EyeOff,
   Check
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -36,7 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useTheme } from '@/components/ThemeProvider';
-import { getSettings, updateSettings, getProducts, getSystemStatus } from '@/lib/api';
+import { getSettings, updateSettings, getSystemStatus } from '@/lib/api';
 import { useToast } from "@/hooks/use-toast";
 
 const containerVariants = {
@@ -54,12 +50,9 @@ const itemVariants = {
 
 const Settings = () => {
   const { theme, setTheme } = useTheme();
-  const [showApiKey, setShowApiKey] = useState(false);
   const [saved, setSaved] = useState(false);
   const { toast } = useToast();
 
-  // Settings State
-  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   const [emailNotifications, setEmailNotifications] = useState(true);
@@ -75,27 +68,13 @@ const Settings = () => {
     queryFn: getSettings
   });
 
-  const { data: products } = useQuery({ queryKey: ['products'], queryFn: getProducts });
-
-  // Profile State
-  // Profile State (Real Data)
+  // Local profile fields are demo metadata only (no login required).
   const [profile, setProfile] = useState({
-    firstName: user?.user_metadata?.first_name || "",
-    lastName: user?.user_metadata?.last_name || "",
-    email: user?.email || "",
-    org: user?.user_metadata?.org || ""
+    firstName: "Demo",
+    lastName: "User",
+    email: "",
+    org: ""
   });
-
-  useEffect(() => {
-    if (user) {
-      setProfile({
-        firstName: user.user_metadata?.first_name || "",
-        lastName: user.user_metadata?.last_name || "",
-        email: user.email || "",
-        org: user.user_metadata?.org || ""
-      });
-    }
-  }, [user]);
 
   useEffect(() => {
     if (settingsData) {
@@ -106,29 +85,16 @@ const Settings = () => {
 
   const saveSettingsMutation = useMutation({
     mutationFn: async (data: any) => {
-      // 1. Update Backend Settings
       await updateSettings(data);
-
-      // 2. Update Real Supabase Profile
-      if (user) {
-        const { error } = await supabase.auth.updateUser({
-          data: {
-            first_name: profile.firstName,
-            last_name: profile.lastName,
-            org: profile.org
-          }
-        });
-        if (error) throw error;
-      }
     },
     onSuccess: () => {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       queryClient.invalidateQueries({ queryKey: ['settings'] });
-      toast({ title: "Saved", description: "Settings and Profile updated successfully." });
+      toast({ title: "Saved", description: "Settings updated successfully." });
     },
-    onError: (err) => {
-      toast({ title: "Error", description: "Failed to save: " + err.message, variant: "destructive" });
+    onError: (err: any) => {
+      toast({ title: "Error", description: "Failed to save: " + (err?.message || 'Unknown error'), variant: "destructive" });
     }
   });
 
@@ -333,7 +299,7 @@ const Settings = () => {
                   <div className="flex items-center gap-6">
                     <div className="h-20 w-20 rounded-full bg-gradient-to-br from-sentinel-positive to-sentinel-credibility flex items-center justify-center shadow-lg border border-white/10">
                       <span className="text-3xl font-bold text-black opacity-80">
-                        {(profile.firstName?.[0] || user?.email?.[0] || "U").toUpperCase()}
+                        {(profile.firstName?.[0] || profile.email?.[0] || "U").toUpperCase()}
                       </span>
                     </div>
                     <div>
@@ -341,7 +307,7 @@ const Settings = () => {
                         <p className="font-medium text-lg leading-none mb-2">{profile.firstName || "User"} {profile.lastName}</p>
                         <p className="text-muted-foreground">{profile.email}</p>
                         <Badge variant="outline" className="mt-2 text-xs bg-sentinel-positive/10 text-sentinel-positive border-sentinel-positive/20">
-                          {user?.role?.toUpperCase() || "AUTHENTICATED"}
+                          DEMO MODE
                         </Badge>
                       </div>
                     </div>

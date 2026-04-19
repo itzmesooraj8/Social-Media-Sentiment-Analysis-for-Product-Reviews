@@ -38,7 +38,7 @@ interface AppSidebarProps {
 }
 
 const navItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+  { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   { icon: BarChart3, label: 'Analytics', path: '/analytics' },
   { icon: FileText, label: 'Reports', path: '/reports' },
   { icon: Bell, label: 'Alerts', path: '/alerts' },

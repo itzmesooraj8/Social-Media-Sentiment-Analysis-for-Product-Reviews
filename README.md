@@ -68,7 +68,7 @@ Whether you are tracking a product launch, monitoring brand health, or benchmark
 - **Executive Summary Cards** — Auto-generated narrative insights surfaced on the dashboard
 
 ### Platform
-- **JWT Authentication** — Secure login and registration with role-based access control
+- **No Login Required** — Dashboard-first demo flow with direct access to analytics
 - **Dark / Light Theme** — Full system-preference-aware theming via `next-themes`
 - **Responsive Layout** — Mobile-first design built on TailwindCSS and Radix UI
 
@@ -84,8 +84,7 @@ Whether you are tracking a product launch, monitoring brand health, or benchmark
 | **Charts & Animation** | Recharts, Framer Motion |
 | **Routing** | React Router v7 |
 | **Backend** | FastAPI, Python 3.11, Uvicorn |
-| **Database & Auth** | Supabase (PostgreSQL + Auth) |
-| **Backend Auth** | python-jose, passlib (bcrypt) |
+| **Database** | Supabase (PostgreSQL) |
 | **NLP / ML** | HuggingFace Transformers (DistilBERT), VADER, TextBlob, NRCLex, KeyBERT, Gensim, NLTK, Scikit-learn |
 | **Scraping** | google-api-python-client, youtube-comment-downloader, asyncpraw, ntscraper, Tweepy |
 | **Task Scheduling** | APScheduler |
@@ -106,7 +105,7 @@ Whether you are tracking a product launch, monitoring brand health, or benchmark
 |                 FastAPI Backend  (Python 3.11)              |
 |                                                             |
 |  Routers: /products  /reviews  /scrape  /alerts             |
-|           /reports   /settings  /auth   /analytics          |
+|           /reports   /settings         /analytics          |
 |                                                             |
 |  Services:                                                  |
 |   +-- ai_service.py          DistilBERT · emotion · LDA    |
@@ -122,8 +121,8 @@ Whether you are tracking a product launch, monitoring brand health, or benchmark
 +---------------------------+---------------------------------+
                             |  Supabase JS SDK / REST
 +---------------------------v---------------------------------+
-|              Supabase  (PostgreSQL + Auth)                   |
-|   products | reviews | alerts | reports | users             |
+|              Supabase  (PostgreSQL)                          |
+|   products | reviews | alerts | reports                      |
 +-------------------------------------------------------------+
 ```
 
@@ -136,12 +135,8 @@ sentiment-beacon/
 +-- backend/                        # FastAPI application root
 |   +-- main.py                     # App entry point, CORS, startup hooks
 |   +-- database.py                 # Supabase client and query helpers
-|   +-- auth/
-|   |   +-- dependencies.py         # JWT bearer dependency injection
-|   |   +-- utils.py                # Password hashing utilities
 |   +-- routers/                    # Feature-scoped API route modules
 |   |   +-- alerts.py
-|   |   +-- auth.py
 |   |   +-- reports.py
 |   |   +-- settings.py
 |   +-- services/                   # All business logic and integrations
@@ -180,15 +175,12 @@ sentiment-beacon/
 |   +-- components/
 |   |   +-- dashboard/              # Chart and data visualisation widgets
 |   |   +-- layout/                 # App shell, sidebar, header
-|   |   +-- auth/                   # ProtectedRoute wrapper
 |   |   +-- ui/                     # shadcn/ui primitive components
 |   +-- hooks/                      # Custom React hooks
 |   +-- lib/
 |   |   +-- api.ts                  # Centralised Axios API client
 |   |   +-- supabase.ts             # Supabase browser client
 |   |   +-- utils.ts                # Shared utility functions
-|   +-- context/
-|   |   +-- AuthContext.tsx         # Authentication React context
 |   +-- types/
 |       +-- sentinel.ts             # Shared TypeScript type definitions
 |
@@ -375,8 +367,6 @@ http://localhost:8000/redoc      # ReDoc
 | `POST` | `/api/reports/generate` | Generate and store a new PDF/CSV report |
 | `POST` | `/api/integrations/config` | Save or update platform API credentials |
 | `DELETE` | `/api/integrations/{platform}` | Remove saved credentials for a platform |
-| `POST` | `/api/auth/register` | Register a new user account |
-| `POST` | `/api/auth/login` | Authenticate and receive a JWT |
 
 ---
 
@@ -397,7 +387,7 @@ Please ensure all ESLint checks pass (`npm run lint`) before submitting a pull r
 ## Author
 
 **Sooraj S**  
-Full-Stack Developer 
+Full-Stack Developer
 
 ---
 

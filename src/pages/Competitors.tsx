@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { getCompare, getProducts as apiGetProducts, triggerScrape } from '@/lib/api';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,7 +21,6 @@ interface ComparisonData {
 }
 
 const Competitors = () => {
-    const [products, setProducts] = useState<any[]>([]);
     const [selectedA, setSelectedA] = useState<string>('');
     const [selectedB, setSelectedB] = useState<string>('');
     const [data, setData] = useState<ComparisonData | null>(null);
@@ -31,21 +30,19 @@ const Competitors = () => {
     const queryClient = useQueryClient();
 
     // Fetch Products List via React Query
-    const { data: productList = [] } = useQuery({ queryKey: ['products'], queryFn: apiGetProducts });
+    const { data: productList } = useQuery({ queryKey: ['products'], queryFn: apiGetProducts });
+    const products = useMemo(() => (Array.isArray(productList) ? (productList as any[]) : []), [productList]);
 
     useEffect(() => {
-        if (Array.isArray(productList)) {
-            setProducts(productList as any[]);
-            // Auto-select first two products for instant value
-            if (productList.length >= 2 && !selectedA && !selectedB) {
-                setSelectedA(productList[0].id);
-                setSelectedB(productList[1].id);
-            }
+        // Auto-select first two products for instant value.
+        if (products.length >= 2 && !selectedA && !selectedB) {
+            setSelectedA(products[0].id);
+            setSelectedB(products[1].id);
         }
-    }, [productList]);
+    }, [products, selectedA, selectedB]);
 
-    // Aggressive Polling Mode: 1s interval when analyzing
-    const pollInterval = isAnalyzing ? 1000 : 0;
+    // Poll only while live analysis is active.
+    const pollInterval = isAnalyzing ? 1000 : false;
 
     // Server-side Comparison
     const { data: compareRes } = useQuery({
@@ -96,7 +93,7 @@ const Competitors = () => {
 
     }, [compareRes, selectedA, selectedB]);
 
-    const getName = (id: string) => products.find(p => p.id === id)?.name || productList.find((p: any) => p.id === id)?.name || 'Product';
+    const getName = (id: string) => products.find((p: any) => p.id === id)?.name || 'Product';
 
     const getWinner = () => {
         if (!data) return null;

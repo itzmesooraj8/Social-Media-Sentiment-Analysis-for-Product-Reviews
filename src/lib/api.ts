@@ -1,6 +1,5 @@
 
 import axios from 'axios';
-import { supabase } from './supabase';
 
 const API_URL_RAW = import.meta.env.VITE_API_URL || 'https://social-media-sentiment-analysis-for.onrender.com';
 const API_URL = API_URL_RAW.endsWith('/api') ? API_URL_RAW : `${API_URL_RAW}/api`;
@@ -13,62 +12,12 @@ export const api = axios.create({
     timeout: 120000, // increase default timeout to 120s for slow endpoints
 });
 
-// Sync Auth Token from Supabase or Local Storage
-// Uses a race with a 3s timeout so a slow/misconfigured Supabase client never stalls the request.
-api.interceptors.request.use(async (config) => {
-    try {
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
-        const result = await Promise.race([sessionPromise, timeoutPromise]);
-        const session = result ? (result as any)?.data?.session : null;
-
-        if (session?.access_token) {
-            config.headers.Authorization = `Bearer ${session.access_token}`;
-        } else {
-            const localToken = localStorage.getItem('access_token');
-            if (localToken) {
-                config.headers.Authorization = `Bearer ${localToken}`;
-            }
-        }
-    } catch {
-        // If auth check fails, continue without token (public endpoints still work)
-        const localToken = localStorage.getItem('access_token');
-        if (localToken) {
-            config.headers.Authorization = `Bearer ${localToken}`;
-        }
-    }
-
-    return config;
-});
-
-export const apiLogin = async (username, password) => {
-    const response = await api.post('/login', { username, password });
-    return response.data;
-};
-
 export const getInsights = async (productId?: string) => {
     const response = await api.get(`/insights${productId ? `?product_id=${productId}` : ''}`);
     return response.data?.data || [];
 };
 
-// Handle 401 Unauthorized errors globally
-api.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-        if (error.response?.status === 401) {
-            // Force signout if token is invalid
-            await supabase.auth.signOut();
-            window.location.href = '/login';
-        }
-        return Promise.reject(error);
-    }
-);
-
 export const sentinelApi = {
-    // --- Auth & User ---
-    // (Assuming basic auth methods exist, preserving if any, otherwise minimal placeholder)
-    // If you had previous methods, they should be preserved, but for this specific request:
-
     // --- Core API methods ---
     getDashboardStats: async (): Promise<any> => {
         const response = await api.get('/dashboard');
